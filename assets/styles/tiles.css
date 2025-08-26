@@ -1,0 +1,14 @@
+/* Grid layout tweaks */
+.react-grid-item { display: flex; }
+.tile-card { width: 100%; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Let body scroll if needed, but hide scrollbars until needed */
+.tile-card .card-body { overflow: auto; }
+
+/* Resizable handle visibility (bottom-right) */
+.react-grid-item > .react-resizable-handle {
+  position: absolute;
+  width: 20px; height: 20px;
+  right: 6px; bottom: 6px;
+  cursor: se-resize;
+}

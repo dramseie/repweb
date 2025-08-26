@@ -1,0 +1,35 @@
+api_mail_templates_list:
+  path: /api/mail/templates
+  controller: App\Controller\Api\MailTemplateController::list
+  methods: [GET]
+
+api_mail_templates_save:
+  path: /api/mail/templates
+  controller: App\Controller\Api\MailTemplateController::save
+  methods: [POST]
+
+api_mail_templates_logo:
+  path: /api/mail/templates/{id}/logo
+  controller: App\Controller\Api\MailTemplateController::uploadLogo
+  methods: [POST]
+# Attachments API
+api_mail_attachments_list:
+  path: /api/mail/templates/{id}/attachments
+  controller: App\Controller\Api\MailAttachmentController::list
+  methods: [GET]
+
+api_mail_attachments_save:
+  path: /api/mail/templates/{id}/attachments
+  controller: App\Controller\Api\MailAttachmentController::save
+  methods: [POST]
+
+api_mail_attachments_delete:
+  path: /api/mail/templates/{id}/attachments/{attId}
+  controller: App\Controller\Api\MailAttachmentController::delete
+  methods: [DELETE]
+
+# Share-link resolver
+share_link:
+  path: /s/{token}
+  controller: App\Controller\ShareLinkController::resolve
+  methods: [GET]

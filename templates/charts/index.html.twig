@@ -1,0 +1,14 @@
+
+        {% extends 'base.html.twig' %}
+        {% block body %}
+        <h2>User Role Distribution (Plotly)</h2>
+        <div id="chart" style="height:400px;"></div>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <script>
+        fetch("{{ path('charts_data') }}").then(r=>r.json()).then(d=>{
+          const labels=d.map(x=>x.role), values=d.map(x=>x.count);
+          Plotly.newPlot('chart',[{type:'pie',labels,values}],{title:'People per Role'});
+        });
+        </script>
+        {% endblock %}
+        

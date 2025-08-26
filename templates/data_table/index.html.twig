@@ -1,0 +1,18 @@
+
+        {% extends 'base.html.twig' %}
+        {% block body %}
+        <h2>Dynamic DataTable with Export</h2>
+        <table id="peopleTable" class="display" style="width:100%">
+          <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th></tr></thead>
+        </table>
+        <p><a href="{{ path('data_table_export', {'format':'csv'}) }}">Export CSV</a> |
+        <a href="{{ path('data_table_export', {'format':'xlsx'}) }}">Export Excel</a></p>
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+        <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+        <script>
+        $(function(){ $('#peopleTable').DataTable({ processing:true, serverSide:true, ajax:'{{ path('data_table_data') }}',
+          columns:[{data:'id'},{data:'name'},{data:'email'},{data:'role'}] }); });
+        </script>
+        {% endblock %}
+        

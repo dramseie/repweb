@@ -1,20 +1,21 @@
+# Symfony cache & logs
+/var/cache/
+/var/log/
 
-###> symfony/framework-bundle ###
-/.env.local
-/.env.local.php
-/.env.*.local
-/config/secrets/prod/prod.decrypt.private.php
-/public/bundles/
-/var/
+# Build output
+/public/build/
+/node_modules/
 /vendor/
-###< symfony/framework-bundle ###
 
-###> phpunit/phpunit ###
-/phpunit.xml
-/.phpunit.cache/
-###< phpunit/phpunit ###
+# Local configs
+.env.local
+.env.*.local
 
-###> symfony/asset-mapper ###
-/public/assets/
-/assets/vendor/
-###< symfony/asset-mapper ###
+# IDE / editor stuff
+/.idea/
+/.vscode/
+/*.swp
+
+# OS files
+.DS_Store
+Thumbs.db

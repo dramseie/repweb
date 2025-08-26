@@ -1,0 +1,16 @@
+{# templates/pivot/page.html.twig #}
+{% extends 'base.html.twig' %}
+
+{% set reportName = attribute(report, 'name') ?? null %}
+
+{% block title %}Pivot – {{ reportName ?: ('Report #' ~ repId) }}{% endblock %}
+
+{% block body %}
+<div class="container py-3">
+  <h1 class="h4 mb-3">Pivot: {{ reportName ?: ('Report #' ~ repId) }}</h1>
+
+  <div id="react-pivot-report"
+       data-report-id="{{ repId }}"
+       class="border rounded p-2 bg-white"></div>
+</div>
+{% endblock %}

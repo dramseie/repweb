@@ -1,0 +1,67 @@
+/* --- MegaNavbar Pro Styles --- */
+
+/* Navbar background & spacing */
+.meganavbar {
+  background-color: #f8f9fa; /* very light gray */
+  border-bottom: 1px solid #ddd;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+/* Brand logo sizing */
+.meganavbar .navbar-brand img {
+  height: 80px;
+  max-height: 80px;
+  width: auto;
+}
+
+/* Active link styling */
+.meganavbar .nav-link.active,
+.meganavbar .dropdown-item.active {
+  color: #0d6efd;
+  font-weight: 600;
+  background-color: rgba(13, 110, 253, 0.1);
+  border-radius: 0.25rem;
+}
+
+/* Hover styling for dropdown items */
+.meganavbar .dropdown-item:hover {
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Mega dropdown container */
+.mega-dropdown {
+  position: static;
+}
+
+.mega-dropdown .dropdown-menu {
+  width: 100%;
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* Mega dropdown inner layout */
+.mega-dropdown .container-fluid {
+  padding: 1rem;
+}
+
+.mega-dropdown .list-unstyled li {
+  margin-bottom: 0.25rem;
+}
+
+/* Divider spacing */
+.dropdown-divider {
+  margin: 0.5rem 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 991.98px) {
+  .mega-dropdown .dropdown-menu {
+    position: static !important;
+    box-shadow: none;
+  }
+}
+
+.navbar.meganavbar { position: sticky; top: 0; z-index: 1020; }
+

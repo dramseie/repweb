@@ -1,0 +1,12 @@
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% block header %}
+  <div id="react-meganavbar"
+       data-user-name="{{ app.user ? (app.user.fullName ?? app.user.username ?? app.user.email) : '' }}"
+       data-user-email="{{ app.user ? app.user.email : '' }}"
+       data-user-avatar="{% if app.user and attribute(app.user, 'avatarUrl') is defined %}{{ attribute(app.user, 'avatarUrl') }}{% else %}{% endif %}"
+       data-csrf-token="{{ csrf_token('logout') }}">
+  </div>
+{% endblock %}
+
+{% block content_title %}{% endblock %}

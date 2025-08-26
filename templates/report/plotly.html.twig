@@ -1,0 +1,26 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ report.reptitle ?? ('Report #' ~ report.repid) }} – Plotly{% endblock %}
+
+{% block body %}
+<div class="container py-3">
+  <h5 class="mb-1">{{ report.reptitle ?? ('Report #' ~ report.repid) }}</h5>
+  {% if report.repdesc %}
+    <div class="text-muted small mb-3">{{ report.repdesc|raw }}</div>
+  {% endif %}
+
+  <div id="react-plotly-report"
+       data-report-id="{{ report.repid }}"
+       data-api-base="/api/plotly"></div>
+</div>
+{% endblock %}
+
+{% block stylesheets %}
+  {{ parent() }}
+  {{ encore_entry_link_tags('plotly') }} {# only if plotly entry imports CSS; safe to keep #}
+{% endblock %}
+
+{% block javascripts %}
+  {{ parent() }}
+  {{ encore_entry_script_tags('plotly') }}
+{% endblock %}

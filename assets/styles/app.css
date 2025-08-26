@@ -1,3 +1,60 @@
-body {
-    background-color: skyblue;
+/* --- DataTables Toolbar Alignment Fix --- */
+.dataTables_wrapper .dt-buttons {
+  margin-bottom: 0 !important;
+}
+.dataTables_wrapper .dataTables_filter {
+  margin-bottom: 0 !important;
+  text-align: right;
+}
+/* Make DataTables buttons white background, light border, black text */
+.dt-buttons .dt-button,
+.dt-buttons .btn {
+    background-color: white !important;
+    border: 1px solid #ccc !important;
+    color: black !important;
+    box-shadow: none !important;
+}
+
+/* Remove hover fill and keep text black */
+.dt-buttons .dt-button:hover,
+.dt-buttons .btn:hover {
+    background-color: #f8f9fa !important;
+    color: black !important;
+    border-color: #bbb !important;
+}
+
+/* Optional: make icons align nicely */
+.dt-buttons .dt-button i {
+    margin-right: 4px;
+}
+
+/* Make sure opened dropdowns are visible even if custom CSS conflicts */
+.navbar .dropdown-menu.show { display: block; }
+.navbar .dropdown.mega-dropdown .dropdown-menu { width: 100%; }
+
+#filterButton.active {
+  background-color: green;
+  color: white;   /* optional for better contrast */
+  border-radius: 4px; /* optional, makes it look like a button */
+  padding: 3px;   /* optional, spacing around the icon */
+}
+
+.navbar .btn,
+#react-meganavbar .btn {
+  border: none !important;
+  box-shadow: none !important; /* also remove focus outline shadow */
+}
+
+/* Optional: remove focus ring too */
+.navbar .btn:focus,
+#react-meganavbar .btn:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.ea-index .ea-actions .action a.btn {
+  margin-right: .25rem;   /* tighten spacing */
+  padding: .25rem .5rem;  /* smaller buttons */
+  font-size: .75rem;      /* shrink text */
+  line-height: 1.2;
 }

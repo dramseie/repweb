@@ -1,39 +1,65 @@
 security:
-    # https://symfony.com/doc/current/security.html#registering-the-user-hashing-passwords
-    password_hashers:
-        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
-    # https://symfony.com/doc/current/security.html#loading-the-user-the-user-provider
-    providers:
-        users_in_memory: { memory: null }
-    firewalls:
-        dev:
-            pattern: ^/(_(profiler|wdt)|css|images|js)/
-            security: false
-        main:
-            lazy: true
-            provider: users_in_memory
+  providers:
+    app_user_provider:
+      entity:
+        class: App\Entity\User
+        property: email
 
-            # activate different ways to authenticate
-            # https://symfony.com/doc/current/security.html#the-firewall
+  password_hashers:
+    App\Entity\User:
+      algorithm: auto
 
-            # https://symfony.com/doc/current/security/impersonating_user.html
-            # switch_user: true
+  firewalls:
+    dev:
+      pattern: ^/(_(profiler|wdt)|css|images|js)/
+      security: false
 
-    # Easy way to control access for large sections of your site
-    # Note: Only the *first* access control that matches will be used
-    access_control:
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
+    main:
+      lazy: true
+      provider: app_user_provider
 
-when@test:
-    security:
-        password_hashers:
-            # By default, password hashers are resource intensive and take time. This is
-            # important to generate secure password hashes. In tests however, secure hashes
-            # are not important, waste resources and increase test times. The following
-            # reduces the work factor to the lowest possible values.
-            Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
-                algorithm: auto
-                cost: 4 # Lowest possible value for bcrypt
-                time_cost: 3 # Lowest possible value for argon
-                memory_cost: 10 # Lowest possible value for argon
+      # Keep your custom authenticator
+      custom_authenticator: App\Security\EgCustomAuthenticator
+
+      # Use form_login ONLY as the entry point (so anonymous users get redirected to /login)
+      form_login:
+        login_path: app_login       # route name that renders your login page
+        check_path: app_login       # same route if your authenticator posts to it
+        enable_csrf: true
+        default_target_path: /      # after successful login
+
+      entry_point: form_login       # <- ensures redirect to /login instead of 401
+
+      logout:
+        path: app_logout            # route name handled by Symfony
+        target: app_login           # where to go after logout (login route)
+
+      remember_me:
+        secret: '%kernel.secret%'
+        lifetime: 1209600           # 14 days
+        path: /
+
+  access_control:
+    # Public routes (order matters; most specific first)
+    - { path: ^/login, roles: PUBLIC_ACCESS }
+    - { path: ^/logout, roles: PUBLIC_ACCESS }
+
+    # Public assets used on login page
+    - { path: ^/build, roles: PUBLIC_ACCESS }     # Webpack Encore output
+    - { path: ^/images, roles: PUBLIC_ACCESS }    # logos, favicon
+    - { path: ^/api/menu, roles: PUBLIC_ACCESS }  # navbar menu on login page
+
+    # 👉 Mail module (open during development)
+    - { path: ^/api/mail, roles: PUBLIC_ACCESS }  # switch to ROLE_USER/ROLE_ADMIN later
+    # 👉 Public/Private token resolver (public links must work without login)
+    - { path: ^/s/, roles: PUBLIC_ACCESS }
+
+    # Admin area requires admin
+    - { path: ^/admin, roles: ROLE_ADMIN }
+
+    # Protected APIs (session required)
+    - { path: ^/api/report/, roles: ROLE_USER }
+    - { path: ^/api/dt/,     roles: ROLE_USER }
+
+    # Catch‑all: everything else requires login
+    - { path: ^/, roles: ROLE_USER }

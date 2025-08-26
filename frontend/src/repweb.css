@@ -1,0 +1,6 @@
+
+.meganavbar .logo-square{ width:20px;height:20px;border-radius:4px;background:linear-gradient(135deg,#00a783,#00695c);}
+.meganavbar .dropdown-menu.mega-dropdown{ border-top-left-radius:0; border-top-right-radius:0; }
+.meganavbar .dropdown-item{ border-radius:8px; }
+.meganavbar .dropdown-item:hover{ background:rgba(0,0,0,.05); }
+@media (min-width: 992px){ .meganavbar .dropdown-menu.mega-dropdown{ left:0; right:0; } }
