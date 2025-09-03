@@ -1,0 +1,13 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}SQL Composer{% endblock %}
+
+{% block body %}
+<div class="container-fluid py-3">
+  <h1 class="h4 mb-3">SQL Statement Composer</h1>
+  <div id="sql-composer-root"></div>
+</div>
+
+{{ encore_entry_link_tags('sql-composer') }}
+{{ encore_entry_script_tags('sql-composer') }}
+{% endblock %}

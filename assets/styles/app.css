@@ -58,3 +58,10 @@
   font-size: .75rem;      /* shrink text */
   line-height: 1.2;
 }
+
+/* JSON builder tweaks */
+.json-tree {
+  font-size: 0.9rem;
+  line-height: 1.15;
+}
+

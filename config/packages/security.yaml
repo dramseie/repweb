@@ -63,3 +63,7 @@ security:
 
     # Catch‑all: everything else requires login
     - { path: ^/, roles: ROLE_USER }
+
+    - { path: ^/api/sql/preview$, roles: PUBLIC_ACCESS }
+
+    - { path: ^/api/sqlc, roles: PUBLIC_ACCESS }

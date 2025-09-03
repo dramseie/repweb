@@ -1,0 +1,10 @@
+# config/routes/json_import.yaml
+json_import_options:
+  path: /api/json-imports/options
+  controller: App\Controller\JsonImportController::options
+  methods: [GET]
+
+json_import_get:
+  path: /api/json-imports/{source}/{key}
+  controller: App\Controller\JsonImportController::getOne
+  methods: [GET]

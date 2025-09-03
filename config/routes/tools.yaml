@@ -1,0 +1,4 @@
+tools_cmdb_modeler:
+  path: /tools/cmdb-modeler
+  controller: App\Controller\Tools\CmdbModelerController::index
+  methods: [GET]

@@ -25,11 +25,26 @@ class DynamicDtController extends AbstractController
     {
         $report = $this->fetchReport($repid);
 
+        // --- BEGIN: repparam plumbing (added) ------------------------------
+        $rawRepparam  = $report['repparam'] ?? '';
+        $repparamArr  = [];
+        if (is_string($rawRepparam) && $rawRepparam !== '') {
+            $tmp = json_decode($rawRepparam, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($tmp)) {
+                $repparamArr = $tmp;
+            }
+        }
+        $repparamJson = json_encode($repparamArr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        // --- END: repparam plumbing ---------------------------------------
+
         return $this->render('dt/db.html.twig', [
-            'repid'    => $repid,
-            'report'   => $report,
-            'reptitle' => $report['reptitle'] ?? '',
-            'repdesc'  => $report['repdesc'] ?? '',
+            'repid'         => $repid,
+            'report'        => $report,
+            'reptitle'      => $report['reptitle'] ?? '',
+            'repdesc'       => $report['repdesc'] ?? '',
+            // expose repparam to Twig / JS
+            'repparam'      => $repparamArr,
+            'repparam_json' => $repparamJson,
         ]);
     }
 
@@ -124,11 +139,11 @@ class DynamicDtController extends AbstractController
         }
 
         // Counts
-        $sqlTotal    = "SELECT COUNT(*) FROM ( $baseSql ) baseq";
+        $sqlTotal     = "SELECT COUNT(*) FROM ( $baseSql ) baseq";
         $recordsTotal = (int)$this->db->fetchOne($sqlTotal, $params);
 
-        $sqlFiltered = "SELECT COUNT(*) FROM ( $baseSql ) baseq" . $whereSql;
-        $recordsFiltered = (int)$this->db->fetchOne($sqlFiltered, $dbalParams);
+        $sqlFiltered      = "SELECT COUNT(*) FROM ( $baseSql ) baseq" . $whereSql;
+        $recordsFiltered  = (int)$this->db->fetchOne($sqlFiltered, $dbalParams);
 
         // Data query
         $selectList  = implode(', ', array_map(fn($c) => "`$c`", $columns));

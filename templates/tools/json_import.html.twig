@@ -1,0 +1,10 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ title|default('JSON Import Query Builder') }}{% endblock %}
+
+{% block body %}
+<div class="container-fluid py-3">
+  <h1 class="h3 mb-3">{{ title|default('JSON Import Query Builder') }}</h1>
+  <div id="react-json-import-builder"></div>
+</div>
+{% endblock %}

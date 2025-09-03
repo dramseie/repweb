@@ -251,3 +251,18 @@ const elMailForm = document.getElementById('react-mail-template-form');
 if (elMailForm) {
   createRoot(elMailForm).render(<MailTemplateForm />);
 }
+
+import JsonImportQueryBuilder from './react/components/JsonImportQueryBuilder';
+
+const elJsonBuilder = document.getElementById('react-json-import-builder');
+if (elJsonBuilder) {
+  createRoot(elJsonBuilder).render(
+    <JsonImportQueryBuilder
+      apiBase="/api/json-imports"
+      tableAlias="j"
+      jsonColumn="ji_json"
+    />
+  );
+}
+
+

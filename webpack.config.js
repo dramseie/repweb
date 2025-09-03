@@ -10,10 +10,12 @@ Encore
 
     .addEntry('app', './assets/app.js')
 
-	// ...
-	.addEntry('plotly', './assets/plotly.js')
-	// ...
+    // existing entries
+    .addEntry('plotly', './assets/plotly.js')
+    .addEntry('cmdb-modeler', './assets/tools/cmdb-modeler/index.jsx')
 
+    // 👇 NEW entry for SQL Composer
+    .addEntry('sql-composer', './assets/react/sql-composer.jsx')
 
     // enables React support
     .enableReactPreset()

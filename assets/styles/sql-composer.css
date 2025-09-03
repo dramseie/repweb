@@ -1,0 +1,11 @@
+/* Hide ReactFlow watermark */
+.react-flow__attribution { display: none; }
+
+/* Make composer area fill screen nicely */
+#sql-composer-root {
+  height: 80vh;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #fafafa;
+}
