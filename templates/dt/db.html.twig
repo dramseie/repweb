@@ -18,6 +18,7 @@
 	  data-cols-url="{{ path('dt_db_columns', { repid: repid }) }}"
 	  data-data-url="{{ path('dt_db_data', { repid: repid }) }}"
 	  data-apikey="{{ repweb_api_key|e('html_attr') }}"
+	  data-repparam="{{ repparam_json|e('html_attr') }}"
 	></div>
 {% endblock %}
 

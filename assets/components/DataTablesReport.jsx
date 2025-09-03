@@ -32,6 +32,32 @@ window.JSZip = JSZip;
 pdfMake.vfs = pdfFonts.vfs;
 window.pdfMake = pdfMake;
 
+function reviveColumnDefsFromParams(params) {
+  const raw = params?.columnDefs;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((d) => {
+    const def = { ...d };
+    let body =
+      typeof def.createdCellBody === 'string'
+        ? def.createdCellBody
+        : (typeof def.createdCell === 'string' ? def.createdCell : null);
+
+    if (body) {
+      // normalize '\u0027' to real quotes in case JSON came that way
+      body = body.replace(/\\u0027/gi, "'");
+      try {
+        def.createdCell = new Function('td', 'cellData', 'rowData', 'row', 'col', body);
+      } catch (e) {
+        console.error('Invalid createdCellBody in repparam:', body, e);
+      }
+      delete def.createdCellBody;
+    }
+    return def;
+  });
+}
+
+
+
 export default function DataTablesReport() {
   const hostEl = document.getElementById('react-datatables-report');
 
@@ -43,6 +69,10 @@ export default function DataTablesReport() {
   const dataUrl = hostEl?.dataset?.dataUrl || (repid ? `/api/dt/${repid}` : '');
 
   const apiKey  = hostEl?.dataset?.apikey || window.REPWEB_API_KEY || '';
+
+	const reportParams = hostEl?.dataset?.repparam ? JSON.parse(hostEl.dataset.repparam) : {};
+	const extraColumnDefs = reviveColumnDefsFromParams(reportParams);
+
 
   const tableRef = useRef(null);
   const dtRef = useRef(null);
@@ -202,7 +232,7 @@ export default function DataTablesReport() {
           },
 
           columns: cols.map(c => ({ data: c })),
-
+		  columnDefs: extraColumnDefs,   // 👈 add this line
           // Compact + scrolling
           pageLength: 50,
           lengthMenu: [25, 50, 100, 250],
