@@ -65,3 +65,18 @@
   line-height: 1.15;
 }
 
+/* Full-bleed grid */
+.eav-editor-fullbleed{
+  width:100vw;
+  margin-left:calc(50% - 50vw);
+  margin-right:calc(50% - 50vw);
+  padding-inline:1rem; /* small gutters */
+}
+
+
+/* EAV editor helpers */
+.ht-edited { background:#fff3cd !important; }
+.eav-editor-wrap { width:100%; }
+.eav-editor-wrap .handsontable .wtHolder,
+.eav-editor-wrap .handsontable .wtHider { width:100% !important; }
+

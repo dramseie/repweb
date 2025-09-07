@@ -14,3 +14,25 @@ report_api:
   controller: App\Controller\ReportApiController::fetch
   requirements: { format: json|csv }
   methods: [GET]
+api_eav_upsert:
+  path: /api/eav/upsert
+  controller: App\Controller\EavController::upsert
+  methods: [POST]
+community_apply:
+  path: /community/apply
+  controller: App\Controller\Community\MembershipController::apply
+  methods: [GET, POST]
+
+community_verify:
+  path: /community/verify
+  controller: App\Controller\Community\MembershipController::verify
+  methods: [GET]
+
+
+eav_editor_page:
+  path: /eav/editor/{tenant}/{entityType}
+  controller: App\Controller\EavEditorPageController::page
+
+api_eav:
+  resource: App\Controller\Api\EavController
+  type: attribute

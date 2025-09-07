@@ -1,0 +1,23 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Progress{% endblock %}
+
+{% block body %}
+  <div id="progress-root"></div>
+{% endblock %}
+
+{% block javascripts %}
+  {{ parent() }}
+  {{ encore_entry_script_tags('app') }}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const root = document.getElementById('progress-root');
+      if (root && window.React && window.ReactDOMClient && window.App && window.App.ProgressPage) {
+        const { createRoot } = window.ReactDOMClient;
+        const ProgressPage = window.App.ProgressPage;
+        const r = createRoot(root);
+        r.render(window.React.createElement(ProgressPage));
+      }
+    });
+  </script>
+{% endblock %}

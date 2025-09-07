@@ -1,0 +1,33 @@
+project: repweb
+milestones:
+  - key: MAP_1
+    title: "World Map — CI editing & geocoding"
+    due: 2025-09-15
+    tasks:
+      - id: M1-T1
+        title: "Auto-open popup when marker is created"
+        status: done
+        owner: david
+      - id: M1-T2
+        title: "Double-click to edit CI"
+        status: done
+        owner: david
+      - id: M1-T3
+        title: "New Location → reverse-geocode + prefilled CI"
+        status: doing
+        owner: david
+      - id: M1-T4
+        title: "Add endpoint tests per CI"
+        status: todo
+        owner: david
+endpoints:
+  - name: "repweb home"
+    url: "/"
+    method: "GET"
+    expect: { status: 200, contains: "repweb" }
+  - name: "Symfony health"
+    url: "/_healthz"
+    method: "GET"
+    expect:
+      status: 200
+      json: { path: "$.status", equals: "ok" }

@@ -23,6 +23,19 @@ class WidgetsController extends AbstractController
         $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
 
         $defs = [
+            // 🗺️ New: Leaflet World Map (aliases handled by frontend as 'leaflet' | 'worldmap' | 'map')
+            [
+                'type'     => 'leaflet',
+                'title'    => 'World Map',
+                'defaults' => [
+                    'apiUrl' => '/api/eav/geo/view',
+                    'height' => '560px',
+                    // Optional: pass server-side filters to the endpoint (read by the widget)
+                    // 'query'  => ['country' => 'France', 'status' => 'active']
+                ],
+                'minW' => 4, 'minH' => 5, 'w' => 6, 'h' => 12,
+            ],
+
             [
                 'type'     => 'plotly',
                 'title'    => 'Plotly Chart',

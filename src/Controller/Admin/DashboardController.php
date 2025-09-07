@@ -14,6 +14,7 @@ use App\Controller\Admin\MenuItemCrudController;
 use App\Controller\Admin\ReportTileCrudController;
 use App\Controller\Admin\UserTileCrudController;
 
+use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem as EaMenuItem;
@@ -21,7 +22,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Templates;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
 
 /* 👇 Add these for EAV */
 use App\Entity\Tenant;
@@ -34,9 +34,9 @@ use App\Entity\EavValue;
 use App\Entity\EavRelationType;
 use App\Entity\EavRelation;
 
+#[AdminDashboard(routePath: '/admin', routeName: 'admin')]
 class DashboardController extends AbstractDashboardController
 {
-    #[Route('/admin', name: 'admin')]
     public function index(): Response
     {
         $url = $this->container->get(AdminUrlGenerator::class)
@@ -60,13 +60,16 @@ class DashboardController extends AbstractDashboardController
         yield EaMenuItem::linkToDashboard('Dashboard', 'fa fa-home');
 
         yield EaMenuItem::section('Reports');
-        yield EaMenuItem::linkToCrud('Reports', 'fa fa-table', Report::class);
+        yield EaMenuItem::linkToCrud('Reports', 'fa fa-table', Report::class)
+            ->setController(ReportCrudController::class);
 
         yield EaMenuItem::section('Users');
-        yield EaMenuItem::linkToCrud('Users', 'fa fa-user', User::class);
+        yield EaMenuItem::linkToCrud('Users', 'fa fa-user', User::class)
+            ->setController(UserCrudController::class);
 
         yield EaMenuItem::section('Navigation');
-        yield EaMenuItem::linkToCrud('Menu Items', 'fa fa-bars', NavMenuItem::class);
+        yield EaMenuItem::linkToCrud('Menu Items', 'fa fa-bars', NavMenuItem::class)
+            ->setController(MenuItemCrudController::class);
 
         yield EaMenuItem::section('Tiles');
         yield EaMenuItem::linkToCrud('Report Tiles', 'fa fa-th', ReportTile::class)

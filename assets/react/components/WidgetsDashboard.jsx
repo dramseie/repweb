@@ -1,10 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// assets/react/components/WidgetsDashboard.jsx
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
 // Modal picker
 import AddWidgetModal from './widgets/AddWidgetModal';
+
+import LeafletEavMap from './widgets/LeafletEavMap';
 
 // Real widgets
 import PlotlyWidget from './widgets/PlotlyWidget';
@@ -55,6 +58,15 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
   const [err, setErr] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
 
+  // Toggle to show/hide the local toolbar
+  const SHOW_LOCAL_TOOLBAR = false;
+
+  // Refs to always have latest state inside global event handlers
+  const itemsRef = useRef(items);
+  const layoutsRef = useRef(layouts);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { layoutsRef.current = layouts; }, [layouts]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -100,7 +112,7 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
     const id = `w_${Math.random().toString(36).slice(2, 9)}`;
     const item = { id, type: def.type, title: def.title, props: def.defaults || {} };
     const lg = [
-      ...(layouts.lg || []),
+      ...(layoutsRef.current.lg || []),
       { i: id, x: 0, y: Infinity, w: def.w || 4, h: def.h || 5, minW: def.minW || 2, minH: def.minH || 2 }
     ];
     setItems(prev => [...prev, item]);
@@ -108,8 +120,9 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
     if (!editing) setEditing(true);
   }
 
-  async function save() {
-    const payload = { version: 1, items, layouts };
+  // Save using refs to ensure freshest state when called from global handler
+  async function saveCurrent() {
+    const payload = { version: 1, items: itemsRef.current, layouts: layoutsRef.current };
     const res = await fetch(`${apiBase}/layout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -123,8 +136,39 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
     if (!res.ok) return;
     const json = await res.json();
     setItems(json.items || []);
-    setLayouts({ lg: json.layouts?.lg || [], md: [], sm: [], xs: [], xxs: [] });
+    setLayouts({
+      lg: json.layouts?.lg || [],
+      md: json.layouts?.md || [],
+      sm: json.layouts?.sm || [],
+      xs: json.layouts?.xs || [],
+      xxs: json.layouts?.xxs || [],
+    });
   }
+
+  // 🔗 Listen once for navbar dropdown actions
+  useEffect(() => {
+    const handler = (ev) => {
+      const action = ev.detail?.action;
+      switch (action) {
+        case 'widgets:edit':
+          setEditing(v => !v);
+          break;
+        case 'widgets:add':
+          setShowAdd(true);
+          break;
+        case 'widgets:save':
+          saveCurrent().catch(e => alert(e.message));
+          break;
+        case 'widgets:reset':
+          reset();
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener('widgets.action', handler);
+    return () => window.removeEventListener('widgets.action', handler);
+  }, []); // listen once
 
   // Ensure every item has a layout (x/y/w/h) at every breakpoint
   const defsByType = useMemo(() => {
@@ -161,15 +205,20 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
   if (loading) return <div className="text-muted">Loading…</div>;
   if (err) return <div className="alert alert-danger">{err}</div>;
 
+  // Helper: treat alias types as the map widget
+  const isMapType = (t) => ['leaflet', 'worldmap', 'map'].includes(String(t || '').toLowerCase());
+
   return (
     <div>
-      <Toolbar
-        editing={editing}
-        onToggleEdit={() => setEditing(v => !v)}
-        onAdd={() => setShowAdd(true)}
-        onSave={() => save().catch(e => alert(e.message))}
-        onReset={reset}
-      />
+      {SHOW_LOCAL_TOOLBAR && (
+        <Toolbar
+          editing={editing}
+          onToggleEdit={() => setEditing(v => !v)}
+          onAdd={() => setShowAdd(true)}
+          onSave={() => saveCurrent().catch(e => alert(e.message))}
+          onReset={reset}
+        />
+      )}
 
       <AddWidgetModal
         show={showAdd}
@@ -199,6 +248,7 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
               editing={editing}
               onRemove={() => removeWidget(item.id)}
             >
+              {/* KPI */}
               {item.type === 'kpi' && (
                 <KpiWidget
                   label={item.props?.label ?? 'KPI'}
@@ -207,10 +257,12 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
                 />
               )}
 
+              {/* Markdown */}
               {item.type === 'markdown' && (
                 <MarkdownWidget md={item.props?.md ?? 'Hello **repweb**!'} />
               )}
 
+              {/* Plotly */}
               {item.type === 'plotly' && (
                 <PlotlyWidget
                   reportId={item.props?.reportId ?? 1}
@@ -220,6 +272,7 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
                 />
               )}
 
+              {/* DataTable */}
               {item.type === 'datatable' && (
                 <DataTableWidget
                   reportId={item.props?.reportId ?? 1}
@@ -227,14 +280,25 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
                 />
               )}
 
+              {/* Pivot */}
               {item.type === 'pivot' && (
                 <PivotWidget reportId={item.props?.reportId ?? 1} />
               )}
 
+              {/* Grafana */}
               {item.type === 'grafana' && (
                 <GrafanaWidget
                   src={item.props?.src ?? 'about:blank'}
                   height={item.props?.height ?? 360}
+                />
+              )}
+
+              {/* Leaflet Map */}
+              {isMapType(item.type) && (
+                <LeafletEavMap
+                  apiUrl={item.props?.apiUrl ?? '/api/eav/geo/view'}
+                  height={item.props?.height ?? '520px'}
+                  query={item.props?.query ?? undefined}
                 />
               )}
             </WidgetChrome>

@@ -193,6 +193,30 @@ export default function MegaNavbar({
     [roots]
   );
 
+  // Helpers
+  const dispatchWidgets = (action) =>
+    window.dispatchEvent(new CustomEvent('widgets.action', { detail: { action } }));
+
+  const hideClosestDropdown = (el) => {
+    const root = el.closest('.dropdown');
+    const toggle = root?.querySelector('[data-bs-toggle="dropdown"]');
+    if (toggle && window.bootstrap) {
+      try { window.bootstrap.Dropdown.getOrCreateInstance(toggle).hide(); } catch {}
+    }
+  };
+
+  const goToWidgetsHome = (e) => {
+    e.preventDefault();
+    hideClosestDropdown(e.currentTarget);
+    window.location.assign('/'); // <- your widgets live on Home
+  };
+
+  const clickAndDispatch = (e, action) => {
+    e.preventDefault();
+    hideClosestDropdown(e.currentTarget);
+    dispatchWidgets(action);
+  };
+
   return (
     <nav className="navbar navbar-expand-lg navbar-light meganavbar">
       <div className="container-fluid">
@@ -246,7 +270,57 @@ export default function MegaNavbar({
                     {currentUser.email && <div className="text-muted small">{currentUser.email}</div>}
                   </li>
                   <li><hr className="dropdown-divider" /></li>
-                  {/* Add more account links here if you like */}
+
+                  {/* Widgets section */}
+                  <li><div className="dropdown-header">Widgets</div></li>
+                  <li>
+                    <a className="dropdown-item" href="/" onClick={goToWidgetsHome}>
+                      <i className="bi bi-grid-3x3-gap me-2" />
+                      My Widgets
+                    </a>
+                  </li>
+                  <li>
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      onClick={(e) => clickAndDispatch(e, 'widgets:edit')}
+                    >
+                      <i className="bi bi-pencil-square me-2" />
+                      Edit layout
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      onClick={(e) => clickAndDispatch(e, 'widgets:add')}
+                    >
+                      <i className="bi bi-plus-square me-2" />
+                      Add widget
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      onClick={(e) => clickAndDispatch(e, 'widgets:save')}
+                    >
+                      <i className="bi bi-save me-2" />
+                      Save
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      onClick={(e) => clickAndDispatch(e, 'widgets:reset')}
+                    >
+                      <i className="bi bi-arrow-counterclockwise me-2" />
+                      Reset
+                    </button>
+                  </li>
+
+                  <li><hr className="dropdown-divider" /></li>
                   <li>
                     <form method="post" action={logoutPath} className="px-0 m-0">
                       {csrfToken ? <input type="hidden" name="_csrf_token" value={csrfToken} /> : null}

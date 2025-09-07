@@ -1,0 +1,12 @@
+{% extends 'base.html.twig' %}
+{% block body %}
+  <div id="sql-composer-root" data-api-base="/api/sqlc"></div>
+  <script type="module">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import SqlComposerCanvas from '/assets/react/components/SqlComposerCanvas.jsx';
+    const el = document.getElementById('sql-composer-root');
+    const apiBase = el.dataset.apiBase;
+    createRoot(el).render(React.createElement(SqlComposerCanvas, { apiBase }));
+  </script>
+{% endblock %}

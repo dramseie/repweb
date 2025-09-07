@@ -21,49 +21,46 @@ security:
       # Keep your custom authenticator
       custom_authenticator: App\Security\EgCustomAuthenticator
 
-      # Use form_login ONLY as the entry point (so anonymous users get redirected to /login)
+      # Use form_login as entry point (redirects anonymous users to /login)
       form_login:
-        login_path: app_login       # route name that renders your login page
-        check_path: app_login       # same route if your authenticator posts to it
+        login_path: app_login
+        check_path: app_login
         enable_csrf: true
-        default_target_path: /      # after successful login
-
-      entry_point: form_login       # <- ensures redirect to /login instead of 401
+        default_target_path: /
+      entry_point: form_login
 
       logout:
-        path: app_logout            # route name handled by Symfony
-        target: app_login           # where to go after logout (login route)
+        path: app_logout
+        target: app_login
 
       remember_me:
         secret: '%kernel.secret%'
-        lifetime: 1209600           # 14 days
+        lifetime: 1209600   # 14 days
         path: /
 
   access_control:
-    # Public routes (order matters; most specific first)
-    - { path: ^/login, roles: PUBLIC_ACCESS }
-    - { path: ^/logout, roles: PUBLIC_ACCESS }
+    # --- MOST SPECIFIC PUBLIC ROUTES FIRST ---
+    - { path: ^/api/eav/geo/view$, roles: PUBLIC_ACCESS }   # World Map GeoJSON (public)
+    - { path: ^/login$, roles: PUBLIC_ACCESS }
+    - { path: ^/logout$, roles: PUBLIC_ACCESS }
 
-    # Public assets used on login page
+    # Public assets (login page, etc.)
     - { path: ^/build, roles: PUBLIC_ACCESS }     # Webpack Encore output
     - { path: ^/images, roles: PUBLIC_ACCESS }    # logos, favicon
-    - { path: ^/api/menu, roles: PUBLIC_ACCESS }  # navbar menu on login page
 
-    # 👉 Mail module (open during development)
-    - { path: ^/api/mail, roles: PUBLIC_ACCESS }  # switch to ROLE_USER/ROLE_ADMIN later
-    # 👉 Public/Private token resolver (public links must work without login)
-    - { path: ^/s/, roles: PUBLIC_ACCESS }
+    # Other explicitly public APIs
+    - { path: ^/api/menu$, roles: PUBLIC_ACCESS }
+    - { path: ^/api/mail, roles: PUBLIC_ACCESS }  # TODO: tighten later (ROLE_USER/ROLE_ADMIN)
+    - { path: ^/s/, roles: PUBLIC_ACCESS }        # token-based public links
+    - { path: ^/api/sql/preview$, roles: PUBLIC_ACCESS }
+    - { path: ^/api/sqlc, roles: PUBLIC_ACCESS }
 
-    # Admin area requires admin
+    # Admin area
     - { path: ^/admin, roles: ROLE_ADMIN }
 
     # Protected APIs (session required)
     - { path: ^/api/report/, roles: ROLE_USER }
     - { path: ^/api/dt/,     roles: ROLE_USER }
 
-    # Catch‑all: everything else requires login
+    # --- CATCH-ALL LAST ---
     - { path: ^/, roles: ROLE_USER }
-
-    - { path: ^/api/sql/preview$, roles: PUBLIC_ACCESS }
-
-    - { path: ^/api/sqlc, roles: PUBLIC_ACCESS }

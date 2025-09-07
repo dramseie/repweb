@@ -20,6 +20,108 @@ class DynamicDtController extends AbstractController
         private RequestStack $requestStack
     ) {}
 
+
+#[Route('/api/report/{repid}/repparam/columnDefs', name: 'report_repparam_columndefs', methods: ['POST'])]
+public function saveColumnDef(int $repid, Request $req): JsonResponse
+{
+    // Load report
+    $r = $this->fetchReport($repid);
+
+    // Parse existing repparam
+    $repparam = [];
+    if (!empty($r['repparam'])) {
+        $tmp = json_decode($r['repparam'], true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($tmp)) {
+            $repparam = $tmp;
+        }
+    }
+
+    // Normalize existing defs
+    $defs = isset($repparam['columnDefs']) && is_array($repparam['columnDefs'])
+        ? $repparam['columnDefs'] : [];
+
+    // Incoming payload
+    $inRaw = $req->getContent() ?: '{}';
+    $in    = json_decode($inRaw, true) ?? [];
+
+    // ---- Case A: bulk replace ----
+    if (!empty($in['replace']) && isset($in['columnDefs']) && is_array($in['columnDefs'])) {
+        $clean = [];
+        foreach ($in['columnDefs'] as $i => $row) {
+            $t = $row['targets']         ?? null;
+            $b = $row['createdCellBody'] ?? null;
+            if (!is_int($t)) {
+                return $this->json(['error' => "columnDefs[$i].targets must be an integer"], 400);
+            }
+            if (!is_string($b) || $b === '') {
+                return $this->json(['error' => "columnDefs[$i].createdCellBody must be a non-empty string"], 400);
+            }
+            if (stripos($b, '<script') !== false) {
+                return $this->json(['error' => "columnDefs[$i] invalid content"], 400);
+            }
+            $clean[] = ['targets' => $t, 'createdCellBody' => $b];
+        }
+
+        // de-dup by targets (keep last)
+        $byTarget = [];
+        foreach ($clean as $row) { $byTarget[$row['targets']] = $row; }
+        $repparam['columnDefs'] = array_values($byTarget);
+
+        $this->db->executeStatement(
+            "UPDATE report SET repparam = :rp WHERE repid = :id",
+            ['rp' => json_encode($repparam, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'id' => $repid]
+        );
+
+        return $this->json(['ok' => true, 'mode' => 'bulk_replace', 'repparam' => $repparam]);
+    }
+
+    // ---- Case B: delete by targets (optional helper) ----
+    if (!empty($in['delete'])) {
+        $targets = $in['targets'] ?? null;
+        if (!is_int($targets)) {
+            return $this->json(['error' => 'targets must be an integer column index'], 400);
+        }
+        $defs = array_values(array_filter($defs, fn($d) => !isset($d['targets']) || $d['targets'] !== $targets));
+        $repparam['columnDefs'] = $defs;
+
+        $this->db->executeStatement(
+            "UPDATE report SET repparam = :rp WHERE repid = :id",
+            ['rp' => json_encode($repparam, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'id' => $repid]
+        );
+
+        return $this->json(['ok' => true, 'mode' => 'delete', 'repparam' => $repparam]);
+    }
+
+    // ---- Case C: single append/replace (existing behavior) ----
+    $targets = $in['targets'] ?? null;
+    $body    = $in['createdCellBody'] ?? '';
+
+    if (!is_int($targets)) {
+        return $this->json(['error' => 'targets must be an integer column index'], 400);
+    }
+    if (!is_string($body) || $body === '') {
+        return $this->json(['error' => 'createdCellBody must be a non-empty string'], 400);
+    }
+    if (stripos($body, '<script') !== false) {
+        return $this->json(['error' => 'invalid content'], 400);
+    }
+
+    // Replace any existing rule for same targets
+    $defs = array_values(array_filter($defs, fn($d) => !isset($d['targets']) || $d['targets'] !== $targets));
+    $defs[] = ['targets' => $targets, 'createdCellBody' => $body];
+
+    $repparam['columnDefs'] = $defs;
+
+    $this->db->executeStatement(
+        "UPDATE report SET repparam = :rp WHERE repid = :id",
+        ['rp' => json_encode($repparam, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'id' => $repid]
+    );
+
+    return $this->json(['ok' => true, 'mode' => 'single_upsert', 'repparam' => $repparam]);
+}
+
+
+
     #[Route('/report/{repid}', name: 'report_view', methods: ['GET'])]
     public function view(int $repid): Response
     {

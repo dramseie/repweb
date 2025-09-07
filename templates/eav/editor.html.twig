@@ -1,0 +1,10 @@
+{# File: templates/eav/editor.html.twig #}
+{% extends 'base.html.twig' %}
+{% block title %}EAV Editor – {{ tenant }}/{{ entityType }}{% endblock %}
+{% block body %}
+	<div class="container-fluid mt-3">
+	  <div class="eav-editor-fullbleed">
+		<div id="eav-editor-root" data-tenant="cmdb" data-entity-type="vm"></div>
+	  </div>
+	</div>
+{% endblock %}

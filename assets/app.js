@@ -1,7 +1,6 @@
 // --- jQuery must be first and global for many plugins (Trumbowyg, DT Buttons, etc.)
 import $ from 'jquery';
 window.$ = window.jQuery = $;
-// Some UMD plugins look up bare `$` / `jQuery` on globalThis:
 globalThis.$ = $;
 globalThis.jQuery = $;
 
@@ -33,14 +32,10 @@ window.pdfMake = pdfMake;
    DataTables v2 — UMD side-effect imports (NO factory calls)
    Load core (with BS5 styling) -> extensions
    ====================================================================== */
-
-// Core + Bootstrap 5 styling (attaches to global jQuery)
 import 'datatables.net-bs5';
-
-// Extensions (use the -bs5 wrapper where available)
 import 'datatables.net-responsive-bs5';
 import 'datatables.net-buttons-bs5';
-import 'datatables.net-buttons/js/buttons.html5';   // HTML5 export buttons
+import 'datatables.net-buttons/js/buttons.html5';
 import 'datatables.net-buttons/js/buttons.print';
 import 'datatables.net-buttons/js/buttons.colVis';
 import 'datatables.net-colreorder-bs5';
@@ -48,8 +43,6 @@ import 'datatables.net-fixedheader-bs5';
 import 'datatables.net-scroller-bs5';
 import 'datatables.net-searchbuilder-bs5';
 import 'datatables.net-datetime';
-
-// CSS for DT + extensions
 import 'datatables.net-bs5/css/dataTables.bootstrap5.min.css';
 import 'datatables.net-responsive-bs5/css/responsive.bootstrap5.min.css';
 import 'datatables.net-buttons-bs5/css/buttons.bootstrap5.min.css';
@@ -60,12 +53,37 @@ import 'datatables.net-searchbuilder-bs5/css/searchBuilder.bootstrap5.min.css';
    React bootstraps
    ====================================================================== */
 import React from 'react';
-import { createRoot } from 'react-dom/client';
+import * as ReactDOMClient from 'react-dom/client';
+const { createRoot } = ReactDOMClient;
+
 import MegaNavbar from './components/MegaNavbar';
 import DataTablesReport from './components/DataTablesReport';
 import PivotReport from './react/components/PivotReport';
 import TilesDashboard from './components/TilesDashboard';
 import WidgetsDashboard from './react/components/WidgetsDashboard';
+import ProgressPage from './react/pages/ProgressPage';
+
+// EAV Editor boot
+import mountEavEditor from './react/pages/EavEditorPage';
+import 'handsontable/dist/handsontable.full.min.css';
+
+document.addEventListener('DOMContentLoaded', () => {
+  mountEavEditor();
+});
+
+// fix default marker icons (Leaflet)
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import icon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import icon   from 'leaflet/dist/images/marker-icon.png';
+import shadow from 'leaflet/dist/images/marker-shadow.png';
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({ iconRetinaUrl: icon2x, iconUrl: icon, shadowUrl: shadow });
+
+// Expose for Twig mounts
+window.React = React;
+window.ReactDOMClient = ReactDOMClient;
+window.App = Object.assign(window.App || {}, { ProgressPage });
 
 // Mount the MegaNavbar and pass user info via data-* attributes on the container
 const elNav = document.getElementById('react-meganavbar');
@@ -86,44 +104,48 @@ if (elNav) {
   );
 }
 
-// Mount DataTables report page
+// Global click bus for Widgets
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.js-widgets-action[data-action]');
+  if (!btn) return;
+  e.preventDefault();
+  const action = btn.dataset.action;
+  window.dispatchEvent(new CustomEvent('widgets.action', { detail: { action } }));
+});
+
 const elReport = document.getElementById('react-datatables-report');
 if (elReport) createRoot(elReport).render(<DataTablesReport />);
 
-// Mount the Pivot page when present
 const elPivot = document.getElementById('react-pivot-report');
 if (elPivot) {
   const reportId = parseInt(elPivot.getAttribute('data-report-id') || '0', 10);
   createRoot(elPivot).render(<PivotReport reportId={reportId} />);
 }
 
-// Mount the Tiles Dashboard when present
 const elTiles = document.getElementById('react-tiles-dashboard');
 if (elTiles) {
   createRoot(elTiles).render(<TilesDashboard showHeader />);
 }
 
-// NEW: Mount the Widgets Dashboard on the homepage container
 const elWidgets = document.getElementById('react-widgets-dashboard');
 if (elWidgets) {
   const apiBase = elWidgets.dataset.apiBase || '/api/widgets';
   createRoot(elWidgets).render(<WidgetsDashboard apiBase={apiBase} />);
 }
 
+const elProgress = document.getElementById('progress-root');
+if (elProgress) {
+  createRoot(elProgress).render(<ProgressPage />);
+}
+
 /* ======================================================================
    EasyAdmin form editors: Trumbowyg (WYSIWYG) + CodeMirror v5
    ====================================================================== */
-
-// Trumbowyg CSS can be static, but JS must load after jQuery is global
 import 'trumbowyg/dist/ui/trumbowyg.min.css';
-// Use the bundled SVG sprite as a URL so icons show correctly
 import trumbowygIconsUrl from 'trumbowyg/dist/ui/icons.svg?url';
-
-// Optional plugin CSS (only if you use the buttons)
 import 'trumbowyg/dist/plugins/colors/ui/trumbowyg.colors.min.css';
-// import 'trumbowyg/dist/plugins/emoji/ui/trumbowyg.emoji.css'; // enable if using emoji
+// import 'trumbowyg/dist/plugins/emoji/ui/trumbowyg.emoji.css';
 
-// CodeMirror v5 (classic)
 import 'codemirror/lib/codemirror.css';
 import 'codemirror/theme/eclipse.css';
 import CodeMirror from 'codemirror';
@@ -131,7 +153,6 @@ import 'codemirror/mode/sql/sql';
 import 'codemirror/addon/edit/matchbrackets.js';
 import 'codemirror/addon/edit/closebrackets.js';
 
-/** Load Trumbowyg core + desired plugins exactly once (after jQuery is global) */
 async function loadTrumbowygOnce() {
   if (window._twLoaded) return;
   await import('trumbowyg/dist/trumbowyg.min.js');
@@ -140,18 +161,15 @@ async function loadTrumbowygOnce() {
     import('trumbowyg/dist/plugins/base64/trumbowyg.base64'),
     import('trumbowyg/dist/plugins/cleanpaste/trumbowyg.cleanpaste'),
     import('trumbowyg/dist/plugins/colors/trumbowyg.colors'),
-    // import('trumbowyg/dist/plugins/emoji/trumbowyg.emoji'), // optional
   ]).catch(() => {});
   if ($.trumbowyg) $.trumbowyg.svgPath = trumbowygIconsUrl;
   window._twLoaded = true;
 }
 
-/** Initialize editors inside a context (document or container element) */
 async function initEaEditors(context) {
   await loadTrumbowygOnce();
   const $ctx = context ? $(context) : $(document);
 
-  // Trumbowyg WYSIWYG
   $ctx.find('textarea[data-editor="trumbowyg"]').each(function () {
     const $ta = $(this);
     if ($ta.data('tw-initialized')) return;
@@ -175,7 +193,6 @@ async function initEaEditors(context) {
     $ta.data('tw-initialized', true);
   });
 
-  // CodeMirror (SQL / JSON etc.)
   $ctx.find('textarea[data-editor="codemirror"]').each(function () {
     const ta = this;
     if (ta._cm) return;
@@ -194,12 +211,10 @@ async function initEaEditors(context) {
   });
 }
 
-// Initial page load
 document.addEventListener('DOMContentLoaded', () => {
   initEaEditors();
 });
 
-// Re-init when EasyAdmin dynamically adds form parts
 document.addEventListener('ea.collection.item-added', (e) => {
   initEaEditors(e.target);
 });
@@ -215,9 +230,6 @@ document.addEventListener('ea.form.controller.change', (e) => {
   initEaEditors(e.target);
 });
 
-// -------------------------------------------------------------------
-// Exported helper so React components can init Trumbowyg on any node
-// -------------------------------------------------------------------
 export async function initTrumbowygOn(el, options = {}) {
   await loadTrumbowygOnce();
   const $el = $(el);
@@ -242,27 +254,20 @@ export async function initTrumbowygOn(el, options = {}) {
   return $el;
 }
 
-/* ======================================================================
-   React mount for Mail Template form (matches your Twig id)
-   ====================================================================== */
 import MailTemplateForm from './react/components/mail/MailTemplateForm';
-
 const elMailForm = document.getElementById('react-mail-template-form');
 if (elMailForm) {
   createRoot(elMailForm).render(<MailTemplateForm />);
 }
 
 import JsonImportQueryBuilder from './react/components/JsonImportQueryBuilder';
-
 const elJsonBuilder = document.getElementById('react-json-import-builder');
 if (elJsonBuilder) {
   createRoot(elJsonBuilder).render(
     <JsonImportQueryBuilder
-      apiBase="/api/json-imports"
+      apiBase="/api/widgets"
       tableAlias="j"
       jsonColumn="ji_json"
     />
   );
 }
-
-

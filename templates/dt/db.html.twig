@@ -10,115 +10,151 @@
 {% endblock %}
 
 {% block body %}
-	<div
-	  id="react-datatables-report"
-	  data-repid="{{ repid }}"
-	  data-reptitle="{{ reptitle|default('')|e('html_attr') }}"
-	  data-repdesc="{{ repdesc|default('')|e('html_attr') }}"
-	  data-cols-url="{{ path('dt_db_columns', { repid: repid }) }}"
-	  data-data-url="{{ path('dt_db_data', { repid: repid }) }}"
-	  data-apikey="{{ repweb_api_key|e('html_attr') }}"
-	  data-repparam="{{ repparam_json|e('html_attr') }}"
-	></div>
+  <div
+    id="react-datatables-report"
+    data-repid="{{ repid }}"
+    data-reptitle="{{ reptitle|default('')|e('html_attr') }}"
+    data-repdesc="{{ repdesc|default('')|e('html_attr') }}"
+    data-cols-url="{{ path('dt_db_columns', { repid: repid }) }}"
+    data-data-url="{{ path('dt_db_data', { repid: repid }) }}"
+    data-apikey="{{ repweb_api_key|e('html_attr') }}"
+    data-repparam="{{ repparam_json|e('html_attr') }}"
+  ></div>
 {% endblock %}
-
-
 
 {% block javascripts %}
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/2.0.8/js/dataTables.min.js"></script>
   <script>
     (async function () {
-      const repid = {{ repid }};
-      const urlCols = '{{ path("dt_db_columns", {repid: 0}) }}'.replace('0', repid);
-      const urlData = '{{ path("dt_db_data", {repid: 0}) }}'.replace('0', repid);
+      // If React hasn't rendered the table yet, bail out silently.
+      const tableEl = document.getElementById('dt');
+      if (!tableEl) return;
 
-	  window.REPWEB_API_KEY = '{{ repweb_api_key|e('js') }}';
+      const repid   = {{ repid }};
+      const urlCols = '{{ path("dt_db_columns", { repid: 0 }) }}'.replace('0', repid);
+      const urlData = '{{ path("dt_db_data",   { repid: 0 }) }}'.replace('0', repid);
+
+      window.REPWEB_API_KEY = '{{ repweb_api_key|e('js') }}';
       const host   = document.getElementById('react-datatables-report');
       const apiKey = host?.dataset?.apikey || window.REPWEB_API_KEY || '';
 
       // 1) fetch column names
+      const colsRes = await fetch(urlCols, { headers: apiKey ? { 'X-Api-Key': apiKey } : {} });
+      const { columns = [] } = await colsRes.json();
 
-	  const colsRes = await fetch(urlCols, {
-        headers: apiKey ? { 'X-Api-Key': apiKey } : {}
-      });	  
-      const { columns } = await colsRes.json();
+      // 2) ensure header rows exist (no-op if React already built them)
+      const thead = tableEl.querySelector('thead');
+      if (!thead) return;
 
-      // 2) build headers + filter inputs
-      document.getElementById('dt-head').innerHTML =
-        columns.map(c => `<th>${c.replaceAll('_',' ')}</th>`).join('');
-      document.getElementById('dt-filters').innerHTML =
-        columns.map(() => `<th><input type="text" placeholder="filter" style="width:100%"></th>`).join('');
+      let headRow   = document.getElementById('dt-head');
+      let filterRow = document.getElementById('dt-filters');
+      if (!headRow || !filterRow) {
+        thead.innerHTML = '<tr id="dt-head"></tr><tr id="dt-filters"></tr>';
+        headRow   = document.getElementById('dt-head');
+        filterRow = document.getElementById('dt-filters');
+      }
+
+      // 2b) fill headers only if we control them (avoid fighting React)
+      if (headRow && headRow.children.length === 0) {
+        headRow.innerHTML = columns.map(c => `<th>${String(c).replaceAll('_',' ')}</th>`).join('');
+      }
+      if (filterRow && filterRow.children.length === 0) {
+        filterRow.innerHTML = columns.map(() =>
+          `<th><input type="text" placeholder="filter" style="width:100%"></th>`
+        ).join('');
+      }
+
+      // 3) init DataTables only if not already initialised
+      if ($.fn.dataTable.isDataTable(tableEl)) return;
 
       const dtCols = columns.map(c => ({ data: c }));
       let currentDtParams = {};
 
-      // 3) init DataTables
       const table = $('#dt').DataTable({
         processing: true,
         serverSide: true,
         ajax: {
           url: urlData,
-		  headers: apiKey ? { 'X-Api-Key': apiKey } : {},
+          headers: apiKey ? { 'X-Api-Key': apiKey } : {},
           data: function (d) {
-            // d is the object DataTables will send; we also keep a copy for CSV export
-            currentDtParams = structuredClone ? structuredClone(d) : JSON.parse(JSON.stringify(d));
+            currentDtParams = (typeof structuredClone === 'function')
+              ? structuredClone(d)
+              : JSON.parse(JSON.stringify(d));
           }
         },
         columns: dtCols,
         pageLength: 10
       });
 
-      // 4) wire per-column search inputs
+      // 4) per-column search inputs
       $('#dt thead tr#dt-filters th input').each(function (i) {
         $(this).on('keyup change', function () {
           table.column(i).search(this.value).draw();
         });
       });
 
-      // 5) CSV export — serialize the latest DT params + format=csv
-      function serializeParams(obj, prefix) {
-        // jQuery-like param serializer (supports nested arrays/objects with bracket notation)
-        const pairs = [];
-        const add = (key, value) => pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(value ?? ''));
-        if (obj === null || obj === undefined) return '';
-        if (typeof obj !== 'object') {
-          add(prefix, obj);
-        } else if (Array.isArray(obj)) {
-          obj.forEach((v, i) => {
-            const k = prefix ? `${prefix}[${i}]` : i;
-            if (typeof v === 'object') {
-              pairs.push(serializeParams(v, k));
+      // 5) CSV export (guard: only if a button exists)
+      const btnCsv = document.getElementById('btnCsv');
+      if (btnCsv) {
+        btnCsv.addEventListener('click', function () {
+          table.draw(false);
+          function serializeParams(obj, prefix) {
+            const pairs = [];
+            const add = (k,v)=>pairs.push(encodeURIComponent(k)+'='+encodeURIComponent(v ?? ''));
+            if (obj === null || obj === undefined) return '';
+            if (typeof obj !== 'object') { add(prefix, obj); return pairs.join('&'); }
+            if (Array.isArray(obj)) {
+              obj.forEach((v,i)=> typeof v === 'object' ? pairs.push(serializeParams(v, `${prefix}[${i}]`)) : add(`${prefix}[${i}]`, v));
             } else {
-              add(k, v);
+              Object.keys(obj).forEach(key=>{
+                const v = obj[key], k = prefix ? `${prefix}[${key}]` : key;
+                if (v && typeof v === 'object') pairs.push(serializeParams(v, k)); else add(k, v);
+              });
             }
-          });
-        } else {
-          Object.keys(obj).forEach(key => {
-            const v = obj[key];
-            const k = prefix ? `${prefix}[${key}]` : key;
-            if (typeof v === 'object' && v !== null) {
-              pairs.push(serializeParams(v, k));
-            } else {
-              add(k, v);
-            }
-          });
-        }
-        return pairs.join('&');
+            return pairs.join('&');
+          }
+          const qp = serializeParams(currentDtParams);
+          const qs = qp ? (qp + '&format=csv') : 'format=csv';
+          const downloadUrl = urlData + '?' + (qs + (apiKey ? '&api_key=' + encodeURIComponent(apiKey) : ''));
+          window.location.href = downloadUrl;
+        });
       }
-
-      document.getElementById('btnCsv').addEventListener('click', function () {
-        // Ensure we reflect any latest typing in filter boxes
-        table.draw(false);
-
-        // Build query with current DT params + format=csv
-        const qp = serializeParams(currentDtParams);
-        const qs = qp ? (qp + '&format=csv') : 'format=csv';
-        const downloadUrl = urlData + '?' + (qs + (apiKey ? '&api_key=' + encodeURIComponent(apiKey) : ''));
-
-        // Navigate to start download
-        window.location.href = downloadUrl;
-      });
     })();
   </script>
+	<script>
+	  // Right-click on any DataTables header -> open CF modal (handled by React)
+	  (function () {
+		function thToDataIndex(th) {
+		  try {
+			const dt = $('#dt').DataTable();
+			const $thead = $(th).closest('thead');
+			const visibleIdx = $thead.find('th:visible').index(th);
+			if (visibleIdx < 0) return null;
+			return dt.column(`${visibleIdx}:visible`).index(); // map visible -> data idx
+		  } catch { return null; }
+		}
+
+		const HEADER_SELECTOR = [
+		  '#dt thead th',                          // original
+		  'div.dataTables_scrollHead thead th',    // scrollX clone
+		  'div.fixedHeader-floating thead th',     // FixedHeader
+		  'div.dtfh-floatingparent thead th'       // some DT builds
+		].join(', ');
+
+		// Use a *capturing* listener so it isn’t blocked by other libs
+		document.addEventListener('contextmenu', function (e) {
+		  const th = e.target.closest(HEADER_SELECTOR);
+		  if (!th) return;
+		  // ignore clicks on DT buttons area
+		  if (e.target.closest('.dt-buttons, .buttons-colvis')) return;
+		  e.preventDefault();
+		  const colIndex = thToDataIndex(th);
+		  if (colIndex == null) return;
+		  // Tell React to open the CF modal for that column
+		  window.dispatchEvent(new CustomEvent('repw:cf', { detail: { colIndex } }));
+		}, true);
+	  })();
+	</script>
+  
 {% endblock %}

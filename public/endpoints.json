@@ -1,0 +1,26 @@
+{
+  "endpoints": [
+    {
+      "name": "repweb home",
+      "url": "/",
+      "method": "GET",
+      "expect": {
+        "status": 200,
+        "contains": "repweb"
+      }
+    },
+    {
+      "name": "Symfony health",
+      "url": "/_healthz",
+      "method": "GET",
+      "expect": {
+        "status": 200,
+        "json": {
+          "path": "$.status",
+          "equals": "ok"
+        }
+      }
+    }
+  ],
+  "ci_endpoints": {}
+}
