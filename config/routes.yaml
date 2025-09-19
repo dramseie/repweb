@@ -36,3 +36,10 @@ eav_editor_page:
 api_eav:
   resource: App\Controller\Api\EavController
   type: attribute
+  
+# config/routes/catalog.yaml
+api_catalog_services:
+  path: /api/catalog/services
+  controller: App\Controller\CatalogController::services
+  methods: [GET]
+  

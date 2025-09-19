@@ -1,4 +1,25 @@
-parameters: { }
+parameters:
+  # Diagnostics / routes tree
+  route_diag.samples:
+    byParam:
+      id: 1
+      slug: 'hello-world'
+      page: 1
+      date: '2024-01-01'
+    byRoute: { }
+  # Canonical host serving your Symfony app (adjust if needed)
+  route_diag.base_uri: 'https://repweb.ramseier.com'
+  # URL base path (NOT a filesystem path). Leave '' if at domain root.
+  route_diag.base_path: ''
+
+  # === Google Calendar integration ===
+  # Public URL of your app (used for OAuth redirect)
+  app.url: '%env(APP_URL)%'
+  # Google OAuth client credentials
+  google.client_id: '%env(GOOGLE_CLIENT_ID)%'
+  google.client_secret: '%env(GOOGLE_CLIENT_SECRET)%'
+  # Default timezone for calendar events
+  google.default_tz: 'Europe/Paris'
 
 services:
   _defaults:
@@ -19,3 +40,30 @@ services:
     resource: '../src/Controller/'
     public: true
     tags: ['controller.service_arguments']
+
+  # --- Route diagnostics service: bind scalar args explicitly ---
+  App\Service\RouteTreeService:
+    public: true   # (temporary to avoid inlining; remove later if you like)
+    arguments:
+      $sampleParamMap: '%route_diag.samples%'
+      $baseUri: '%route_diag.base_uri%'
+      $basePath: '%route_diag.base_path%'
+      $skipDebugRoutes: true
+
+  # === Google Calendar services ===
+  App\Service\GoogleCalendarService:
+    arguments:
+      $appUrl: '%app.url%'
+      $clientId: '%google.client_id%'
+      $clientSecret: '%google.client_secret%'
+      $tz: '%google.default_tz%'
+
+  # CalendarSync has only service deps; autowiring is enough.
+  App\Service\CalendarSync: ~
+
+
+  App\Service\RocketChatClient:
+    arguments:
+      $baseUrl: '%env(ROCKETCHAT_BASE_URL)%'
+      $botUser: '%env(ROCKETCHAT_BOT_USER)%'
+      $botPass: '%env(ROCKETCHAT_BOT_PASS)%'

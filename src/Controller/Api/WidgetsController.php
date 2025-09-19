@@ -23,53 +23,61 @@ class WidgetsController extends AbstractController
         $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
 
         $defs = [
-            // 🗺️ New: Leaflet World Map (aliases handled by frontend as 'leaflet' | 'worldmap' | 'map')
+            // 🗺️ Leaflet World Map
             [
                 'type'     => 'leaflet',
                 'title'    => 'World Map',
                 'defaults' => [
                     'apiUrl' => '/api/eav/geo/view',
                     'height' => '560px',
-                    // Optional: pass server-side filters to the endpoint (read by the widget)
-                    // 'query'  => ['country' => 'France', 'status' => 'active']
                 ],
                 'minW' => 4, 'minH' => 5, 'w' => 6, 'h' => 12,
             ],
 
+            // 📈 Plotly
             [
                 'type'     => 'plotly',
                 'title'    => 'Plotly Chart',
                 'defaults' => ['reportId' => 1, 'height' => 360, 'chart' => 'line'],
                 'minW' => 4, 'minH' => 6, 'w' => 6, 'h' => 8,
             ],
+
+            // 🗃️ DataTable
             [
                 'type'     => 'datatable',
                 'title'    => 'DataTable',
                 'defaults' => ['reportId' => 1, 'pageLength' => 15],
                 'minW' => 4, 'minH' => 5, 'w' => 6, 'h' => 9,
             ],
+
+            // 🔀 Pivot
             [
                 'type'     => 'pivot',
                 'title'    => 'Pivot Table',
                 'defaults' => ['reportId' => 1],
                 'minW' => 4, 'minH' => 6, 'w' => 6, 'h' => 9,
             ],
+
+            // 📊 Grafana
             [
                 'type'     => 'grafana',
                 'title'    => 'Grafana Panel',
                 'defaults' => [
-                    // Replace with your real URL or inject a signed viewer token
                     'src' => 'https://your-grafana.example/d/abcdef/demo?orgId=1&kiosk',
                     'height' => 360,
                 ],
                 'minW' => 4, 'minH' => 5, 'w' => 6, 'h' => 7,
             ],
+
+            // 🔢 KPI
             [
                 'type'     => 'kpi',
                 'title'    => 'KPI Tile',
                 'defaults' => ['label' => 'New Orders', 'value' => 0, 'sub' => 'today'],
                 'minW' => 2, 'minH' => 3, 'w' => 3, 'h' => 4,
             ],
+
+            // ✍️ Markdown
             [
                 'type'     => 'markdown',
                 'title'    => 'Markdown Note',
@@ -77,6 +85,20 @@ class WidgetsController extends AbstractController
                 'minW' => 3, 'minH' => 3, 'w' => 4, 'h' => 5,
             ],
         ];
+
+        // 🧩 NiFi widget (only show if NiFi is configured)
+        if (!empty($_ENV['NIFI_BASE_URL'])) {
+            $defs[] = [
+                'type'        => 'nifi',
+                'title'       => 'NiFi Process Groups',
+                'description' => 'Live status of NiFi process groups (running, stopped, invalid, disabled, threads, queued).',
+                'defaults'    => [
+                    'title'      => 'NiFi Process Groups',
+                    'refreshSec' => 300,
+                ],
+                'minW' => 4, 'minH' => 5, 'w' => 6, 'h' => 9,
+            ];
+        }
 
         return $this->json($defs);
     }
@@ -108,10 +130,10 @@ class WidgetsController extends AbstractController
         }
 
         $payload = [
-            'version'  => (int)($data['version'] ?? 1),
-            'items'    => array_values($data['items']),
-            'layouts'  => $data['layouts'],
-            'updatedAt'=> (new \DateTimeImmutable())->format(DATE_ATOM),
+            'version'   => (int)($data['version'] ?? 1),
+            'items'     => array_values($data['items']),
+            'layouts'   => $data['layouts'],
+            'updatedAt' => (new \DateTimeImmutable())->format(DATE_ATOM),
         ];
 
         $user->setWidgetLayout($payload);

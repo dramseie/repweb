@@ -1,5 +1,7 @@
 // assets/components/MegaNavbar.jsx
 import React, { useEffect, useMemo, useState } from 'react';
+import RocketBell from '../react/components/nav/RocketBell';
+import RocketChatChannelPicker from '../react/components/rc/RocketChatChannelPicker';
 
 function cx(...xs) { return xs.filter(Boolean).join(' '); }
 const hasText = v => typeof v === 'string' && v.trim() !== '';
@@ -158,11 +160,34 @@ export default function MegaNavbar({
   brandHref = '/',
   currentUser = null,            // { name, email, avatarUrl }
   logoutPath = '/logout',
-  csrfToken = '',               // pass if your logout requires it
+  csrfToken = '',
+  rocketchat = null,             // { url, token, roomIds? } (optional; falls back to window.RC_CONF)
 }) {
   const [roots, setRoots] = useState([]);
   const [state, setState] = useState('loading'); // loading | ready | error
   const [err, setErr] = useState('');
+  const [showRcPicker, setShowRcPicker] = useState(false);
+
+  // Prefer prop; fallback to window.RC_CONF. If no token, auto-fetch from backend.
+  const rcPropOrGlobal = rocketchat || (typeof window !== 'undefined' ? window.RC_CONF : null);
+  const [rcAuto, setRcAuto] = useState(null);
+
+  useEffect(() => {
+    if (rcPropOrGlobal?.url && rcPropOrGlobal?.token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/rocketchat/ddp-token', { credentials: 'same-origin' });
+        const j = await r.json();
+        if (!cancelled && j?.token) {
+          setRcAuto({ url: j.url, token: j.token, roomIds: [] });
+        }
+      } catch (_) {}
+    })();
+    return () => { cancelled = true; };
+  }, [rcPropOrGlobal?.url, rcPropOrGlobal?.token]);
+
+  const rcFinal = rcPropOrGlobal?.token ? rcPropOrGlobal : rcAuto;
 
   useEffect(() => {
     const ac = new AbortController();
@@ -208,7 +233,7 @@ export default function MegaNavbar({
   const goToWidgetsHome = (e) => {
     e.preventDefault();
     hideClosestDropdown(e.currentTarget);
-    window.location.assign('/'); // <- your widgets live on Home
+    window.location.assign('/'); // widgets live on Home
   };
 
   const clickAndDispatch = (e, action) => {
@@ -243,8 +268,18 @@ export default function MegaNavbar({
             })}
           </ul>
 
-          {/* Right side: user dropdown */}
-          <div className="ms-auto">
+          {/* Right side: bell + user dropdown */}
+          <div className="ms-auto d-flex align-items-center gap-3">
+            {/* 🔔 Rocket.Chat bell (auto token) */}
+            {rcFinal?.url && rcFinal?.token ? (
+              <RocketBell
+                url={rcFinal.url}
+                token={rcFinal.token}
+                roomIds={rcFinal.roomIds || []}   // if empty, bell loads user subs
+                onClick={() => { window.location.href='/?tab=Communication'; }}
+              />
+            ) : null}
+
             {currentUser ? (
               <div className="dropdown">
                 <button
@@ -321,6 +356,32 @@ export default function MegaNavbar({
                   </li>
 
                   <li><hr className="dropdown-divider" /></li>
+
+                  {/* Per-user Rocket.Chat channel subscriptions */}
+                  <li>
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setShowRcPicker(true); }}
+                    >
+                      <i className="bi bi-bell me-2" />
+                      Channels…
+                    </button>
+                  </li>
+
+                  <li><hr className="dropdown-divider" /></li>
+
+                  <li>
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      onClick={(e) => clickAndDispatch(e, 'tabs:manage')}
+                    >
+                      <i className="bi bi-columns-gap me-2" />
+                      Manage tabs…
+                    </button>
+                  </li>
+                  <li><hr className="dropdown-divider" /></li>
                   <li>
                     <form method="post" action={logoutPath} className="px-0 m-0">
                       {csrfToken ? <input type="hidden" name="_csrf_token" value={csrfToken} /> : null}
@@ -343,6 +404,17 @@ export default function MegaNavbar({
           </div>
         </div>
       </div>
+
+      {/* Modal: Channel Picker */}
+      {showRcPicker && (
+        <RocketChatChannelPicker
+          onClose={() => setShowRcPicker(false)}
+          onSaved={() => {
+            window.dispatchEvent(new CustomEvent('rc:subs-updated'));
+            setShowRcPicker(false);
+          }}
+        />
+      )}
     </nav>
   );
 }

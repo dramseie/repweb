@@ -1,0 +1,116 @@
+{% extends 'base.html.twig' %}
+{% block title %}Routes Diagnostics{% endblock %}
+
+{% block body %}
+<div class="container my-4">
+  <h1 class="h3">Routes Diagnostics</h1>
+
+  <div class="mb-3">
+    <button id="btn-refresh" class="btn btn-sm btn-secondary">Refresh Routes</button>
+    <button id="btn-check" class="btn btn-sm btn-primary">Check All (HEAD→GET)</button>
+  </div>
+
+  <div class="row">
+    <div class="col-md-5">
+      <h2 class="h6">Tree</h2>
+      <div id="tree"></div>
+    </div>
+    <div class="col-md-7">
+      <h2 class="h6">Results</h2>
+      <div id="results" class="small"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+function el(tag, attrs={}, ...kids) {
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v]) => {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2).toLowerCase(), v);
+    else e.setAttribute(k, v);
+  });
+  kids.forEach(k => e.append(k));
+  return e;
+}
+
+let ROUTES = {flat:[], tree:{}};
+
+function renderTree(node, parent) {
+  const wrap = el('div', {class:'ms-2 my-1'});
+  const title = el('div', {class:'fw-semibold'}, node.name || '/');
+  wrap.append(title);
+
+  // Show routes at this level
+  node.routes?.forEach(r => {
+    const dot = el('span', {class:'badge rounded-pill text-bg-secondary me-2'}, '…');
+    const btn = el('button', {class:'btn btn-sm btn-outline-primary ms-2'}, 'Check');
+    btn.addEventListener('click', () => runCheck([r.name]));
+    const line = el('div', {class:'d-flex align-items-center gap-2 my-1'},
+      el('code', {}, r.path), el('span', {class:'text-muted small'}, r.name),
+      dot, btn
+    );
+    line.dataset.route = r.name;
+    wrap.append(line);
+  });
+
+  (node.children||[]).forEach(c => wrap.append(renderTree(c, wrap)));
+  return wrap;
+}
+
+function paintResult(res) {
+  // Update badge in tree for this route
+  const line = document.querySelector(`[data-route="${res.name}"]`);
+  if (line) {
+    const badge = line.querySelector('.badge');
+    if (badge) {
+      badge.className = 'badge rounded-pill me-2 ' + (res.ok ? 'text-bg-success' : 'text-bg-danger');
+      badge.textContent = res.ok ? (res.status + ' ✓') : (res.status ?? 'ERR');
+    }
+  }
+}
+
+async function loadRoutes() {
+  const data = await fetchJSON('/_diag/api/routes');
+  ROUTES = data;
+  const treeRoot = document.getElementById('tree');
+  treeRoot.innerHTML = '';
+  treeRoot.append(renderTree(ROUTES.tree, treeRoot));
+  document.getElementById('results').innerHTML = '<div class="text-muted">No checks yet.</div>';
+}
+
+async function runCheck(targets=[]) {
+  const resWrap = document.getElementById('results');
+  resWrap.innerHTML = '<div>Checking…</div>';
+  const body = JSON.stringify({ targets });
+  const { results } = await fetchJSON('/_diag/api/check', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body
+  });
+
+  const list = el('div');
+  results.forEach(r => {
+    paintResult(r);
+    const row = el('div', {class:'border-bottom py-1'},
+      el('code', {}, r.name),
+      el('span', {class:'ms-2'}, r.url || '(no URL)'),
+      el('span', {class:'ms-2'}, r.ok ? 'OK' : 'FAIL'),
+      el('span', {class:'ms-2 text-muted'}, (r.status ?? '') + ''),
+      el('span', {class:'ms-2 text-muted'}, r.timeMs ? (r.timeMs + 'ms') : ''),
+      r.err ? el('div', {class:'text-danger small'}, r.err) : el('span')
+    );
+    list.append(row);
+  });
+  resWrap.innerHTML = '';
+  resWrap.append(list);
+}
+
+document.getElementById('btn-refresh')?.addEventListener('click', loadRoutes);
+document.getElementById('btn-check')?.addEventListener('click', () => runCheck([]));
+loadRoutes();
+</script>
+{% endblock %}

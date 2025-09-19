@@ -1,0 +1,13 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}REST API Explorer{% endblock %}
+
+{% block body %}
+  <div id="rest-explorer-root"
+       data-connectors='{{ connectors|map(c => {
+         id: c.id, name: c.name, baseUrl: c.baseUrl, defaultHeaders: c.defaultHeaders
+       })|json_encode|e('html_attr') }}'
+       data-endpoints='{{ endpoints|map(e => {
+         id: e.id, path: e.path, method: e.method, sampleQuery: e.sampleQuery, sampleBody: e.sampleBody
+       })|json_encode|e('html_attr') }}'></div>
+{% endblock %}

@@ -1,0 +1,59 @@
+/* assets/styles/widget-zoom.css */
+
+:root { --navbar-height: 64px; }
+
+.widget-zoomable { position: relative; }
+
+/* Make sure potential headers can host an absolutely-positioned button */
+.widget-zoom-header { position: relative; }
+
+/* Corner arrow */
+.widget-zoom-btn {
+  position: absolute;
+  top: .375rem;
+  right: .5rem;
+  z-index: 2;
+  border: 0;
+  background: rgba(255,255,255,.9);
+  padding: .25rem .35rem;
+  line-height: 1;
+  color: #495057;
+  cursor: pointer;
+  border-radius: .375rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,.12);
+}
+.widget-zoom-btn:hover { color: #212529; background: #fff; }
+.widget-zoom-btn:focus { outline: none; }
+
+/* Backdrop */
+.widget-zoom-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.15);
+  z-index: 1056;
+}
+
+/* Zoomed widget */
+.widget-zoomed {
+  position: fixed !important;
+  inset: var(--navbar-height) 16px 16px 16px;   /* leave room for your top navbar */
+  z-index: 1060;
+  background: #fff;
+  border-radius: .5rem;
+  box-shadow: 0 .75rem 1.5rem rgba(0,0,0,.2);
+  overflow: hidden;
+
+  /* ensure old sizes don’t constrain the zoomed card */
+  width: auto !important;
+  max-width: none !important;
+  height: auto !important;
+}
+
+/* Let content scroll */
+.widget-zoomed .overflow-auto { max-height: none !important; }
+.widget-zoomed .card-body,
+.widget-zoomed .panel-body,
+.widget-zoomed .widget-body {
+  height: calc(100% - 3rem);
+  overflow: auto;
+}

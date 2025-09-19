@@ -5,7 +5,19 @@
 {% block body %}
 <div class="container-fluid py-3">
   <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h5 mb-0">Dashboard</h1>
   </div>
-  <div id="react-widgets-dashboard" data-api-base="/api/widgets"></div>
+
+  {# Root for the React app (WidgetsHomeTabs) #}
+  <div
+    id="widgets-home-root"
+    data-api-tabs="/api/widgets/tabs"
+    data-api-widgets="/api/widgets"
+    data-reset-url="/api/widgets/tabs/reset-to-defaults"
+  ></div>
+
+  <noscript>
+    <div class="alert alert-warning mt-3">JavaScript is required to use the dashboard.</div>
+  </noscript>
 </div>
 {% endblock %}

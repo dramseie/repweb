@@ -1,8 +1,14 @@
-// --- jQuery must be first and global for many plugins (Trumbowyg, DT Buttons, etc.)
+// --- jQuery must be first and global for plugins (Trumbowyg, DT Buttons, daterangepicker)
 import $ from 'jquery';
 window.$ = window.jQuery = $;
 globalThis.$ = $;
 globalThis.jQuery = $;
+
+// --- Moment + DateRangePicker (the 2-calendar/time preset picker)
+import moment from 'moment';
+window.moment = moment;
+import 'daterangepicker';
+import 'daterangepicker/daterangepicker.css';
 
 // --- CSS & base UI
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -11,10 +17,10 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import './styles/app.css';
 import './styles/meganav-pro.css';
 
-// Pivot UI CSS (needed for the drag/drop pivot controls)
+// Pivot UI CSS (drag/drop pivot controls)
 import 'react-pivottable/pivottable.css';
 
-// Use ONE Bootstrap JS import and expose it for React to use after render
+// One Bootstrap JS import and expose for React after render
 import * as bootstrap from 'bootstrap';
 window.bootstrap = bootstrap;
 
@@ -30,7 +36,6 @@ window.pdfMake = pdfMake;
 
 /* ======================================================================
    DataTables v2 — UMD side-effect imports (NO factory calls)
-   Load core (with BS5 styling) -> extensions
    ====================================================================== */
 import 'datatables.net-bs5';
 import 'datatables.net-responsive-bs5';
@@ -60,18 +65,29 @@ import MegaNavbar from './components/MegaNavbar';
 import DataTablesReport from './components/DataTablesReport';
 import PivotReport from './react/components/PivotReport';
 import TilesDashboard from './components/TilesDashboard';
+
+// Tabbed widgets home
+import WidgetsHomeTabs from './react/components/WidgetsHomeTabs.jsx';
+// Legacy single-page widgets dashboard (compat)
 import WidgetsDashboard from './react/components/WidgetsDashboard';
+
 import ProgressPage from './react/pages/ProgressPage';
 
 // EAV Editor boot
 import mountEavEditor from './react/pages/EavEditorPage';
 import 'handsontable/dist/handsontable.full.min.css';
 
-document.addEventListener('DOMContentLoaded', () => {
-  mountEavEditor();
-});
+import { initWidgetZoom } from './react/lib/widgetZoom';
+import './styles/widget-zoom.css';
 
-// fix default marker icons (Leaflet)
+// Service Catalog
+import ServiceCatalogApp from './react/ServiceCatalogApp.jsx';
+
+// POS apps
+import PosApp from './react/components/PosApp.jsx';
+import PosAgenda from './react/components/PosAgenda.jsx';
+
+// Leaflet fixes (default marker icons)
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import icon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -84,59 +100,6 @@ L.Icon.Default.mergeOptions({ iconRetinaUrl: icon2x, iconUrl: icon, shadowUrl: s
 window.React = React;
 window.ReactDOMClient = ReactDOMClient;
 window.App = Object.assign(window.App || {}, { ProgressPage });
-
-// Mount the MegaNavbar and pass user info via data-* attributes on the container
-const elNav = document.getElementById('react-meganavbar');
-if (elNav) {
-  const currentUser = {
-    name: elNav.dataset.userName || '',
-    email: elNav.dataset.userEmail || '',
-    avatarUrl: elNav.dataset.userAvatar || '',
-  };
-  const csrfToken = elNav.dataset.csrfToken || '';
-
-  createRoot(elNav).render(
-    <MegaNavbar
-      currentUser={currentUser}
-      csrfToken={csrfToken}
-      logoutPath="/logout"
-    />
-  );
-}
-
-// Global click bus for Widgets
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.js-widgets-action[data-action]');
-  if (!btn) return;
-  e.preventDefault();
-  const action = btn.dataset.action;
-  window.dispatchEvent(new CustomEvent('widgets.action', { detail: { action } }));
-});
-
-const elReport = document.getElementById('react-datatables-report');
-if (elReport) createRoot(elReport).render(<DataTablesReport />);
-
-const elPivot = document.getElementById('react-pivot-report');
-if (elPivot) {
-  const reportId = parseInt(elPivot.getAttribute('data-report-id') || '0', 10);
-  createRoot(elPivot).render(<PivotReport reportId={reportId} />);
-}
-
-const elTiles = document.getElementById('react-tiles-dashboard');
-if (elTiles) {
-  createRoot(elTiles).render(<TilesDashboard showHeader />);
-}
-
-const elWidgets = document.getElementById('react-widgets-dashboard');
-if (elWidgets) {
-  const apiBase = elWidgets.dataset.apiBase || '/api/widgets';
-  createRoot(elWidgets).render(<WidgetsDashboard apiBase={apiBase} />);
-}
-
-const elProgress = document.getElementById('progress-root');
-if (elProgress) {
-  createRoot(elProgress).render(<ProgressPage />);
-}
 
 /* ======================================================================
    EasyAdmin form editors: Trumbowyg (WYSIWYG) + CodeMirror v5
@@ -211,25 +174,125 @@ async function initEaEditors(context) {
   });
 }
 
+/* ======================================================================
+   Mounts (single DOMContentLoaded to avoid double-inits)
+   ====================================================================== */
 document.addEventListener('DOMContentLoaded', () => {
+  // Editors
   initEaEditors();
+
+  // EAV
+  mountEavEditor();
+
+  // Widget zoom
+  initWidgetZoom();
+  window.addEventListener('widgets.action', (e) => {
+    const a = e?.detail?.action;
+    if (a === 'widgets:save' || a === 'widgets:reset' || a === 'widgets:add' || a === 'widgets:edit') {
+      setTimeout(() => initWidgetZoom(), 0);
+    }
+  });
+
+  // Global click bus for Widgets
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.js-widgets-action[data-action]');
+    if (!btn) return;
+    e.preventDefault();
+    const action = btn.dataset.action;
+    window.dispatchEvent(new CustomEvent('widgets.action', { detail: { action } }));
+  });
+
+  // Mega Navbar
+  const elNav = document.getElementById('react-meganavbar');
+  if (elNav) {
+    const currentUser = {
+      name: elNav.dataset.userName || '',
+      email: elNav.dataset.userEmail || '',
+      avatarUrl: elNav.dataset.userAvatar || '',
+    };
+    const csrfToken = elNav.dataset.csrfToken || '';
+    createRoot(elNav).render(
+      <MegaNavbar
+        currentUser={currentUser}
+        csrfToken={csrfToken}
+        logoutPath="/logout"
+      />
+    );
+  }
+
+  // Reports & dashboards
+  const elReport = document.getElementById('react-datatables-report');
+  if (elReport) createRoot(elReport).render(<DataTablesReport />);
+
+  const elPivot = document.getElementById('react-pivot-report');
+  if (elPivot) {
+    const reportId = parseInt(elPivot.getAttribute('data-report-id') || '0', 10);
+    createRoot(elPivot).render(<PivotReport reportId={reportId} />);
+  }
+
+  const elTiles = document.getElementById('react-tiles-dashboard');
+  if (elTiles) createRoot(elTiles).render(<TilesDashboard showHeader />);
+
+  // Tabbed widgets home (new) or legacy
+  const elWidgetsHome = document.getElementById('widgets-home-root');
+  if (elWidgetsHome) {
+    const apiTabs   = elWidgetsHome.getAttribute('data-api-tabs')   || '/api/widgets/tabs';
+    const apiWidgets= elWidgetsHome.getAttribute('data-api-widgets')|| '/api/widgets';
+    const resetUrl  = elWidgetsHome.getAttribute('data-reset-url')  || '/api/widgets/tabs/reset-to-defaults';
+    createRoot(elWidgetsHome).render(
+      <WidgetsHomeTabs apiTabs={apiTabs} apiWidgets={apiWidgets} resetUrl={resetUrl} />
+    );
+  } else {
+    const elWidgets = document.getElementById('react-widgets-dashboard');
+    if (elWidgets) {
+      const apiBase = elWidgets.dataset.apiBase || '/api/widgets';
+      createRoot(elWidgets).render(<WidgetsDashboard apiBase={apiBase} />);
+    }
+  }
+
+  // Mail template form
+  const elMailForm = document.getElementById('react-mail-template-form');
+  if (elMailForm) createRoot(elMailForm).render(<MailTemplateForm />);
+
+  // JSON import builder
+  const elJsonBuilder = document.getElementById('react-json-import-builder');
+  if (elJsonBuilder) {
+    createRoot(elJsonBuilder).render(
+      <JsonImportQueryBuilder apiBase="/api/widgets" tableAlias="j" jsonColumn="ji_json" />
+    );
+  }
+
+  // POS apps
+  const posRoot = document.getElementById('pos-root');
+  if (posRoot) createRoot(posRoot).render(<PosApp />);
+
+  const agendaRoot = document.getElementById('pos-agenda-root');
+  if (agendaRoot) createRoot(agendaRoot).render(<PosAgenda />);
+
+  // Service Catalog (ID is server-rendered; safe to check now)
+  const scRoot = document.getElementById('service-catalog-root');
+  if (scRoot) createRoot(scRoot).render(<ServiceCatalogApp defaultTenant="cmdb" />);
+
+  // Progress page
+  const elProgress = document.getElementById('progress-root');
+  if (elProgress) createRoot(elProgress).render(<ProgressPage />);
+
+  // Rest API Explorer
+  const restRoot = document.getElementById('rest-explorer-root');
+  if (restRoot) createRoot(restRoot).render(<RestApiExplorer />);
 });
 
-document.addEventListener('ea.collection.item-added', (e) => {
-  initEaEditors(e.target);
-});
-
+/* Re-init editors on EA live events */
+document.addEventListener('ea.collection.item-added', (e) => initEaEditors(e.target));
 document.addEventListener('ea.form.partition-switch', (e) => {
   initEaEditors(e.target);
   $(e.target).find('textarea[data-editor="codemirror"]').each(function () {
     if (this._cm) setTimeout(() => this._cm.refresh(), 0);
   });
 });
+document.addEventListener('ea.form.controller.change', (e) => initEaEditors(e.target));
 
-document.addEventListener('ea.form.controller.change', (e) => {
-  initEaEditors(e.target);
-});
-
+/* Exports */
 export async function initTrumbowygOn(el, options = {}) {
   await loadTrumbowygOnce();
   const $el = $(el);
@@ -254,20 +317,7 @@ export async function initTrumbowygOn(el, options = {}) {
   return $el;
 }
 
+// Mail + JSON builder + Rest Explorer components (imported after DOM ready check)
 import MailTemplateForm from './react/components/mail/MailTemplateForm';
-const elMailForm = document.getElementById('react-mail-template-form');
-if (elMailForm) {
-  createRoot(elMailForm).render(<MailTemplateForm />);
-}
-
 import JsonImportQueryBuilder from './react/components/JsonImportQueryBuilder';
-const elJsonBuilder = document.getElementById('react-json-import-builder');
-if (elJsonBuilder) {
-  createRoot(elJsonBuilder).render(
-    <JsonImportQueryBuilder
-      apiBase="/api/widgets"
-      tableAlias="j"
-      jsonColumn="ji_json"
-    />
-  );
-}
+import RestApiExplorer from './react/components/RestApiExplorer.jsx';

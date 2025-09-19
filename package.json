@@ -24,11 +24,19 @@
     "@fortawesome/free-regular-svg-icons": "^7.0.0",
     "@fortawesome/free-solid-svg-icons": "^7.0.0",
     "@fortawesome/react-fontawesome": "^3.0.1",
+    "@fullcalendar/core": "^6.1.19",
+    "@fullcalendar/daygrid": "^6.1.19",
+    "@fullcalendar/interaction": "^6.1.19",
+    "@fullcalendar/react": "^6.1.19",
+    "@fullcalendar/timegrid": "^6.1.19",
     "@handsontable/react": "^16.0.1",
     "@headlessui/react": "^2.2.5",
     "@monaco-editor/react": "^4.7.0",
     "@popperjs/core": "^2.11.8",
     "@react-leaflet/core": "^3.0.0",
+    "@rocket.chat/ddp-client": "0.3.37",
+    "@rocket.chat/emitter": "0.31.25",
+    "@uiw/react-json-view": "^2.0.0-alpha.37",
     "axios": "^1.11.0",
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
@@ -79,12 +87,16 @@
     "datatables.net-select-bs5": "^3.0.1",
     "datatables.net-select-dt": "^3.0.1",
     "datatables.net-staterestore-dt": "^1.4.1",
+    "daterangepicker": "^3.1.0",
     "elkjs": "^0.10.0",
     "handsontable": "^16.0.1",
+    "hls.js": "^1.6.12",
     "hotkeys-js": "^3.13.15",
     "jquery": "^3.7.1",
+    "jsonpath-plus": "^10.3.0",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
+    "moment": "^2.30.1",
     "pdfmake": "^0.2.20",
     "plotly.js": "^3.1.0",
     "plotly.js-basic-dist": "^3.1.0",
@@ -97,6 +109,7 @@
     "react-plotly.js": "^2.6.0",
     "react-resizable": "^3.0.5",
     "reactflow": "^11.11.4",
+    "rsuite": "^5.83.3",
     "supercluster": "^8.0.1",
     "trumbowyg": "^2.31.0"
   },
@@ -116,5 +129,8 @@
     "tailwindcss": "^3.4.3",
     "webpack": "^5.101.3",
     "webpack-cli": "^5.1.4"
+  },
+  "overrides": {
+    "@rocket.chat/core-typings": "6.13.1"
   }
 }

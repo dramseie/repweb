@@ -1,0 +1,27 @@
+{% extends 'base.html.twig' %}
+{% block title %}repweb – POS Onglerie{% endblock %}
+
+{% block body %}
+<div class="container-fluid py-3">
+  {# React mount point; we pass realizations via data-* #}
+  <div id="pos-root"
+       data-realisations='{{ pos_realisations|json_encode(constant("JSON_UNESCAPED_UNICODE"))|e("html_attr") }}'>
+  </div>
+
+  {# Optional: minimal noscript / fallback display #}
+  <noscript>
+    <div class="mt-3">
+      <h6 class="mb-2">Réalisations</h6>
+      {% if pos_realisations|length %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for r in pos_realisations %}
+            <span class="badge bg-secondary">{{ r.label }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <span class="text-muted">Aucune réalisation définie.</span>
+      {% endif %}
+    </div>
+  </noscript>
+</div>
+{% endblock %}

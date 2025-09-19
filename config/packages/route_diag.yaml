@@ -1,0 +1,10 @@
+parameters:
+  route_diag.base_uri: 'https://repweb.ramseier.com'
+  route_diag.base_path: ''   # '/repweb' if you serve in a subdir
+
+services:
+  App\Service\RouteTreeService:
+    arguments:
+      $baseUri: '%route_diag.base_uri%'
+      $basePath: '%route_diag.base_path%'
+      $skipDebugRoutes: true

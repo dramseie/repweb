@@ -64,3 +64,5 @@ security:
 
     # --- CATCH-ALL LAST ---
     - { path: ^/, roles: ROLE_USER }
+
+    - { path: ^/_diag, roles: ROLE_ADMIN }

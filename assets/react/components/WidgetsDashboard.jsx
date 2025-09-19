@@ -4,7 +4,7 @@ import { Responsive, WidthProvider } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
-// Modal picker
+// Modal picker (kept for backward compatibility; tabs can trigger add events)
 import AddWidgetModal from './widgets/AddWidgetModal';
 
 import LeafletEavMap from './widgets/LeafletEavMap';
@@ -16,11 +16,21 @@ import PivotWidget from './widgets/PivotWidget';
 import GrafanaWidget from './widgets/GrafanaWidget';
 import MarkdownWidget from './widgets/MarkdownWidget';
 import KpiWidget from './widgets/KpiWidget';
+import NiFiWidget from './widgets/NiFiWidget'; // 👈 NEW
+import CameraLiveWidget from './widgets/CameraLiveWidget'; // 👈 NEW
+import CheckmkWidget from './widgets/CheckmkWidget'; // 👈 NEW
+import RocketChatLoaderWidget from './widgets/RocketChatLoaderWidget';
+import ManageTabsModal from './widgets/ManageTabsModal';
+import CaraLuckyWidget from './widgets/CaraLuckyWidget';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
 const BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 };
 const COLS        = { lg: 12,   md: 10,  sm: 8,   xs: 6,   xxs: 4 };
+
+// Optional global config injected by Twig:
+// <script>window.REPWEB = { rocketchat: { url:'wss://...', userId:'...', token:'...', roomId:'...' } };</script>
+const RC_CFG = (window.REPWEB && window.REPWEB.rocketchat) || {};
 
 function Toolbar({ editing, onToggleEdit, onAdd, onSave, onReset }) {
   return (
@@ -41,7 +51,15 @@ function WidgetChrome({ title, editing, onRemove, children }) {
       <div className="card-header py-2 d-flex align-items-center justify-content-between">
         <strong className="small text-uppercase">{title}</strong>
         {editing && (
-          <button className="btn btn-sm btn-outline-danger" onClick={onRemove} title="Remove">✕</button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger widget-close-btn"
+            title="Remove"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          >
+            ✕
+          </button>
         )}
       </div>
       <div className="card-body p-2" style={{ overflow: 'auto' }}>{children}</div>
@@ -58,6 +76,9 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
   const [err, setErr] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
 
+  // 🔧 NEW: Manage Tabs modal visibility
+  const [showManageTabs, setShowManageTabs] = useState(false);
+
   // Toggle to show/hide the local toolbar
   const SHOW_LOCAL_TOOLBAR = false;
 
@@ -70,14 +91,81 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
   useEffect(() => {
     (async () => {
       try {
+        const now = Date.now(); // cache-buster
         const [defsRes, layoutRes] = await Promise.all([
-          fetch(`${apiBase}/defs`),
-          fetch(`${apiBase}/layout`),
+          fetch(`${apiBase}/defs?_=${now}`,   { cache: 'no-store' }),
+          fetch(`${apiBase}/layout?_=${now}`, { cache: 'no-store' }),
         ]);
         if (!defsRes.ok || !layoutRes.ok) throw new Error('Load failed');
         const defsJson = await defsRes.json();
         const layoutJson = await layoutRes.json();
-        setDefs(defsJson);
+
+        // 🔧 Ensure Camera Live appears, even if backend not updated yet
+        const hasCamera = Array.isArray(defsJson) && defsJson.some(d => d.type === 'camera-live');
+        const cameraDef = {
+          type: 'camera-live',
+          title: 'Camera Live',
+          subtitle: 'HLS stream player',
+          w: 6, h: 6, minW: 3, minH: 3,
+          defaults: {
+            src: '/hlsdisk/sms18/index.m3u8',
+            poster: '',
+            muted: true,
+            autoPlay: true,
+            controls: true,
+            objectFit: 'cover',
+          },
+          tags: ['video','camera','live'],
+        };
+
+        // 🔧 Ensure CheckMK Health appears as a selectable/known widget type
+        const hasCheckmk = Array.isArray(defsJson) && defsJson.some(d => d.type === 'checkmk');
+        const checkmkDef = {
+          type: 'checkmk',
+          title: 'CheckMK Health',
+          subtitle: 'Hosts & Services status',
+          w: 6, h: 6, minW: 3, minH: 3,
+          defaults: {
+            apiBase: '/api/checkmk',
+            refreshMs: 30000
+          },
+          tags: ['monitoring','checkmk','ops'],
+        };
+
+        // ✅ Ensure Rocket.Chat realtime appears as a selectable/known widget type
+        const hasRC = Array.isArray(defsJson) && defsJson.some(d => d.type === 'rocketchat');
+        const rocketchatDef = {
+          type: 'rocketchat',
+          title: 'Rocket.Chat (Live)',
+          subtitle: 'Realtime room stream over WebSocket',
+          w: 6, h: 6, minW: 3, minH: 3,
+          defaults: {
+            configUrl: '/api/rocketchat/config',
+            maxMessages: 20
+          },
+          tags: ['chat','realtime','rocketchat'],
+        };
+
+        // 🐾 ✅ Ensure Caraméow Lucky widget appears
+        const hasCaraLucky = Array.isArray(defsJson) && defsJson.some(d => d.type === 'caralucky');
+        const caraLuckyDef = {
+          type: 'caralucky',
+          title: 'Caraméow Lucky Numbers',
+          subtitle: 'Seedable multi-lottery picker',
+          w: 6, h: 5, minW: 3, minH: 3,
+          defaults: {
+            game: 'euromillions'
+          },
+          tags: ['fun','luck','carameow'],
+        };
+
+        let mergedDefs = Array.isArray(defsJson) ? [...defsJson] : [];
+        if (!hasCamera)    mergedDefs.push(cameraDef);
+        if (!hasCheckmk)   mergedDefs.push(checkmkDef);
+        if (!hasRC)        mergedDefs.push(rocketchatDef);
+        if (!hasCaraLucky) mergedDefs.push(caraLuckyDef);
+
+        setDefs(mergedDefs);
         setItems(layoutJson.items || []);
         setLayouts({
           lg: layoutJson.layouts?.lg || [],
@@ -86,6 +174,7 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
           xs: layoutJson.layouts?.xs || [],
           xxs: layoutJson.layouts?.xxs || [],
         });
+
       } catch (e) {
         console.error(e);
         setErr('Failed to load dashboard');
@@ -132,7 +221,8 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
   }
 
   async function reset() {
-    const res = await fetch(`${apiBase}/layout`);
+    const now = Date.now();
+    const res = await fetch(`${apiBase}/layout?_=${now}`, { cache: 'no-store' });
     if (!res.ok) return;
     const json = await res.json();
     setItems(json.items || []);
@@ -145,7 +235,7 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
     });
   }
 
-  // 🔗 Listen once for navbar dropdown actions
+  // 🔗 Listen once for navbar dropdown actions (tabs or menu dispatches)
   useEffect(() => {
     const handler = (ev) => {
       const action = ev.detail?.action;
@@ -162,13 +252,34 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
         case 'widgets:reset':
           reset();
           break;
+        // Optional: allow adding known widget types directly via event
+        // e.g., detail = { action:'widgets:add-type', type:'checkmk' }
+        case 'widgets:add-type': {
+          const t = ev.detail?.type;
+          const def = (defs || []).find(d => d.type === t);
+          if (def) addWidget(def);
+          break;
+        }
+        // 🔧 NEW: open the Manage Tabs modal from global dispatch
+        case 'tabs:manage':
+          setShowManageTabs(true);
+          break;
         default:
           break;
       }
     };
     window.addEventListener('widgets.action', handler);
-    return () => window.removeEventListener('widgets.action', handler);
-  }, []); // listen once
+
+    // 🔧 NEW: also listen to a simple CustomEvent fired directly by the menu
+    //   window.dispatchEvent(new CustomEvent('repweb:open-manage-tabs'))
+    const openTabs = () => setShowManageTabs(true);
+    window.addEventListener('repweb:open-manage-tabs', openTabs);
+
+    return () => {
+      window.removeEventListener('widgets.action', handler);
+      window.removeEventListener('repweb:open-manage-tabs', openTabs);
+    };
+  }, [defs]); // needs defs to add by type
 
   // Ensure every item has a layout (x/y/w/h) at every breakpoint
   const defsByType = useMemo(() => {
@@ -227,6 +338,9 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
         onChoose={(def) => { addWidget(def); setShowAdd(false); }}
       />
 
+      {/* 🔧 NEW: Manage Tabs modal is mounted here */}
+      <ManageTabsModal open={showManageTabs} onClose={() => setShowManageTabs(false)} />
+
       <ResponsiveGridLayout
         className="layout"
         breakpoints={BREAKPOINTS}
@@ -239,7 +353,7 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
         containerPadding={[0, 0]}
         rowHeight={12}
         compactType="vertical"
-        draggableCancel=".card-body"
+        draggableCancel=".card-body, .widget-close-btn, .no-drag"
       >
         {items.map(item => (
           <div key={item.id}>
@@ -299,6 +413,52 @@ export default function WidgetsDashboard({ apiBase = '/api/widgets' }) {
                   apiUrl={item.props?.apiUrl ?? '/api/eav/geo/view'}
                   height={item.props?.height ?? '520px'}
                   query={item.props?.query ?? undefined}
+                />
+              )}
+
+              {/* NiFi */}
+              {item.type === 'nifi' && (
+                <NiFiWidget
+                  title={item.props?.title ?? 'NiFi Process Groups'}
+                  refreshSec={item.props?.refreshSec ?? 5}
+                />
+              )}
+
+              {/* Camera Live (HLS) */}
+              {item.type === 'camera-live' && (
+                <CameraLiveWidget
+                  src={item.props?.src ?? '/hlsdisk/sms18/index.m3u8'}
+                  poster={item.props?.poster ?? ''}
+                  muted={item.props?.muted ?? true}
+                  autoPlay={item.props?.autoPlay ?? true}
+                  controls={item.props?.controls ?? true}
+                  objectFit={item.props?.objectFit ?? 'cover'}
+                  className="w-100 h-100"
+                />
+              )}
+
+              {/* ✅ CheckMK Health */}
+              {item.type === 'checkmk' && (
+                <CheckmkWidget
+                  apiBase={item.props?.apiBase ?? '/api/checkmk'}
+                  refreshMs={item.props?.refreshMs ?? 30000}
+                />
+              )}
+
+              {/* ✅ Rocket.Chat Realtime */}
+              {item.type === 'rocketchat' && (
+                <RocketChatLoaderWidget
+                  configUrl={item.props?.configUrl ?? '/api/rocketchat/config'}
+                  roomName={item.props?.roomName ?? 'repweb'}
+                />
+              )}
+
+              {/* 🐾 ✅ Caraméow Lucky Numbers */}
+              {item.type === 'caralucky' && (
+                <CaraLuckyWidget
+                  config={{
+                    game: item.props?.game ?? 'euromillions'
+                  }}
                 />
               )}
             </WidgetChrome>
