@@ -268,7 +268,7 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
     } catch (e2) {
       if (e2.name !== 'AbortError') setError(e2.message || 'Recherche échouée');
     } finally {
-      setBusy(false);
+           setBusy(false);
     }
   };
 
@@ -389,180 +389,181 @@ function DiversModal({ show, onClose, onAdd, defaultTaxRate = 0 }) {
 /* =========================
    Main POS App
    ========================= */
-   
-	// == Timer helpers ==
-	const fmtHMS = (totalSec) => {
-	  const s = Math.max(0, Math.floor(totalSec || 0));
-	  const h = String(Math.floor(s / 3600)).padStart(2, '0');
-	  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-	  const ss = String(s % 60).padStart(2, '0');
-	  return `${h}:${m}:${ss}`;
-	};
 
-	// Small localStorage-backed engine
-	function usePosTimer(storageKey) {
-	  const key = `posTimer:${storageKey || 'default'}`;
-	  const [status, setStatus] = useState('idle'); // idle | running | paused | stopped
-	  const [elapsed, setElapsed] = useState(0);
-	  const lastTickRef = useRef(null);
-	  const rafRef = useRef(null);
+/* == Timer helpers & components == */
+const fmtHMS = (totalSec) => {
+  const s = Math.max(0, Math.floor(totalSec || 0));
+  const h = String(Math.floor(s / 3600)).padStart(2, '0');
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${h}:${m}:${ss}`;
+};
 
-	  // load
-	  useEffect(() => {
-		try {
-		  const raw = localStorage.getItem(key);
-		  if (raw) {
-			const j = JSON.parse(raw);
-			setStatus(j.status ?? 'idle');
-			setElapsed(Number(j.elapsed ?? 0));
-			lastTickRef.current = j.lastTick ?? null;
-		  } else {
-			setStatus('idle'); setElapsed(0); lastTickRef.current = null;
-		  }
-		} catch {
-		  // ignore
-		}
-		// cleanup any RAF on key change
-		return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	  }, [key]);
+// Small localStorage-backed engine
+function usePosTimer(storageKey) {
+  const key = `posTimer:${storageKey || 'default'}`;
+  const [status, setStatus] = useState('idle'); // idle | running | paused | stopped
+  const [elapsed, setElapsed] = useState(0);
+  const lastTickRef = useRef(null);
+  const rafRef = useRef(null);
 
-	  const persist = useCallback((st = status, el = elapsed, lt = lastTickRef.current) => {
-		try {
-		  localStorage.setItem(key, JSON.stringify({ status: st, elapsed: el, lastTick: lt }));
-		} catch {}
-	  }, [key, status, elapsed]);
+  // load
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const j = JSON.parse(raw);
+        setStatus(j.status ?? 'idle');
+        setElapsed(Number(j.elapsed ?? 0));
+        lastTickRef.current = j.lastTick ?? null;
+      } else {
+        setStatus('idle'); setElapsed(0); lastTickRef.current = null;
+      }
+    } catch {
+      // ignore
+    }
+    // cleanup any RAF on key change
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
-	  const renderTick = useCallback(() => {
-		if (status !== 'running') return;
-		const now = Date.now();
-		const lt = lastTickRef.current || now;
-		const delta = (now - lt) / 1000;
-		lastTickRef.current = now;
-		setElapsed((e) => {
-		  const v = e + delta;
-		  persist('running', v, lastTickRef.current);
-		  return v;
-		});
-		rafRef.current = requestAnimationFrame(renderTick);
-	  }, [status, persist]);
+  const persist = useCallback((st = status, el = elapsed, lt = lastTickRef.current) => {
+    try {
+      localStorage.setItem(key, JSON.stringify({ status: st, elapsed: el, lastTick: lt }));
+    } catch {}
+  }, [key, status, elapsed]);
 
-	  const start = useCallback(() => {
-		if (status !== 'idle') return;
-		lastTickRef.current = Date.now();
-		setStatus('running');
-		persist('running', elapsed, lastTickRef.current);
-		rafRef.current = requestAnimationFrame(renderTick);
-	  }, [status, elapsed, persist, renderTick]);
+  const renderTick = useCallback(() => {
+    if (status !== 'running') return;
+    const now = Date.now();
+    const lt = lastTickRef.current || now;
+    const delta = (now - lt) / 1000;
+    lastTickRef.current = now;
+    setElapsed((e) => {
+      const v = e + delta;
+      persist('running', v, lastTickRef.current);
+      return v;
+    });
+    rafRef.current = requestAnimationFrame(renderTick);
+  }, [status, persist]);
 
-	  const pause = useCallback(() => {
-		if (status !== 'running') return;
-		const now = Date.now();
-		const lt = lastTickRef.current || now;
-		const delta = (now - lt) / 1000;
-		lastTickRef.current = null;
-		setElapsed((e) => {
-		  const v = e + delta;
-		  setStatus('paused');
-		  persist('paused', v, null);
-		  return v;
-		});
-		if (rafRef.current) cancelAnimationFrame(rafRef.current);
-	  }, [status, persist]);
+  const start = useCallback(() => {
+    if (status !== 'idle') return;
+    lastTickRef.current = Date.now();
+    setStatus('running');
+    persist('running', elapsed, lastTickRef.current);
+    rafRef.current = requestAnimationFrame(renderTick);
+  }, [status, elapsed, persist, renderTick]);
 
-	  const resume = useCallback(() => {
-		if (status !== 'paused') return;
-		lastTickRef.current = Date.now();
-		setStatus('running');
-		persist('running', elapsed, lastTickRef.current);
-		rafRef.current = requestAnimationFrame(renderTick);
-	  }, [status, elapsed, persist, renderTick]);
+  const pause = useCallback(() => {
+    if (status !== 'running') return;
+    const now = Date.now();
+    const lt = lastTickRef.current || now;
+    const delta = (now - lt) / 1000;
+    lastTickRef.current = null;
+    setElapsed((e) => {
+      const v = e + delta;
+      setStatus('paused');
+      persist('paused', v, null);
+      return v;
+    });
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }, [status, persist]);
 
-	  const stop = useCallback(() => {
-		setElapsed((e) => {
-		  let v = e;
-		  if (status === 'running') {
-			const now = Date.now();
-			const lt = lastTickRef.current || now;
-			v = e + (now - lt) / 1000;
-		  }
-		  lastTickRef.current = null;
-		  setStatus('stopped');
-		  persist('stopped', v, null);
-		  if (rafRef.current) cancelAnimationFrame(rafRef.current);
-		  return v;
-		});
-	  }, [status, persist]);
+  const resume = useCallback(() => {
+    if (status !== 'paused') return;
+    lastTickRef.current = Date.now();
+    setStatus('running');
+    persist('running', elapsed, lastTickRef.current);
+    rafRef.current = requestAnimationFrame(renderTick);
+  }, [status, elapsed, persist, renderTick]);
 
-	  const reset = useCallback(() => {
-		if (rafRef.current) cancelAnimationFrame(rafRef.current);
-		lastTickRef.current = null;
-		setStatus('idle'); setElapsed(0);
-		persist('idle', 0, null);
-	  }, [persist]);
+  const stop = useCallback(() => {
+    setElapsed((e) => {
+      let v = e;
+      if (status === 'running') {
+        const now = Date.now();
+        const lt = lastTickRef.current || now;
+        v = e + (now - lt) / 1000;
+      }
+      lastTickRef.current = null;
+      setStatus('stopped');
+      persist('stopped', v, null);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      return v;
+    });
+  }, [status, persist]);
 
-	  // auto-resume visuals after reload while running
-	  useEffect(() => {
-		if (status === 'running' && !rafRef.current) {
-		  lastTickRef.current = Date.now();
-		  rafRef.current = requestAnimationFrame(renderTick);
-		}
-	  }, [status, renderTick]);
+  const reset = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    lastTickRef.current = null;
+    setStatus('idle'); setElapsed(0);
+    persist('idle', 0, null);
+  }, [persist]);
 
-	  return { status, elapsed, start, pause, resume, stop, reset };
-	}
+  // auto-resume visuals after reload while running
+  useEffect(() => {
+    if (status === 'running' && !rafRef.current) {
+      lastTickRef.current = Date.now();
+      rafRef.current = requestAnimationFrame(renderTick);
+    }
+  }, [status, renderTick]);
 
-	// === Timer UI (exposes stop() via ref) ===
-	const Timer = React.forwardRef(function Timer({ storageKey, onStopped, disabled }, ref) {
-	  const { status, elapsed, start, pause, resume, stop, reset } = usePosTimer(storageKey);
+  return { status, elapsed, start, pause, resume, stop, reset };
+}
 
-	  React.useImperativeHandle(ref, () => ({
-		stopAndReturn: () => {
-		  stop();
-		  const t = fmtHMS((Math.round((elapsed + (status==='running' ? 0 : 0)) * 1000) / 1000));
-		  return t; // display format
-		},
-		hardStop: () => stop(),
-	  }), [stop, elapsed, status]);
+// === Timer UI (exposes stop() via ref) ===
+const Timer = React.forwardRef(function Timer({ storageKey, onStopped, disabled }, ref) {
+  const { status, elapsed, start, pause, resume, stop, reset } = usePosTimer(storageKey);
 
-	  const doStop = () => {
-		const before = Math.round(elapsed);
-		stop();
-		const hms = fmtHMS(before);
-		onStopped?.(hms, before);
-	  };
+  React.useImperativeHandle(ref, () => ({
+    stopAndReturn: () => {
+      stop();
+      const t = fmtHMS((Math.round((elapsed + (status==='running' ? 0 : 0)) * 1000) / 1000));
+      return t; // display format
+    },
+    hardStop: () => stop(),
+  }), [stop, elapsed, status]);
 
-	  return (
-		<div className="d-flex align-items-center gap-2">
-		  <div className="fw-bold" style={{ minWidth: 90, fontVariantNumeric:'tabular-nums' }}>
-			{fmtHMS(elapsed)}
-		  </div>
+  const doStop = () => {
+    const before = Math.round(elapsed);
+    stop();
+    const hms = fmtHMS(before);
+    onStopped?.(hms, before);
+  };
 
-		  <button className="btn btn-sm btn-success"
-				  onClick={start}
-				  disabled={disabled || status!=='idle'}>Start</button>
+  return (
+    <div className="d-flex align-items-center gap-2">
+      <div className="fw-bold" style={{ minWidth: 90, fontVariantNumeric:'tabular-nums' }}>
+        {fmtHMS(elapsed)}
+      </div>
 
-		  <button className="btn btn-sm btn-warning"
-				  onClick={pause}
-				  disabled={disabled || status!=='running'}>Pause</button>
+      <button className="btn btn-sm btn-success"
+              onClick={start}
+              disabled={disabled || status!=='idle'}>Start</button>
 
-		  <button className="btn btn-sm btn-info"
-				  onClick={resume}
-				  disabled={disabled || status!=='paused'}>Resume</button>
+      <button className="btn btn-sm btn-warning"
+              onClick={pause}
+              disabled={disabled || status!=='running'}>Pause</button>
 
-		  <button className="btn btn-sm btn-danger"
-				  onClick={doStop}
-				  disabled={disabled || (status!=='running' && status!=='paused')}>Stop</button>
+      <button className="btn btn-sm btn-info"
+              onClick={resume}
+              disabled={disabled || status!=='paused'}>Resume</button>
 
-		  <button className="btn btn-sm btn-outline-secondary"
-				  onClick={reset}
-				  disabled={disabled || (status==='idle' && elapsed===0)}>Reset</button>
-		</div>
-	  );
-	});
-   
-   
-   
+      <button className="btn btn-sm btn-danger"
+              onClick={doStop}
+              disabled={disabled || (status!=='running' && status!=='paused')}>Stop</button>
+
+      <button className="btn btn-sm btn-outline-secondary"
+              onClick={reset}
+              disabled={disabled || (status==='idle' && elapsed===0)}>Reset</button>
+    </div>
+  );
+});
+
+/* =========================
+   POS App
+   ========================= */
 export default function PosApp() {
   const [loading, setLoading] = useState(true);
   const [cats, setCats] = useState({});
@@ -600,6 +601,8 @@ export default function PosApp() {
   }, []);
 
   // 🔧 Auto-load detail/history on startup and when customer changes
+  const [custDetail, setCustDetail] = useState(null);
+  const [activeAppointmentId, setActiveAppointmentId] = useState(null);
   useEffect(() => {
     if (customer?.id) {
       loadCustomerDetail(customer.id);
@@ -619,10 +622,6 @@ export default function PosApp() {
   const [allLoading, setAllLoading] = useState(false);
   const [allErr, setAllErr] = useState(null);
   const [allFilter, setAllFilter] = useState('');
-
-  // 🔹 Customer detail & history
-  const [custDetail, setCustDetail] = useState(null);
-  const [activeAppointmentId, setActiveAppointmentId] = useState(null);
 
   // 🔹 New RDV form
   const [rdv, setRdv] = useState({date: '', time: '', durationMin: 120, notes_public: '', status: 'booked'});
@@ -720,7 +719,7 @@ export default function PosApp() {
         console.error(e);
         setCats({});
       } finally {
-        setLoading(false);
+               setLoading(false);
       }
     })();
   }, []);
@@ -933,8 +932,12 @@ export default function PosApp() {
   const clearReals = () => setSelectedReals([]);
 
   // Create order, then open modal
+  const timerRef = useRef(null);
   const saveOrder = async () => {
     if (!cart.length) return;
+
+    // (Optional) stop the visible timer here; comment out if you prefer manual stop:
+    try { timerRef.current?.hardStop?.(); } catch {}
 
     if (activeAppointmentId) {
       await fetch(`/api/pos/appointments/${activeAppointmentId}`, {
@@ -1183,6 +1186,9 @@ export default function PosApp() {
     { symbol: '🛠️', title: 'Réparation' },
   ];
 
+  // ⏱ storage key follows selected RDV, or global when none
+  const timerStorageKey = activeAppointmentId ? `appt-${activeAppointmentId}` : 'global';
+
   return (
     <div className="row g-3">
       {/* LEFT: Articles & Services + Panier */}
@@ -1218,11 +1224,22 @@ export default function PosApp() {
         <div className="card shadow-sm">
           <div className="card-header d-flex justify-content-between align-items-center">
             <strong>Panier</strong>
-            <div className="d-flex gap-2">
-              <button className="btn btn-sm btn-outline-primary" onClick={() => setDiversOpen(true)}>+ Divers</button>
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => setCart([])} disabled={!cart.length}>Vider</button>
+
+            {/* Timer in header */}
+            <div className="d-flex align-items-center gap-3">
+              <Timer
+                ref={timerRef}
+                storageKey={timerStorageKey}
+                disabled={false}
+                onStopped={() => {}}
+              />
+              <div className="d-flex gap-2">
+                <button className="btn btn-sm btn-outline-primary" onClick={() => setDiversOpen(true)}>+ Divers</button>
+                <button className="btn btn-sm btn-outline-secondary" onClick={() => setCart([])} disabled={!cart.length}>Vider</button>
+              </div>
             </div>
           </div>
+
           <div className="card-body">
             {!cart.length && <div className="text-muted">Ajoutez des articles à gauche.</div>}
             {cart.map(line => (
