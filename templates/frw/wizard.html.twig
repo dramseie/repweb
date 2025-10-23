@@ -1,0 +1,8 @@
+{# templates/frw/wizard.html.twig #}
+{% extends 'base.html.twig' %}
+{% block title %}Financial Reporting Wizard{% endblock %}
+{% block body %}
+  <div id="frw-root" data-template-code="{{ templateCode }}"></div>
+  {{ encore_entry_script_tags('frw') }}
+  {{ encore_entry_link_tags('frw') }}
+{% endblock %}

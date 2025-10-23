@@ -1,0 +1,4 @@
+// To include the top-down editor, add in index.jsx:
+// import TopDownEditor from "./TopDownEditor";
+// ... inside ProgramDashboard JSX, after <CapacityCalendar /> add:
+// <TopDownEditor />

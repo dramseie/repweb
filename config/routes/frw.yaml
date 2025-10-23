@@ -1,0 +1,9 @@
+# config/routes/frw.yaml
+frw_api:
+  resource: '../../src/Frw/Controller/'
+  type: attribute
+  prefix: /api/frw
+
+frw_pages:
+  path: /frw/wizard/{templateCode}
+  controller: App\Frw\Controller\TemplateController::wizardPage

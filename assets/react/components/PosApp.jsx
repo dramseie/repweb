@@ -1,14 +1,49 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import PaymentDialog from './PaymentDialog';
+import OrderDialog from './OrderDialog';
+import TimerButton from './TimerButton';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
-import OrderDialog from './OrderDialog'; // 👈 NEW
+/* =========================
+   Helpers (money, dates, addr)
+   ========================= */
+const EUR = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
+const toInt = (n) => Number.isFinite(+n) ? Math.trunc(+n) : 0;               // normalize to int (for cents/qty)
+const cents = (n) => toInt(n);                                               // keep integer cents
 
+const fmtMoney = (c) => EUR.format((toInt(c) || 0) / 100);
 
-const cents = n => (Number(n) || 0);
-const fmtMoney = c => (c / 100).toFixed(2) + ' €';
+const nowIso = () => new Date().toISOString();
+
+/** robust € string → cents (int) */
+const euroToCents = (val) => {
+  if (val == null) return 0;
+  const s = String(val).trim()
+    .replace(/\s/g, '')               // remove spaces
+    .replace(/[€]/g, '')              // drop € sign
+    .replace(',', '.');               // fr decimals → dot
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100);
+};
+
+const uid = () => 'divers-' + Math.random().toString(36).slice(2, 9);
+
+const emptyAddr = {
+  street: '', house_number: '', postcode: '', city: '',
+  region: '', country: '', formatted: '', geo: null,
+  place_id: '', source: '', updated_at: null
+};
+const fmtAddrBlock = (a) => {
+  if (!a) return '';
+  const line1 = [a.house_number, a.street].filter(Boolean).join(' ').trim();
+  const line2 = [a.postcode, a.city].filter(Boolean).join(' ').trim();
+  const line3 = a.country || '';
+  return [line1, line2, line3].filter(Boolean).join('\n');
+};
 
 // ---- Read realizations from the mount div (set by Twig) ----
-// Expecting objects like: { code, label, enabled, sort_order, colour_code, color_hex }
 const initialRealisations = (() => {
   try {
     const mount = document.getElementById('pos-root');
@@ -21,7 +56,7 @@ const initialRealisations = (() => {
       label: String(x.label ?? ''),
       enabled: Number(x.enabled ?? 1),
       sort_order: Number(x.sort_order ?? 9999),
-      colour_code: String(x.colour_code ?? '').toLowerCase(), // rose/bleu/violet/jaune/vert/orange/blanc
+      colour_code: String(x.colour_code ?? '').toLowerCase(),
       color_hex: x.color_hex || null,
     }));
   } catch {
@@ -55,6 +90,7 @@ const getOrderReals = (o) => {
 
 const mkDt = (dateStr, timeStr) => {
   const d = new Date(`${dateStr}T${timeStr}`);
+  if (isNaN(d)) return '';
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
 };
@@ -62,7 +98,7 @@ const nowSql = () =>
   new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
     .toISOString().slice(0, 19).replace('T', ' ');
 
-// ---------- NEW: Pastel color mapping + hook to sort/filter ----------
+// ---------- Pastel color mapping + hook to sort/filter ----------
 const REAL_COLOR_HEX = {
   rose:   '#F7D6E0',
   bleu:   '#B5E0FA',
@@ -85,15 +121,495 @@ const useSortedReals = (reals) => {
       });
   }, [reals]);
 };
-// ---------- /NEW ----------
 
+/* =========================
+   Address Picker Modal (Leaflet + Nominatim proxy)
+   ========================= */
+
+// Default map center: Hagenthal-le-Bas 🇫🇷
+const HAGENTHAL_CENTER = [47.5385, 7.5140];
+const HAGENTHAL_ZOOM   = 14;
+
+function AddressPickerModal({ show, onClose, onPick, initial }) {
+  const mapRef = useRef(null);
+  const nodeRef = useRef(null);
+  const markerRef = useRef(null);
+  const clickHandlerRef = useRef(null);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const searchAbortRef = useRef(null);
+  const reverseAbortRef = useRef(null);
+
+  // init / cleanup map
+  useEffect(() => {
+    if (!show || !nodeRef.current) return;
+
+    if (!mapRef.current) {
+      mapRef.current = L.map(nodeRef.current, { zoomControl: true }).setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+      }).addTo(mapRef.current);
+
+      // click handler (kept in ref to remove cleanly)
+      clickHandlerRef.current = async (e) => {
+        setBusy(true); setError('');
+        try {
+          // abort any previous reverse
+          reverseAbortRef.current?.abort();
+          reverseAbortRef.current = new AbortController();
+
+          const lat = e.latlng.lat, lon = e.latlng.lng;
+          if (!markerRef.current) markerRef.current = L.marker(e.latlng).addTo(mapRef.current);
+          else markerRef.current.setLatLng(e.latlng);
+
+          const r = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`, { signal: reverseAbortRef.current.signal });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const j = await r.json();
+          if (!j?.address) throw new Error('Aucune adresse trouvée');
+
+          const a = j.address || {};
+          const addr = {
+            street: a.road || a.pedestrian || a.footway || '',
+            house_number: a.house_number || '',
+            postcode: a.postcode || '',
+            city: a.city || a.town || a.village || a.hamlet || '',
+            region: a.state || '',
+            country: a.country_code ? a.country_code.toUpperCase() : (a.country || ''),
+            formatted: j.display_name || '',
+            geo: { lat, lng: lon },
+            place_id: j.place_id ? `nominatim:${j.place_id}` : '',
+            source: 'nominatim',
+            updated_at: nowIso()
+          };
+          onPick(addr);
+        } catch (e2) {
+          if (e2.name !== 'AbortError') setError(e2.message || 'Reverse-geocoding indisponible');
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      mapRef.current.on('click', clickHandlerRef.current);
+    }
+
+    // ensure size after modal becomes visible
+    setTimeout(() => { try { mapRef.current?.invalidateSize(); } catch {} }, 100);
+
+    // center on existing address if any
+    if (initial?.geo) {
+      const { lat, lng } = initial.geo;
+      mapRef.current.setView([lat, lng], 17);
+      if (!markerRef.current) markerRef.current = L.marker([lat, lng]).addTo(mapRef.current);
+      else markerRef.current.setLatLng([lat, lng]);
+    } else {
+      mapRef.current.setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
+    }
+
+    // cleanup when modal closes/unmounts
+    return () => {
+      searchAbortRef.current?.abort();
+      reverseAbortRef.current?.abort();
+      if (mapRef.current && clickHandlerRef.current) mapRef.current.off('click', clickHandlerRef.current);
+      // keep map instance for next open to avoid re-creating tiles; don’t destroy node
+    };
+  }, [show, initial, onPick]);
+
+  const onSubmitSearch = async (e) => {
+    e.preventDefault();
+    const raw = (query || '').trim();
+    if (!raw) return;
+    setBusy(true); setError('');
+    try {
+      // abort previous search
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = new AbortController();
+
+      // Try as-is
+      let r = await fetch(`/api/geocode/search?q=${encodeURIComponent(raw)}&limit=8`, { signal: searchAbortRef.current.signal });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      let j = await r.json();
+
+      // Fallback: add ", France"
+      if (!Array.isArray(j) || j.length === 0) {
+        r = await fetch(`/api/geocode/search?q=${encodeURIComponent(`${raw}, France`)}&limit=8`, { signal: searchAbortRef.current.signal });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        j = await r.json();
+      }
+
+      if (!Array.isArray(j) || j.length === 0) { setError('Aucun résultat'); return; }
+
+      // Prefer result with city/town/village match
+      const hit = j.find(x => {
+        const city = (x.address?.village || x.address?.town || x.address?.city || '').toLowerCase();
+        return city && raw.toLowerCase().includes(city);
+      }) || j[0];
+
+      const lat = parseFloat(hit.lat), lon = parseFloat(hit.lon);
+      mapRef.current.setView([lat, lon], 18);
+      if (!markerRef.current) markerRef.current = L.marker([lat, lon]).addTo(mapRef.current);
+      else markerRef.current.setLatLng([lat, lon]);
+
+      const a = hit.address || {};
+      const addr = {
+        street: a.road || a.pedestrian || a.footway || '',
+        house_number: a.house_number || '',
+        postcode: a.postcode || '',
+        city: a.city || a.town || a.village || '',
+        region: a.state || '',
+        country: a.country_code ? a.country_code.toUpperCase() : (a.country || ''),
+        formatted: hit.display_name || '',
+        geo: { lat, lng: lon },
+        place_id: hit.place_id ? `nominatim:${hit.place_id}` : '',
+        source: 'nominatim',
+        updated_at: nowIso()
+      };
+      onPick(addr);
+    } catch (e2) {
+      if (e2.name !== 'AbortError') setError(e2.message || 'Recherche échouée');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`modal ${show ? 'd-block' : ''}`} tabIndex="-1" style={{ background:'rgba(0,0,0,.5)' }} aria-hidden={!show}>
+      <div className="modal-dialog modal-xl modal-dialog-centered">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">Choisir une adresse</h5>
+            <button type="button" className="btn-close" onClick={onClose} aria-label="Fermer"/>
+          </div>
+          <div className="modal-body">
+            <form className="d-flex gap-2 mb-2" onSubmit={onSubmitSearch}>
+              <input
+                className="form-control"
+                placeholder="Ex: hagenthal-le-bas, 10 rue ..."
+                value={query}
+                onChange={e=>setQuery(e.target.value)}
+                aria-label="Rechercher une adresse"
+              />
+              <button className="btn btn-primary" disabled={busy}>Rechercher</button>
+            </form>
+            {error && <div className="alert alert-warning py-2">{error}</div>}
+            <div ref={nodeRef} style={{ height: 500, width: '100%' }}/>
+            <div className="form-text mt-2">
+              Astuce: cliquez sur la carte pour sélectionner précisément l’adresse.
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-outline-secondary" onClick={onClose}>Fermer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Divers (free line) modal
+   ========================= */
+function DiversModal({ show, onClose, onAdd, defaultTaxRate = 0 }) {
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('0');
+  const [tax, setTax] = useState(defaultTaxRate);
+  const [qty, setQty] = useState(1);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (show) {
+      setErr(null);
+      setLabel('');
+      setAmount('0');
+      setTax(defaultTaxRate);
+      setQty(1);
+    }
+  }, [show, defaultTaxRate]);
+
+  const add = () => {
+    const labelT = (label || '').trim();
+    const centsVal = euroToCents(amount);
+    if (!labelT) { setErr('Veuillez saisir un libellé.'); return; }
+    if (centsVal <= 0) { setErr('Le montant doit être > 0.'); return; }
+    if ((Number(qty) || 0) <= 0) { setErr('La quantité doit être ≥ 1.'); return; }
+    onAdd({
+      id: uid(),
+      isCustom: true,
+      name: `Divers — ${labelT}`,
+      unit: centsVal,
+      rate: Number(tax) || 0,
+      qty: Math.max(1, Number(qty) || 1)
+    });
+    onClose();
+  };
+
+  return (
+    <div className={`modal ${show ? 'd-block' : ''}`} tabIndex="-1" style={{ background:'rgba(0,0,0,.5)' }}>
+      <div className="modal-dialog">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">Ajouter un poste “Divers”</h5>
+            <button type="button" className="btn-close" onClick={onClose} aria-label="Fermer"/>
+          </div>
+          <div className="modal-body">
+            {err && <div className="alert alert-danger py-1 small">{err}</div>}
+            <div className="mb-2">
+              <label className="form-label small">Libellé</label>
+              <input className="form-control" value={label} onChange={e=>setLabel(e.target.value)} placeholder="Ex: Réparation, supplément, remise négative…" />
+            </div>
+            <div className="row g-2">
+              <div className="col-5">
+                <label className="form-label small">Montant (€)</label>
+                <input className="form-control" value={amount} onChange={e=>setAmount(e.target.value)} />
+              </div>
+              <div className="col-4">
+                <label className="form-label small">TVA</label>
+                <select className="form-select" value={tax} onChange={e=>setTax(e.target.value)}>
+                  {[0, 2.1, 5.5, 10, 20].map(t => (
+                    <option key={t} value={t}>{t}%</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-3">
+                <label className="form-label small">Qté</label>
+                <input type="number" min="1" className="form-control" value={qty} onChange={e=>setQty(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-secondary" onClick={onClose}>Annuler</button>
+            <button className="btn btn-primary" onClick={add}>Ajouter</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Main POS App
+   ========================= */
+   
+	// == Timer helpers ==
+	const fmtHMS = (totalSec) => {
+	  const s = Math.max(0, Math.floor(totalSec || 0));
+	  const h = String(Math.floor(s / 3600)).padStart(2, '0');
+	  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+	  const ss = String(s % 60).padStart(2, '0');
+	  return `${h}:${m}:${ss}`;
+	};
+
+	// Small localStorage-backed engine
+	function usePosTimer(storageKey) {
+	  const key = `posTimer:${storageKey || 'default'}`;
+	  const [status, setStatus] = useState('idle'); // idle | running | paused | stopped
+	  const [elapsed, setElapsed] = useState(0);
+	  const lastTickRef = useRef(null);
+	  const rafRef = useRef(null);
+
+	  // load
+	  useEffect(() => {
+		try {
+		  const raw = localStorage.getItem(key);
+		  if (raw) {
+			const j = JSON.parse(raw);
+			setStatus(j.status ?? 'idle');
+			setElapsed(Number(j.elapsed ?? 0));
+			lastTickRef.current = j.lastTick ?? null;
+		  } else {
+			setStatus('idle'); setElapsed(0); lastTickRef.current = null;
+		  }
+		} catch {
+		  // ignore
+		}
+		// cleanup any RAF on key change
+		return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	  }, [key]);
+
+	  const persist = useCallback((st = status, el = elapsed, lt = lastTickRef.current) => {
+		try {
+		  localStorage.setItem(key, JSON.stringify({ status: st, elapsed: el, lastTick: lt }));
+		} catch {}
+	  }, [key, status, elapsed]);
+
+	  const renderTick = useCallback(() => {
+		if (status !== 'running') return;
+		const now = Date.now();
+		const lt = lastTickRef.current || now;
+		const delta = (now - lt) / 1000;
+		lastTickRef.current = now;
+		setElapsed((e) => {
+		  const v = e + delta;
+		  persist('running', v, lastTickRef.current);
+		  return v;
+		});
+		rafRef.current = requestAnimationFrame(renderTick);
+	  }, [status, persist]);
+
+	  const start = useCallback(() => {
+		if (status !== 'idle') return;
+		lastTickRef.current = Date.now();
+		setStatus('running');
+		persist('running', elapsed, lastTickRef.current);
+		rafRef.current = requestAnimationFrame(renderTick);
+	  }, [status, elapsed, persist, renderTick]);
+
+	  const pause = useCallback(() => {
+		if (status !== 'running') return;
+		const now = Date.now();
+		const lt = lastTickRef.current || now;
+		const delta = (now - lt) / 1000;
+		lastTickRef.current = null;
+		setElapsed((e) => {
+		  const v = e + delta;
+		  setStatus('paused');
+		  persist('paused', v, null);
+		  return v;
+		});
+		if (rafRef.current) cancelAnimationFrame(rafRef.current);
+	  }, [status, persist]);
+
+	  const resume = useCallback(() => {
+		if (status !== 'paused') return;
+		lastTickRef.current = Date.now();
+		setStatus('running');
+		persist('running', elapsed, lastTickRef.current);
+		rafRef.current = requestAnimationFrame(renderTick);
+	  }, [status, elapsed, persist, renderTick]);
+
+	  const stop = useCallback(() => {
+		setElapsed((e) => {
+		  let v = e;
+		  if (status === 'running') {
+			const now = Date.now();
+			const lt = lastTickRef.current || now;
+			v = e + (now - lt) / 1000;
+		  }
+		  lastTickRef.current = null;
+		  setStatus('stopped');
+		  persist('stopped', v, null);
+		  if (rafRef.current) cancelAnimationFrame(rafRef.current);
+		  return v;
+		});
+	  }, [status, persist]);
+
+	  const reset = useCallback(() => {
+		if (rafRef.current) cancelAnimationFrame(rafRef.current);
+		lastTickRef.current = null;
+		setStatus('idle'); setElapsed(0);
+		persist('idle', 0, null);
+	  }, [persist]);
+
+	  // auto-resume visuals after reload while running
+	  useEffect(() => {
+		if (status === 'running' && !rafRef.current) {
+		  lastTickRef.current = Date.now();
+		  rafRef.current = requestAnimationFrame(renderTick);
+		}
+	  }, [status, renderTick]);
+
+	  return { status, elapsed, start, pause, resume, stop, reset };
+	}
+
+	// === Timer UI (exposes stop() via ref) ===
+	const Timer = React.forwardRef(function Timer({ storageKey, onStopped, disabled }, ref) {
+	  const { status, elapsed, start, pause, resume, stop, reset } = usePosTimer(storageKey);
+
+	  React.useImperativeHandle(ref, () => ({
+		stopAndReturn: () => {
+		  stop();
+		  const t = fmtHMS((Math.round((elapsed + (status==='running' ? 0 : 0)) * 1000) / 1000));
+		  return t; // display format
+		},
+		hardStop: () => stop(),
+	  }), [stop, elapsed, status]);
+
+	  const doStop = () => {
+		const before = Math.round(elapsed);
+		stop();
+		const hms = fmtHMS(before);
+		onStopped?.(hms, before);
+	  };
+
+	  return (
+		<div className="d-flex align-items-center gap-2">
+		  <div className="fw-bold" style={{ minWidth: 90, fontVariantNumeric:'tabular-nums' }}>
+			{fmtHMS(elapsed)}
+		  </div>
+
+		  <button className="btn btn-sm btn-success"
+				  onClick={start}
+				  disabled={disabled || status!=='idle'}>Start</button>
+
+		  <button className="btn btn-sm btn-warning"
+				  onClick={pause}
+				  disabled={disabled || status!=='running'}>Pause</button>
+
+		  <button className="btn btn-sm btn-info"
+				  onClick={resume}
+				  disabled={disabled || status!=='paused'}>Resume</button>
+
+		  <button className="btn btn-sm btn-danger"
+				  onClick={doStop}
+				  disabled={disabled || (status!=='running' && status!=='paused')}>Stop</button>
+
+		  <button className="btn btn-sm btn-outline-secondary"
+				  onClick={reset}
+				  disabled={disabled || (status==='idle' && elapsed===0)}>Reset</button>
+		</div>
+	  );
+	});
+   
+   
+   
 export default function PosApp() {
   const [loading, setLoading] = useState(true);
   const [cats, setCats] = useState({});
   const [cart, setCart] = useState([]);
 
-  // 👤 Customer state
-  const [customer, setCustomer] = useState(null);
+  // 👤 Customer state (persisted)
+  const [customer, setCustomer] = useState(() => {
+    try {
+      const raw = localStorage.getItem('ongleri:selectedCustomer');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // keep in sync with localStorage
+  useEffect(() => {
+    try {
+      if (customer) localStorage.setItem('ongleri:selectedCustomer', JSON.stringify(customer));
+      else localStorage.removeItem('ongleri:selectedCustomer');
+    } catch {}
+  }, [customer]);
+
+  // Optional: cross-tab sync
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'ongleri:selectedCustomer') {
+        try {
+          setCustomer(e.newValue ? JSON.parse(e.newValue) : null);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // 🔧 Auto-load detail/history on startup and when customer changes
+  useEffect(() => {
+    if (customer?.id) {
+      loadCustomerDetail(customer.id);
+    } else {
+      setCustDetail(null);
+      setActiveAppointmentId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.id]);
+
   const [custTab, setCustTab] = useState('search');
   const [custQuery, setCustQuery] = useState('');
   const [custResults, setCustResults] = useState([]);
@@ -109,14 +625,14 @@ export default function PosApp() {
   const [activeAppointmentId, setActiveAppointmentId] = useState(null);
 
   // 🔹 New RDV form
-  const [rdv, setRdv] = useState({ date: '', time: '', durationMin: 60, notes_public: '' });
+  const [rdv, setRdv] = useState({date: '', time: '', durationMin: 120, notes_public: '', status: 'booked'});
   const setR = (k, v) => setRdv(prev => ({ ...prev, [k]: v }));
   const [rdvErr, setRdvErr] = useState(null);
 
   // 🧩 Réalisations selection (metadata only, no price)
   const [selectedReals, setSelectedReals] = useState([]); // [{code,label}]
   const allReals = initialRealisations; // from Twig
-  const sortedReals = useSortedReals(allReals); // <-- NEW
+  const sortedReals = useSortedReals(allReals);
 
   // 📝 Order notes
   const [techNotes, setTechNotes] = useState('');
@@ -129,28 +645,58 @@ export default function PosApp() {
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({
-    first_name: '', last_name: '', phone: '', email: '', notes_public: '', gdpr_ok: true
+    first_name: '', last_name: '', phone: '', email: '', notes_public: '', gdpr_ok: true,
+    address: null
   });
   const [editErr, setEditErr] = useState(null);
+  const [showAddrPicker, setShowAddrPicker] = useState(false);
   const EF = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
 
+  // Divers modal state
+  const [diversOpen, setDiversOpen] = useState(false);
+  const defaultDiversTax = useMemo(() => (cart.length ? (cart[cart.length - 1].rate || 0) : 0), [cart]);
 
-	// 🔎 Order dialog state
-	const [showOrderDlg, setShowOrderDlg] = useState(false);
-	const [orderDlgData, setOrderDlgData] = useState(null);
-	const openOrderDialog = async (orderId) => {
-	  try {
-		const r = await fetch(`/api/pos/orders/${orderId}`);
-		const d = await r.json();
-		if (d && d.ok) {
-		  setOrderDlgData(d);
-		  setShowOrderDlg(true);
-		}
-	  } catch (e) {
-		console.error('Failed to load order', e);
-	  }
-	};
+  const minsToHHMM = (m) => {
+    const mm = Math.max(0, Number(m) || 0);
+    const h = Math.floor(mm / 60);
+    const m2 = mm % 60;
+    return `${String(h).padStart(2, '0')}:${String(m2).padStart(2, '0')}`;
+  };
+  const hhmmToMins = (hhmm) => {
+    if (!hhmm) return 0;
+    const [h, m] = hhmm.split(':').map(n => Number(n) || 0);
+    return h * 60 + m;
+  };
+  const sqlToDateTime = (s) => {
+    const d = new Date(String(s).replace(' ', 'T'));
+    if (isNaN(d)) return { date: '', time: '' };
+    const date = d.toISOString().slice(0, 10);
+    const time = d.toTimeString().slice(0, 5);
+    return { date, time };
+  };
+  const diffMinutes = (startSql, endSql) => {
+    const a = new Date(String(startSql).replace(' ', 'T'));
+    const b = new Date(String(endSql).replace(' ', 'T'));
+    if (isNaN(a) || isNaN(b)) return 60;
+    return Math.max(0, Math.round((b - a) / 60000));
+  };
 
+  // 🔎 Order dialog state
+  const [showOrderDlg, setShowOrderDlg] = useState(false);
+  const [orderDlgData, setOrderDlgData] = useState(null);
+  const openOrderDialog = async (orderId) => {
+    try {
+      const r = await fetch(`/api/pos/orders/${orderId}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      if (d && d.ok) {
+        setOrderDlgData(d);
+        setShowOrderDlg(true);
+      }
+    } catch (e) {
+      console.error('Failed to load order', e);
+    }
+  };
 
   const selectedAppt = useMemo(() => {
     if (!custDetail?.appointments?.length || !activeAppointmentId) return null;
@@ -164,19 +710,47 @@ export default function PosApp() {
 
   useEffect(() => {
     (async () => {
-      setLoading(true);
-      const r = await fetch('/api/pos/items');
-      const data = await r.json();
-      setCats(data.categories || {});
-      setLoading(false);
+      try {
+        setLoading(true);
+        const r = await fetch('/api/pos/items');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        setCats(data.categories || {});
+      } catch (e) {
+        console.error(e);
+        setCats({});
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
-  async function searchCustomers(q) {
-    const r = await fetch('/api/pos/customers?q=' + encodeURIComponent(q));
-    const data = await r.json();
-    setCustResults(data.items || []);
-  }
+  // --- debounced customer search with abort ---
+  const searchAbort = useRef(null);
+  const searchCustomers = useCallback((q) => {
+    const query = (q || '').trim();
+    if (query.length < 2) { setCustResults([]); return; }
+    searchAbort.current?.abort();
+    const ctrl = new AbortController();
+    searchAbort.current = ctrl;
+
+    // debounce ~250ms
+    const handle = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/pos/customers?q=' + encodeURIComponent(query), { signal: ctrl.signal });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        setCustResults(data.items || []);
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error(e);
+      }
+    }, 250);
+
+    return () => {
+      clearTimeout(handle);
+      ctrl.abort();
+    };
+  }, []);
 
   async function loadAllCustomers() {
     setAllLoading(true); setAllErr(null);
@@ -200,13 +774,19 @@ export default function PosApp() {
   }
 
   async function loadCustomerDetail(id) {
-    const r = await fetch(`/api/pos/customers/${id}`);
-    const d = await r.json();
-    if (d.customer) {
-      setCustDetail(d);
-      if (Object.prototype.hasOwnProperty.call(d, 'active_appointment_id')) {
-        setActiveAppointmentId(d.active_appointment_id || null);
+    try {
+      const r = await fetch(`/api/pos/customers/${id}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      if (d.customer) {
+        setCustDetail(d);
+        if (Object.prototype.hasOwnProperty.call(d, 'active_appointment_id')) {
+          setActiveAppointmentId(d.active_appointment_id || null);
+        }
       }
+    } catch (e) {
+      console.error(e);
+      setCustDetail(null);
     }
   }
 
@@ -254,9 +834,43 @@ export default function PosApp() {
     setRdv(prev => ({ ...prev, notes_public: '' }));
   }
 
+  async function updateRdv() {
+    setRdvErr(null);
+    if (!customer?.id) { setRdvErr('Sélectionnez un client.'); return; }
+    if (!activeAppointmentId) { setRdvErr('Sélectionnez un rendez-vous.'); return; }
+    if (!rdv.date || !rdv.time) { setRdvErr('Date et heure sont requises.'); return; }
+
+    const start = mkDt(rdv.date, rdv.time);
+    const startDate = new Date(`${rdv.date}T${rdv.time}`);
+    const end = mkDt(
+      rdv.date,
+      new Date(startDate.getTime() + (Number(rdv.durationMin) || 60) * 60000)
+        .toTimeString().slice(0, 5)
+    );
+
+    const payload = {
+      start_at: start,
+      end_at: end,
+      status: rdv.status || 'booked',
+      notes_public: rdv.notes_public || null,
+    };
+
+    const res = await fetch(`/api/pos/appointments/${activeAppointmentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const t = await res.json().catch(() => ({}));
+      setRdvErr(t.error || `HTTP ${res.status}`);
+      return;
+    }
+    if (customer?.id) await loadCustomerDetail(customer.id);
+  }
+
   const selectCustomer = async (c) => {
     setCustomer(c);
-    setActiveAppointmentId(null);
+    clearRdvSelectionAndForm(); // also reset RDV form
     await loadCustomerDetail(c.id);
   };
 
@@ -282,18 +896,27 @@ export default function PosApp() {
       return next;
     });
   };
-  const removeLine = id => setCart(prev => prev.filter(x => x.id !== id));
-  const inc = id => setCart(prev => prev.map(x => x.id === id ? { ...x, qty: x.qty + 1 } : x));
-  const dec = id => setCart(prev => prev.map(x => x.id === id ? { ...x, qty: Math.max(1, x.qty - 1) } : x));
+  const addDivers = (line) => {
+    setCart(prev => {
+      const wasEmpty = prev.length === 0;
+      const next = [...prev, line];
+      if (wasEmpty && activeAppointmentId) markRealStart(activeAppointmentId);
+      return next;
+    });
+  };
+  const removeLine = (id) => setCart(prev => prev.filter(x => x.id !== id));
+  const inc = (id) => setCart(prev => prev.map(x => x.id === id ? { ...x, qty: x.qty + 1 } : x));
+  const dec = (id) => setCart(prev => prev.map(x => x.id === id ? { ...x, qty: Math.max(1, x.qty - 1) } : x));
 
   const totals = useMemo(() => {
     let net = 0, tax = 0;
     for (const l of cart) {
-      const line = cents(l.unit) * l.qty;
+      const line = cents(l.unit) * (l.qty || 0);
       net += line;
       tax += Math.round(line * (Number(l.rate) / 100));
     }
-    return { net, tax, total: net + tax };
+    const total = net + tax;
+    return { net, tax, total };
   }, [cart]);
 
   // --- Réalisations helpers ---
@@ -320,30 +943,40 @@ export default function PosApp() {
       });
     }
 
+    const items = cart.filter(l => !l.isCustom).map(l => ({ item_id: l.id, qty: l.qty }));
+    const customItems = cart.filter(l => l.isCustom).map(l => ({
+      label: l.name.replace(/^Divers —\s*/, ''),
+      unit_cents: l.unit,
+      tax_rate: l.rate,
+      qty: l.qty
+    }));
+
     const payload = {
-      items: cart.map(l => ({ item_id: l.id, qty: l.qty })),
+      items,
+      ...(customItems.length ? { custom_items: customItems } : {}),
       customer_id: customer?.id || null,
       appointment_id: activeAppointmentId || null,
       note: techNotes || null,
       realizations: selectedReals,
     };
+
     const r = await fetch('/api/pos/orders', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     const data = await r.json();
     if (data.ok) {
       const apptId = data.appointment_id ?? activeAppointmentId ?? null;
-      let startIso = null;
+      let startIso2 = null;
       if (apptId && custDetail?.appointments?.length) {
         const a = custDetail.appointments.find(x => x.id === apptId);
         const start = a?.start_at || null;
-        if (start) startIso = start.replace(' ', 'T');
+        if (start) startIso2 = start.replace(' ', 'T');
       }
       setCurrentOrder({
         id: data.order_id,
         total_cents: data.total_cents,
         appointment_id: apptId,
-        rendezVousStartIso: startIso,
+        rendezVousStartIso: startIso2,
       });
       setPayOpen(true);
     } else {
@@ -371,7 +1004,32 @@ export default function PosApp() {
   };
 
   const isActiveAppt = a => a.id === activeAppointmentId;
-  const selectAppt = a => setActiveAppointmentId(a.id);
+
+  // 🔄 Clear selection + reset form (used by toggle and by “Nouveau rendez-vous”)
+  const clearRdvSelectionAndForm = () => {
+    setActiveAppointmentId(null);
+    setRdv({ date: '', time: '', durationMin: 120, notes_public: '', status: 'booked' });
+  };
+
+  // 🔁 TOGGLE selection: click same row again → unselect & clear form
+  const selectAppt = (a) => {
+    if (activeAppointmentId === a.id) {
+      // toggle OFF
+      clearRdvSelectionAndForm();
+      return;
+    }
+    // select & fill
+    setActiveAppointmentId(a.id);
+    const { date, time } = sqlToDateTime(a.start_at);
+    const duration = diffMinutes(a.start_at, a.end_at);
+    setRdv({
+      date,
+      time,
+      durationMin: duration || 60,
+      notes_public: a.notes_public || '',
+      status: a.status || 'booked',
+    });
+  };
 
   const orderRows = useMemo(() => {
     const orders = custDetail?.orders ?? [];
@@ -428,45 +1086,54 @@ export default function PosApp() {
   // ===== ✏️ EDIT CUSTOMER HELPERS =====
   async function openEditCustomer(id) {
     setEditErr(null);
-    const r = await fetch(`/api/pos/customers/${id}`);
-    const d = await r.json();
-    if (!r.ok || !d?.customer) {
-      setEditErr(d?.error || 'Chargement du client impossible.');
+    try {
+      const r = await fetch(`/api/pos/customers/${id}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      if (!d?.customer) throw new Error('Chargement du client impossible.');
+      const c = d.customer;
+      let parsedAddr = null;
+      try { parsedAddr = c.address ? JSON.parse(c.address) : null; } catch { parsedAddr = null; }
+      setEditId(c.id);
+      setEditForm({
+        first_name: c.first_name || '',
+        last_name: c.last_name || '',
+        phone: c.phone || '',
+        email: c.email || '',
+        notes_public: c.notes_public || '',
+        gdpr_ok: !!c.gdpr_ok,
+        address: parsedAddr
+      });
       setEditOpen(true);
-      return;
+    } catch (e) {
+      setEditErr(e.message || 'Chargement du client impossible.');
+      setEditOpen(true);
     }
-    const c = d.customer;
-    setEditId(c.id);
-    setEditForm({
-      first_name: c.first_name || '',
-      last_name: c.last_name || '',
-      phone: c.phone || '',
-      email: c.email || '',
-      notes_public: c.notes_public || '',
-      gdpr_ok: !!c.gdpr_ok
-    });
-    setEditOpen(true);
   }
 
   async function saveEditCustomer() {
     setEditErr(null);
-    const fn = editForm.first_name.trim();
-    const ln = editForm.last_name.trim();
+    const fn = (editForm.first_name || '').trim();
+    const ln = (editForm.last_name || '').trim();
     if (!fn || !ln) {
       setEditErr('Prénom et nom sont requis.');
       return;
     }
+    const payload = {
+      first_name: fn,
+      last_name: ln,
+      phone: (editForm.phone || '').trim() || null,
+      email: (editForm.email || '').trim() || null,
+      notes_public: (editForm.notes_public || '').trim() || null,
+      gdpr_ok: !!editForm.gdpr_ok,
+      address: editForm.address
+        ? JSON.stringify({ ...editForm.address, formatted: fmtAddrBlock(editForm.address), updated_at: nowIso() })
+        : null
+    };
     const r = await fetch(`/api/pos/customers/${editId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        first_name: fn,
-        last_name: ln,
-        phone: editForm.phone.trim() || null,
-        email: editForm.email.trim() || null,
-        notes_public: editForm.notes_public.trim() || null,
-        gdpr_ok: !!editForm.gdpr_ok
-      })
+      body: JSON.stringify(payload)
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
@@ -474,7 +1141,6 @@ export default function PosApp() {
       return;
     }
 
-    // Refresh selected customer + lists
     const updated = d;
     if (customer?.id === editId) {
       setCustomer({
@@ -508,6 +1174,14 @@ export default function PosApp() {
 
     setEditOpen(false);
   }
+
+  // 👉 Quick emoji add for RDV notes
+  const QUICK_EMOJIS = [
+    { symbol: '✋', title: 'Main' },
+    { symbol: '🦶', title: 'Pieds' },
+    { symbol: '🙅', title: 'Dépose' },
+    { symbol: '🛠️', title: 'Réparation' },
+  ];
 
   return (
     <div className="row g-3">
@@ -544,7 +1218,10 @@ export default function PosApp() {
         <div className="card shadow-sm">
           <div className="card-header d-flex justify-content-between align-items-center">
             <strong>Panier</strong>
-            <button className="btn btn-sm btn-outline-secondary" onClick={() => setCart([])} disabled={!cart.length}>Vider</button>
+            <div className="d-flex gap-2">
+              <button className="btn btn-sm btn-outline-primary" onClick={() => setDiversOpen(true)}>+ Divers</button>
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setCart([])} disabled={!cart.length}>Vider</button>
+            </div>
           </div>
           <div className="card-body">
             {!cart.length && <div className="text-muted">Ajoutez des articles à gauche.</div>}
@@ -552,14 +1229,14 @@ export default function PosApp() {
               <div key={line.id} className="d-flex align-items-center border-bottom py-2">
                 <div className="flex-grow-1">
                   <div className="fw-semibold">{line.name}</div>
-                  <div className="small text-muted">{fmtMoney(line.unit)} • TVA {line.rate}%</div>
+                  <div className="small text-muted">{fmtMoney(line.unit)} • TVA {line.rate}% {line.isCustom ? '• (Divers)' : ''}</div>
                 </div>
-                <div className="d-flex align-items-center gap-2">
-                  <button className="btn btn-sm btn-outline-secondary" onClick={() => dec(line.id)}>-</button>
+                <div className="d-flex align-items-center gap-2" aria-label="Quantité">
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => dec(line.id)} aria-label="Diminuer la quantité">-</button>
                   <span className="px-2">{line.qty}</span>
-                  <button className="btn btn-sm btn-outline-secondary" onClick={() => inc(line.id)}>+</button>
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => inc(line.id)} aria-label="Augmenter la quantité">+</button>
                 </div>
-                <div className="ms-3 fw-semibold" style={{ width: 90, textAlign: 'right' }}>
+                <div className="ms-3 fw-semibold" style={{ width: 130, textAlign: 'right' }}>
                   {fmtMoney(line.unit * line.qty)}
                 </div>
                 <button className="btn btn-sm btn-outline-danger ms-2" onClick={() => removeLine(line.id)} title="Retirer">×</button>
@@ -609,7 +1286,7 @@ export default function PosApp() {
 
             {/* Notes techniques */}
             <div className="mt-3">
-              <label className="form-label small">Notes techniques (après RDV)</label>
+              <label className="form-label small">Notes concernant la prestation</label>
               <textarea className="form-control" rows={2} value={techNotes} onChange={e => setTechNotes(e.target.value)} placeholder="Ex: ongles fragiles, allergies, préférences…" />
             </div>
 
@@ -641,7 +1318,7 @@ export default function PosApp() {
                   ✏️ Éditer
                 </button>
                 <button className="btn btn-sm btn-outline-danger"
-                        onClick={() => { setCustomer(null); setCustDetail(null); setActiveAppointmentId(null); }}>
+                        onClick={() => { setCustomer(null); setCustDetail(null); clearRdvSelectionAndForm(); }}>
                   Changer
                 </button>
               </div>
@@ -678,8 +1355,7 @@ export default function PosApp() {
                         onChange={e => {
                           const v = e.target.value;
                           setCustQuery(v);
-                          if (v.trim().length >= 2) searchCustomers(v.trim());
-                          else setCustResults([]);
+                          searchCustomers(v);
                         }} />
                       <button className="btn btn-outline-secondary" onClick={() => searchCustomers(custQuery)}>OK</button>
                     </div>
@@ -702,6 +1378,8 @@ export default function PosApp() {
                           </button>
                         </div>
                       ))}
+
+                      {/* Empty state only when there is a query with no results */}
                       {!custResults.length && custQuery.trim().length >= 2 && (
                         <div className="text-muted small p-2">Aucun résultat…</div>
                       )}
@@ -788,9 +1466,11 @@ export default function PosApp() {
                   <span className="badge text-bg-light">#{customer.id}</span>
                 </div>
 
-                {/* Nouveau RDV */}
+                {/* Nouveau / Modifier RDV */}
                 <div className="border rounded p-2 mb-3">
-                  <div className="fw-semibold mb-2">Nouveau rendez-vous</div>
+                  <div className="fw-semibold mb-2">
+                    {activeAppointmentId ? `Modifier rendez-vous #${activeAppointmentId}` : 'Nouveau rendez-vous'}
+                  </div>
                   {rdvErr && <div className="alert alert-danger py-1 small">{rdvErr}</div>}
                   <div className="row g-2">
                     <div className="col-5">
@@ -801,21 +1481,82 @@ export default function PosApp() {
                       <label className="form-label small">Heure</label>
                       <input type="time" className="form-control" step="300" value={rdv.time} onChange={e=>setR('time', e.target.value)} />
                     </div>
+
                     <div className="col-3">
-                      <label className="form-label small">Durée</label>
-                      <div className="input-group">
-                        <input type="number" min="15" step="15" className="form-control" value={rdv.durationMin}
-                               onChange={e=>setR('durationMin', e.target.value)} />
-                        <span className="input-group-text">min</span>
-                      </div>
+                      <label className="form-label small">Durée (hh:mm)</label>
+                      <input
+                        type="time"
+                        step="900"
+                        className="form-control"
+                        value={minsToHHMM(rdv.durationMin)}
+                        onChange={(e) => setR('durationMin', hhmmToMins(e.target.value))}
+                      />
                     </div>
+
+                    <div className="col-4">
+                      <label className="form-label small">Statut</label>
+                      <select
+                        className="form-select"
+                        value={rdv.status}
+                        onChange={(e) => setR('status', e.target.value)}
+                      >
+                        <option value="booked">bookée</option>
+                        <option value="done">done</option>
+                        <option value="no-show">no-show</option>
+                        <option value="cancelled">cancelled</option>
+                      </select>
+                    </div>
+
                     <div className="col-12">
-                      <label className="form-label small">Notes (visibles)</label>
-                      <textarea className="form-control" rows={2} value={rdv.notes_public}
-                                onChange={e=>setR('notes_public', e.target.value)} />
+                      {/* Label + emoji toolbar */}
+                      <div className="d-flex align-items-center justify-content-between">
+                        <label className="form-label small mb-0">Notes pour le rendez-vous</label>
+                        <div className="d-flex gap-1">
+                          {QUICK_EMOJIS.map(e => (
+                            <button
+                              key={e.symbol}
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary"
+                              title={e.title}
+                              onClick={() => {
+                                setR("notes_public", (rdv.notes_public || "").includes(e.symbol)
+                                  ? rdv.notes_public
+                                  : ((rdv.notes_public || "").trim().length
+                                    ? rdv.notes_public + " " + e.symbol
+                                    : e.symbol)
+                                );
+                              }}
+                            >
+                              {e.symbol}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <textarea
+                        id="rdv-notes"
+                        className="form-control mt-1"
+                        rows={2}
+                        value={rdv.notes_public || ""}
+                        onChange={e => setR("notes_public", e.target.value)}
+                      />
                     </div>
+
                     <div className="col-12 d-flex justify-content-end">
-                      <button className="btn btn-sm btn-primary" onClick={createRdv}>Créer RDV</button>
+                      {activeAppointmentId ? (
+                        <>
+                          <button className="btn btn-sm btn-primary" onClick={updateRdv}>
+                            Mettre à jour
+                          </button>
+                          <button className="btn btn-sm btn-outline-secondary ms-2" onClick={clearRdvSelectionAndForm}>
+                            Nouveau rendez-vous
+                          </button>
+                        </>
+                      ) : (
+                        <button className="btn btn-sm btn-primary" onClick={createRdv}>
+                          Créer RDV
+                        </button>
+                      )}
                       <a className="btn btn-sm btn-outline-secondary ms-2" href="/pos/agenda" target="_blank" rel="noreferrer">Ouvrir l’agenda</a>
                     </div>
                   </div>
@@ -827,13 +1568,6 @@ export default function PosApp() {
                   <div className="text-muted small">Chargement…</div>
                 ) : (
                   <div className="small">
-                    {activeAppointmentId && (
-                      <div className="mb-2">
-                        <span className="badge text-bg-info">RDV sélectionné : #{activeAppointmentId}</span>
-                        <button className="btn btn-sm btn-link ms-2 p-0" onClick={()=>setActiveAppointmentId(null)}>Retirer le lien</button>
-                      </div>
-                    )}
-
                     <div className="mb-2">
                       <div className="fw-semibold">Rendez-vous</div>
                       <div className="table-responsive">
@@ -845,18 +1579,21 @@ export default function PosApp() {
                             {(custDetail.appointments?.filter(a => a.status !== 'done') ?? []).length
                               ? custDetail.appointments
                                   .filter(a => a.status !== 'done')
-                                  .map(a => (
-                                    <tr key={a.id}
-                                        onClick={() => selectAppt(a)}
-                                        className={a.id === activeAppointmentId ? 'table-primary' : ''}
-                                        style={{ cursor:'pointer' }}
-                                        title="Sélectionner ce rendez-vous">
-                                      <td>{fmtDateFr(a.start_at)}</td>
-                                      <td>{fmtTimeFr(a.start_at)}</td>
-                                      <td>{a.status}</td>
-                                      <td className="text-truncate" style={{maxWidth:220}} title={a.notes_public || ''}>{a.notes_public || '—'}</td>
-                                    </tr>
-                                  ))
+                                  .map(a => {
+                                    const selected = a.id === activeAppointmentId;
+                                    return (
+                                      <tr key={a.id}
+                                          onClick={() => selectAppt(a)}
+                                          className={selected ? 'table-primary' : ''}
+                                          style={{ cursor:'pointer' }}
+                                          title={selected ? 'Cliquez pour désélectionner' : 'Cliquez pour sélectionner'}>
+                                        <td>{fmtDateFr(a.start_at)}</td>
+                                        <td>{fmtTimeFr(a.start_at)}</td>
+                                        <td>{a.status}</td>
+                                        <td className="text-truncate" style={{maxWidth:220}} title={a.notes_public || ''}>{a.notes_public || '—'}</td>
+                                      </tr>
+                                    );
+                                  })
                               : <tr><td colSpan={4} className="text-muted">Aucun RDV</td></tr>}
                           </tbody>
                         </table>
@@ -873,42 +1610,40 @@ export default function PosApp() {
                           <tbody>
                             {orderRows.length
                               ? orderRows.map(row => (
-								<tr
-								  key={row.key}
-								  style={{ cursor: 'pointer' }}
-								  onClick={() => {
-									// row.key is "order-<id>" or "appt-<appointment_id>"
-									const m = String(row.key).match(/^order-(\d+)$/);
-									if (m) {
-									  openOrderDialog(Number(m[1]));
-									}
-								  }}
-								>
-
-                                    <td>{`${fmtDateFr(row.date)} ${fmtTimeFr(row.date)}`}</td>
-                                    <td>{row.total_cents == null ? '—' : fmtMoney(row.total_cents)}</td>
-                                    <td style={{maxWidth:220}}>
-                                      {(() => {
-                                        const reals = getOrderReals((custDetail?.orders || []).find(o =>
-                                          (`order-${o.id}` === row.key) || (`appt-${o.appointment_id}` === row.key)
-                                        ) || {});
-                                        if (!reals.length) return '—';
-                                        return (
-                                          <div className="d-flex flex-wrap gap-1">
-                                            {reals.map((r, i) => (
-                                              <span key={`${r.code || r.label || i}`} className="badge text-bg-secondary">
-                                                {r?.label || r?.code}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        );
-                                      })()}
-                                    </td>
-                                    <td>{row.elapsed_minutes == null ? '—' : `${row.elapsed_minutes} min`}</td>
-                                    <td className="text-truncate" style={{maxWidth:220}} title={row.note}>{row.note}</td>
-                                  </tr>
-                                ))
-                              : <tr><td colSpan={4} className="text-muted">Aucune commande</td></tr>}
+                                <tr
+                                  key={row.key}
+                                  style={{ cursor: 'pointer' }}
+                                  onClick={() => {
+                                    const m = String(row.key).match(/^order-(\d+)$/);
+                                    if (m) {
+                                      openOrderDialog(Number(m[1]));
+                                    }
+                                  }}
+                                >
+                                  <td>{`${fmtDateFr(row.date)} ${fmtTimeFr(row.date)}`}</td>
+                                  <td>{row.total_cents == null ? '—' : fmtMoney(row.total_cents)}</td>
+                                  <td style={{maxWidth:220}}>
+                                    {(() => {
+                                      const reals = getOrderReals((custDetail?.orders || []).find(o =>
+                                        (`order-${o.id}` === row.key) || (`appt-${o.appointment_id}` === row.key)
+                                      ) || {});
+                                      if (!reals.length) return '—';
+                                      return (
+                                        <div className="d-flex flex-wrap gap-1">
+                                          {reals.map((r, i) => (
+                                            <span key={`${r.code || r.label || i}`} className="badge text-bg-secondary">
+                                              {r?.label || r?.code}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
+                                  </td>
+                                  <td>{row.elapsed_minutes == null ? '—' : `${row.elapsed_minutes} min`}</td>
+                                  <td className="text-truncate" style={{maxWidth:220}} title={row.note}>{row.note}</td>
+                                </tr>
+                              ))
+                              : <tr><td colSpan={5} className="text-muted">Aucune commande</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -921,18 +1656,18 @@ export default function PosApp() {
         </div>
       </div>
 
-		 <OrderDialog
-		  show={showOrderDlg}
-		  data={orderDlgData}
-		  onClose={() => setShowOrderDlg(false)}
-		/>
+      <OrderDialog
+        show={showOrderDlg}
+        data={orderDlgData}
+        onClose={() => setShowOrderDlg(false)}
+      />
 
       {/* 💳 Payment Modal */}
       <PaymentDialog
         show={payOpen}
         onClose={() => setPayOpen(false)}
         onConfirm={confirmPayment}
-        amountDueCents={currentOrder?.total_cents ?? 0}
+        amountDueCents={currentOrder?.total_cents ?? totals.total}  // ← include Divers via fallback
         rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
       />
 
@@ -963,9 +1698,32 @@ export default function PosApp() {
                   <label className="form-label small">Email</label>
                   <input type="email" className="form-control" value={editForm.email} onChange={e=>EF('email', e.target.value)} />
                 </div>
+
+                {/* Adresse */}
                 <div className="col-12">
-                  <label className="form-label small">Notes (visibles)</label>
-                  <textarea className="form-control" rows={2} value={editForm.notes_public} onChange={e=>EF('notes_public', e.target.value)} />
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <label className="form-label small mb-0">Adresse postale</label>
+                    <div className="btn-group">
+                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>setShowAddrPicker(true)}>
+                        Rechercher sur la carte
+                      </button>
+                      <button type="button" className="btn btn-sm btn-outline-danger" onClick={()=>EF('address', null)}>
+                        Effacer
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    readOnly
+                    value={fmtAddrBlock(editForm.address) || ''}
+                    placeholder="— aucune adresse —"
+                  />
+                </div>
+
+                <div className="col-12">
+                  <label className="form-label small">Notes sur la cliente</label>
+                  <textarea className="form-control" rows={2} value={editForm.notes_public || ''} onChange={e=>EF('notes_public', e.target.value)} />
                 </div>
                 <div className="col-12">
                   <div className="form-check">
@@ -982,6 +1740,26 @@ export default function PosApp() {
           </div>
         </div>
       </div>
+
+      {/* Address Picker modal mount */}
+      {showAddrPicker && (
+        <AddressPickerModal
+          show={showAddrPicker}
+          initial={editForm.address}
+          onPick={(addr)=>{ EF('address', addr); setShowAddrPicker(false); }}
+          onClose={()=>setShowAddrPicker(false)}
+        />
+      )}
+
+      {/* Divers modal mount */}
+      {diversOpen && (
+        <DiversModal
+          show={diversOpen}
+          onClose={()=>setDiversOpen(false)}
+          onAdd={addDivers}
+          defaultTaxRate={defaultDiversTax}
+        />
+      )}
     </div>
   );
 }

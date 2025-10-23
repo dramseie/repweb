@@ -1,0 +1,41 @@
+{
+  "code": "wizard_app_vm",
+  "name": "Application & VM Costing",
+  "version": 1,
+  "steps": [
+    { "key": "app_env", "title": "Choose Application & Environment", "fields": [
+      {"key":"application","type":"select","source":"lookup:application","required":true},
+      {"key":"environment","type":"select","options":[{"value":"dev","label":"DEV"},{"value":"test","label":"TEST"},{"value":"prod","label":"PROD"}],"required":true},
+      {"key":"note","type":"textarea","placeholder":"Explain context"}
+    ]},
+    { "key": "vms", "title": "Select number of VMs", "fields": [
+      {"key":"vm_count","type":"number","min":1,"max":200,"required":true}
+    ],
+      "repeat": {
+        "countFrom": "answers.vm_count",
+        "itemKey": "vm_{{index}}",
+        "fields": [
+          {"key":"mode","type":"select","options":[{"value":"new","label":"New"},{"value":"existing","label":"Existing"}],"required":true},
+          {"key":"existing_vm","type":"select","source":"lookup:vm_inventory","visibleIf":"item.mode"},
+          {"key":"cpu","type":"number","min":1,"max":128,"visibleIf":"item.mode"},
+          {"key":"ram_gb","type":"number","min":1,"max":2048,"visibleIf":"item.mode"},
+          {"key":"disk_gb","type":"number","min":1,"max":20000,"visibleIf":"item.mode"},
+          {"key":"os","type":"select","options":[{"value":"rhel"},{"value":"debian"},{"value":"windows"},{"value":"linux"}]}
+        ],
+        "pricing": [
+          {"catalog":"vm_base","qty":1,"args":{"env":"answers.environment"}},
+          {"catalog":"cpu","qty":"item.cpu"},
+          {"catalog":"ram","qty":"item.ram_gb"},
+          {"catalog":"disk","qty":"item.disk_gb"},
+          {"catalog":"os_license","qty":1,"args":{"os":"item.os"}}
+        ]
+      }
+    },
+    {"key":"storage","title":"Storage Billing","fields":[{"key":"storage_tier","type":"select","source":"lookup:storage_tier","required":true},{"key":"storage_gb","type":"number","min":0,"required":true}],"pricing":[{"catalog":"storage","qty":"answers.storage_gb","args":{"tier":"answers.storage_tier"}}]},
+    {"key":"network","title":"Network Billing","fields":[{"key":"egress_tb","type":"number","min":0},{"key":"public_ips","type":"number","min":0}],"pricing":[{"catalog":"egress","qty":"answers.egress_tb"},{"catalog":"public_ip","qty":"answers.public_ips"}]},
+    {"key":"firewall","title":"Firewall Billing","fields":[{"key":"rules","type":"number","min":0},{"key":"zones","type":"number","min":0}],"pricing":[{"catalog":"firewall_rules","qty":"answers.rules"},{"catalog":"firewall_zones","qty":"answers.zones"}]},
+    {"key":"software","title":"Software per VM","fields":[{"key":"packages","type":"multiselect","source":"lookup:software_packages"}]},
+    {"key":"sla","title":"Service Level","fields":[{"key":"sla","type":"select","source":"lookup:sla","required":true}],"pricing":[{"catalog":"sla","qty":1,"args":{"level":"answers.sla"}}]},
+    {"key":"review","title":"Review & Save","submit":{"saveAs":"none"}}
+  ]
+}

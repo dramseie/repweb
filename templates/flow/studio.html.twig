@@ -1,0 +1,19 @@
+{% extends 'base.html.twig' %}
+{% block title %}Flow Studio{% endblock %}
+
+{% block stylesheets %}
+  {{ parent() }}
+  {{ encore_entry_link_tags('flow-studio') }}
+{% endblock %}
+
+{% block body %}
+  <div class="container-fluid mt-3">
+    <h1 class="mb-3">Repweb — Flow Studio</h1>
+    <div id="flow-studio-root"></div>
+  </div>
+{% endblock %}
+
+{% block javascripts %}
+  {{ parent() }}
+  {{ encore_entry_script_tags('flow-studio') }}
+{% endblock %}

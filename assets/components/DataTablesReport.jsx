@@ -49,8 +49,10 @@ const injectOnce = (() => {
       div.dataTables_wrapper .dataTables_info{ padding-top:.35rem }
       .dt-toolbar-left .btn, .dt-toolbar-right .form-control { margin-right:.25rem }
       .dtsb-searchBuilder .form-select, .dtsb-searchBuilder .form-control { height: calc(1.5em + .5rem + 2px) }
+	  input.dt-sb-daterange.form-control { min-width: 250px !important;  /* smaller default */ max-width: 250px !important;  /* optional upper bound */}
       .sb-rsuite-holder { min-width: 280px; }
       .rs-picker-menu { z-index: 20050 !important; }
+	  .dt-datetime { z-index: 20060 !important; }
     `;
     document.head.appendChild(style);
   };
@@ -429,14 +431,7 @@ export default function DataTablesReport() {
           <label class="form-check-label small ms-1" for="sb-saved-public">Public</label>
         </div>
         <button id="sb-saved-save" class="btn btn-sm btn-primary">Save</button>
-        <div class="vr mx-1 d-none d-md-block"></div>
-        <div class="btn-group btn-group-sm" role="group" aria-label="Quick dates">
-          <button class="btn btn-outline-secondary" data-preset="last24h">Last 24h</button>
-          <button class="btn btn-outline-secondary" data-preset="last7d">Last 7d</button>
-          <button class="btn btn-outline-secondary" data-preset="last30d">Last 30d</button>
-          <button class="btn btn-outline-secondary" data-preset="thisWeek">This week</button>
-          <button class="btn btn-outline-secondary" data-preset="lastWeek">Last week</button>
-        </div>
+ 
       </div>
     `;
 
@@ -471,10 +466,6 @@ export default function DataTablesReport() {
         wireUpRsuiteRangePickers();
         alert('Saved!');
       } catch (e) { alert(e?.message || 'Save failed'); }
-    });
-
-    $container.find('[data-preset]').each(function () {
-      $(this).off('click').on('click', () => quickDatePreset($(this).data('preset')));
     });
 
     wireUpRsuiteRangePickers();
@@ -536,7 +527,7 @@ export default function DataTablesReport() {
             endInput.dispatchEvent(new Event(evt, { bubbles: true }));
           });
         }}
-        style={{ minWidth: 280 }}
+        style={{ minWidth: 250 }}
         cleanable
       />
     );

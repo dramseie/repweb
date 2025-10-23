@@ -5,15 +5,29 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 
-// helpers
-const toSql = (d) => d.toISOString().slice(0,19).replace('T',' ');
-const fromSql = (s) => new Date(s.replace(' ', 'T'));
+// ---- helpers
 const pad = (n)=> String(n).padStart(2,'0');
+
+// Write LOCAL datetime to SQL (no UTC conversion)
+const toSql = (d) => {
+  return (
+    d.getFullYear() + '-' +
+    pad(d.getMonth() + 1) + '-' +
+    pad(d.getDate()) + ' ' +
+    pad(d.getHours()) + ':' +
+    pad(d.getMinutes()) + ':' +
+    pad(d.getSeconds())
+  );
+};
+
+// Read as LOCAL time (plain SQL "YYYY-MM-DD HH:MM:SS")
+const fromSql = (s) => new Date(s.replace(' ', 'T'));
+
 const toDateInput = (d)=> `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const toTimeInput = (d)=> `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const addMin = (d, m)=> new Date(d.getTime() + m*60000);
 
-// API helpers
+// ---- API helpers
 const api = {
   listAppointments: async (startStr, endStr) => {
     const q = new URLSearchParams({
@@ -54,12 +68,12 @@ const api = {
 export default function PosAgenda() {
   const calRef = useRef(null);
 
-  // modal state
+  // ---- modal state
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('create'); // 'create' | 'edit'
   const [formErr, setFormErr] = useState(null);
 
-  // appointment fields
+  // ---- appointment fields
   const [apptId, setApptId] = useState(null);
   const [cust, setCust] = useState(null);
   const [date, setDate] = useState('');
@@ -68,7 +82,7 @@ export default function PosAgenda() {
   const [status, setStatus] = useState('booked');
   const [notes, setNotes] = useState('');
 
-  // customer search/create
+  // ---- customer search/create
   const [tab, setTab] = useState('search');
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
@@ -88,7 +102,7 @@ export default function PosAgenda() {
       const ev = (data.items || []).map(a => ({
         id: String(a.id),
         title: `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || `Client #${a.customer_id}`,
-        start: a.start_at,
+        start: a.start_at, // plain "YYYY-MM-DD HH:MM:SS" → treated as local
         end: a.end_at,
         extendedProps: a
       }));
@@ -96,7 +110,7 @@ export default function PosAgenda() {
     } catch (e) { failure?.(e); }
   };
 
-  // open create dialog from selection
+  // ---- open create dialog from selection
   const handleSelect = (sel) => {
     resetForm();
     setMode('create');
@@ -104,43 +118,88 @@ export default function PosAgenda() {
     const e = new Date(sel.end);
     setDate(toDateInput(s));
     setTime(toTimeInput(s));
-    setDur(Math.max(15, Math.round((e - s)/60000))); // default from drag range
+    setDur(Math.max(15, Math.round((e - s)/60000)));
     setOpen(true);
   };
 
-  // open edit dialog from click
-	const handleEventClick = (info) => {
-	  // open the same modal we use for creation, but in "edit" mode
-	  resetForm();
-	  setMode('edit');
+  // ---- open edit dialog from click
+  const handleEventClick = (info) => {
+    resetForm();
+    setMode('edit');
 
-	  // Appointment + customer coming from the event
-	  const ext = info.event.extendedProps || {};
-	  setApptId(Number(info.event.id));
-	  if (ext.customer_id) {
-		setCust({ id: ext.customer_id, first_name: ext.first_name || '', last_name: ext.last_name || '' });
-	  }
+    const ext = info.event.extendedProps || {};
+    setApptId(Number(info.event.id));
+    if (ext.customer_id) {
+      setCust({ id: ext.customer_id, first_name: ext.first_name || '', last_name: ext.last_name || '' });
+    }
 
-	  // Times (use the actual event start/end from FullCalendar)
-	  const s = info.event.start ? new Date(info.event.start) : new Date();
-	  const e = info.event.end   ? new Date(info.event.end)   : new Date(s.getTime() + 60*60000);
+    const s = info.event.start ? new Date(info.event.start) : new Date();
+    const e = info.event.end   ? new Date(info.event.end)   : new Date(s.getTime() + 60*60000);
 
-	  const pad = n => String(n).padStart(2,'0');
-	  const toDateInput = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-	  const toTimeInput = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    setDate(toDateInput(s));
+    setTime(toTimeInput(s));
+    setDur(Math.max(15, Math.round((e - s) / 60000)));
 
-	  setDate(toDateInput(s));
-	  setTime(toTimeInput(s));
-	  setDur(Math.max(15, Math.round((e - s) / 60000)));
+    setStatus(ext.status || 'booked');
+    setNotes(ext.notes_public || '');
 
-	  setStatus(ext.status || 'booked');
-	  setNotes(ext.notes_public || '');
+    setOpen(true);
+  };
 
-	  setOpen(true); // 🔓 show the modal
-	};
+  // ---- build a full PATCH payload from a calendar event
+  const buildPayloadFromEvent = (event) => {
+    const ext = event.extendedProps || {};
+    const start = event.start;
+    const end = event.end || addMin(start, 60);
 
+    return {
+      customer_id: ext.customer_id ?? null,
+      status: ext.status ?? 'booked',
+      notes_public: ext.notes_public ?? null,
+      start_at: toSql(start), // LOCAL
+      end_at: toSql(end)      // LOCAL
+    };
+  };
 
-  // customer helpers
+  // ---- drag (move) handler
+  const handleEventDrop = async (info) => {
+    try {
+      const id = Number(info.event.id);
+      const payload = buildPayloadFromEvent(info.event);
+      const res = await api.updateAppointment(id, payload);
+      if (!res?.ok) {
+        console.warn('eventDrop PATCH failed:', res);
+        alert(res?.error || "Impossible de déplacer le rendez-vous.");
+        info.revert();
+        return;
+      }
+      refresh();
+    } catch (e) {
+      console.error('eventDrop error:', e);
+      info.revert();
+    }
+  };
+
+  // ---- resize (change duration) handler
+  const handleEventResize = async (info) => {
+    try {
+      const id = Number(info.event.id);
+      const payload = buildPayloadFromEvent(info.event);
+      const res = await api.updateAppointment(id, payload);
+      if (!res?.ok) {
+        console.warn('eventResize PATCH failed:', res);
+        alert(res?.error || "Impossible de redimensionner le rendez-vous.");
+        info.revert();
+        return;
+      }
+      refresh();
+    } catch (e) {
+      console.error('eventResize error:', e);
+      info.revert();
+    }
+  };
+
+  // ---- customer helpers
   const doSearch = async (qq) => {
     if (!qq || qq.trim().length < 2) { setResults([]); return; }
     const data = await api.searchCustomers(qq.trim());
@@ -152,19 +211,19 @@ export default function PosAgenda() {
     else setFormErr(d.error || 'Erreur client');
   };
 
-  // save create/edit
+  // ---- save create/edit from modal
   const save = async () => {
     setFormErr(null);
     if (!cust?.id) return setFormErr('Sélectionnez un client.');
     if (!date || !time) return setFormErr('Date & heure requises.');
 
-    const start = fromSql(`${date} ${time}:00`);
-    const end = addMin(start, Number(dur) || 60);
+    const start = fromSql(`${date} ${time}:00`);       // LOCAL
+    const end = addMin(start, Number(dur) || 60);      // LOCAL
 
     const payload = {
       customer_id: cust.id,
-      start_at: toSql(start),
-      end_at: toSql(end),
+      start_at: toSql(start), // LOCAL
+      end_at: toSql(end),     // LOCAL
       status,
       notes_public: notes || null
     };
@@ -190,7 +249,7 @@ export default function PosAgenda() {
     refresh();
   };
 
-  // modal markup
+  // ---- modal markup
   const Modal = useMemo(() => open && (
     <div className="modal d-block" tabIndex="-1" role="dialog" style={{background:'rgba(0,0,0,0.35)'}}>
       <div className="modal-dialog modal-dialog-scrollable">
@@ -256,7 +315,7 @@ export default function PosAgenda() {
                     <div className="fw-semibold">{cust.last_name} {cust.first_name}</div>
                     <div className="small text-muted">ID {cust.id}</div>
                   </div>
-                  <button className="btn btn-sm btn-outline-danger" onClick={()=>setCust(null)}>Changer</button>
+                    <button className="btn btn-sm btn-outline-danger" onClick={()=>setCust(null)}>Changer</button>
                 </div>
               )}
             </div>
@@ -271,18 +330,17 @@ export default function PosAgenda() {
                 <label className="form-label small">Heure</label>
                 <input type="time" step="1800" className="form-control" value={time} onChange={e=>setTime(e.target.value)} />
               </div>
-				<div className="col-3">
-				  <label className="form-label small">Durée (minutes)</label>
-				  <input
-					type="number"
-					min="15"
-					step="15"
-					className="form-control"
-					value={dur}
-					onChange={e => setDur(e.target.value)}
-				  />
-				</div>
-
+              <div className="col-3">
+                <label className="form-label small">Durée (minutes)</label>
+                <input
+                  type="number"
+                  min="15"
+                  step="15"
+                  className="form-control"
+                  value={dur}
+                  onChange={e => setDur(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="mb-2">
@@ -291,7 +349,7 @@ export default function PosAgenda() {
                 <option value="booked">booked</option>
                 <option value="done">done</option>
                 <option value="cancelled">cancelled</option>
-                <option value="no_show">no_show</option>
+                <option value="no-show">no-show</option>
               </select>
             </div>
 
@@ -322,12 +380,26 @@ export default function PosAgenda() {
         slotMinTime="08:00:00"
         slotMaxTime="20:00:00"
         locale="fr"
+        timeZone="local"      // ← make intent explicit
         nowIndicator
+
+        // create by selecting
         selectable
         selectMirror
-        selectAllow={(sel)=>true}
+        selectAllow={() => true}
         select={handleSelect}
+
+        // edit dialog on click
         eventClick={handleEventClick}
+
+        // drag & resize, saved to DB
+        editable
+        eventStartEditable
+        eventDurationEditable
+        eventDrop={handleEventDrop}
+        eventResize={handleEventResize}
+
+        // events
         events={eventsFetcher}
         height="auto"
       />

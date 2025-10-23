@@ -48,11 +48,91 @@ import 'datatables.net-fixedheader-bs5';
 import 'datatables.net-scroller-bs5';
 import 'datatables.net-searchbuilder-bs5';
 import 'datatables.net-datetime';
+import 'datatables.net-datetime/css/dataTables.dateTime.scss';
 import 'datatables.net-bs5/css/dataTables.bootstrap5.min.css';
 import 'datatables.net-responsive-bs5/css/responsive.bootstrap5.min.css';
 import 'datatables.net-buttons-bs5/css/buttons.bootstrap5.min.css';
 import 'datatables.net-scroller-bs5/css/scroller.bootstrap5.min.css';
 import 'datatables.net-searchbuilder-bs5/css/searchBuilder.bootstrap5.min.css';
+
+/* ======================================================================
+   Register DateRangePicker condition for SearchBuilder
+   ====================================================================== */
+(function registerDateRangePickerSB() {
+  const dt = $.fn.dataTable;
+  if (!dt || !dt.ext || !dt.ext.searchBuilder) return;
+
+  const SB = dt.ext.searchBuilder;
+  if (SB._dateRangePickerRegistered) return; // avoid double-registration
+  SB._dateRangePickerRegistered = true;
+
+  const condition = {
+    conditionName: 'in range…',
+    init: (that, fn, preDefined = null) => {
+      const $input = $('<input type="text" class="form-control dt-sb-daterange" autocomplete="off" style="min-width:240px;" aria-label="Date range">');
+      const $s = $('<input type="hidden" class="dt-sb-start">');
+      const $e = $('<input type="hidden" class="dt-sb-end">');
+      const $wrap = $('<div/>').append($input, $s, $e);
+
+      let start = null, end = null;
+      if (preDefined?.value?.length === 2) {
+        start = moment(preDefined.value[0]);
+        end   = moment(preDefined.value[1]);
+      }
+
+      $input.daterangepicker({
+        autoUpdateInput: !!(start && end),
+        timePicker: true,            // supports DATETIME; harmless for DATE
+        timePicker24Hour: true,
+        locale: { format: 'YYYY-MM-DD HH:mm:ss', cancelLabel: 'Clear' },
+        startDate: start || moment().startOf('day'),
+        endDate:   end   || moment().endOf('day'),
+        opens: 'left'
+      });
+
+      const write = (s, e, show = true) => {
+        $s.val(s.format('YYYY-MM-DD HH:mm:ss'));
+        $e.val(e.format('YYYY-MM-DD HH:mm:ss'));
+        if (show) $input.val(`${$s.val()} — ${$e.val()}`);
+        try { that.s.dt.draw(false); } catch {}
+      };
+
+      $input.on('apply.daterangepicker', (ev, picker) => write(picker.startDate, picker.endDate));
+      $input.on('cancel.daterangepicker', () => { $input.val(''); $s.val(''); $e.val(''); try { that.s.dt.draw(false); } catch {} });
+
+      if (start && end) write(start, end, true);
+      return $wrap;
+    },
+    inputValue: (el) => {
+      const $el = $(el);
+      const v1 = $el.find('.dt-sb-start').val();
+      const v2 = $el.find('.dt-sb-end').val();
+      return (v1 && v2) ? [v1, v2] : [];
+    },
+    isInputValid: (el) => {
+      const $el = $(el);
+      const v1 = $el.find('.dt-sb-start').val();
+      const v2 = $el.find('.dt-sb-end').val();
+      return Boolean(v1 && v2);
+    },
+    search: (cellValue, comparison) => {
+      if (!Array.isArray(comparison) || comparison.length !== 2) return true;
+      const mcell = moment(cellValue);
+      const s = moment(comparison[0]);
+      const e = moment(comparison[1]);
+      if (!mcell.isValid() || !s.isValid() || !e.isValid()) return true;
+      return mcell.isBetween(s, e, undefined, '[]'); // inclusive
+    },
+    numInputs: 1,
+    requiresInput: true
+  };
+
+  // Register for date-like types
+  ['date', 'moment', 'luxon'].forEach((typeKey) => {
+    SB.conditions[typeKey] = SB.conditions[typeKey] || {};
+    SB.conditions[typeKey]['date_range_picker'] = condition;
+  });
+})();
 
 /* ======================================================================
    React bootstraps
@@ -321,3 +401,61 @@ export async function initTrumbowygOn(el, options = {}) {
 import MailTemplateForm from './react/components/mail/MailTemplateForm';
 import JsonImportQueryBuilder from './react/components/JsonImportQueryBuilder';
 import RestApiExplorer from './react/components/RestApiExplorer.jsx';
+
+import MetaTab from './react/eav/MetaTab';
+const el = document.getElementById('eav-meta-root');
+if (el) createRoot(el).render(<MetaTab />);
+
+import GrafanaBrowser from "./react/components/GrafanaBrowser";
+const mount = document.getElementById("react-root");
+if (mount) {
+  const orgId = Number(mount.dataset.orgId || 1);
+  const grafanaBase = mount.dataset.grafanaBase || "https://repweb.ramseier.com:3001";
+  createRoot(mount).render(<GrafanaBrowser orgId={orgId} grafanaBase={grafanaBase} />);
+}
+
+/* ======================================================================
+   Repweb Intro — modal & full-page mount (What’s / Who am I / Contact)
+   ====================================================================== */
+import "./styles/repweb-intro.css";
+import RepwebIntro from "./react/components/RepwebIntro";
+
+/** Mount the Repweb intro into the element with id="repweb-intro-root" */
+function mountRepwebIntro(initialSlide = 0) {
+  const elRoot = document.getElementById("repweb-intro-root");
+  if (!elRoot) return;
+
+  const mode = elRoot.dataset.mode || "modal";
+  const root = createRoot(elRoot);
+
+  const onClose = () => {
+    root.unmount();
+    elRoot.innerHTML = "";
+  };
+
+  // Pass initialSlide to open on any slide (0 = first, -1 = last / “Who am I”)
+  root.render(<RepwebIntro mode={mode} onClose={onClose} initialSlide={initialSlide} />);
+}
+
+// Wire the three entry points on the login page
+const btnWhat = document.getElementById("repweb-intro-btn"); // “What’s Repweb?”
+const btnWho  = document.getElementById("repweb-who-btn");   // “Who am I”
+if (btnWhat) {
+  btnWhat.addEventListener("click", (e) => {
+    e.preventDefault();
+    mountRepwebIntro(0); // first slide
+  });
+}
+if (btnWho) {
+  btnWho.addEventListener("click", (e) => {
+    e.preventDefault();
+    mountRepwebIntro(-1); // last slide = “Who am I”
+  });
+}
+
+// Auto-mount for full-page route; allow data-initial-slide override
+const rootEl = document.getElementById("repweb-intro-root");
+if (rootEl && !btnWhat && !btnWho) {
+  const s = parseInt(rootEl.dataset.initialSlide || "0", 10);
+  mountRepwebIntro(Number.isNaN(s) ? 0 : s);
+}

@@ -1,0 +1,10 @@
+# config/packages/easy_admin_frw.yaml (add to your existing EA config if desired)
+easy_admin:
+  design:
+    menu:
+      - label: 'Financial Reporting'
+        children:
+          - { entity: 'FrwTemplate', label: 'Templates' }
+          - { entity: 'FrwCatalogItem', label: 'Catalog Items' }
+          - { entity: 'FrwLookup', label: 'Lookups' }
+          - { entity: 'FrwRun', label: 'Runs (read-only)' }

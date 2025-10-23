@@ -1,26 +1,25 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-/** Parse a SQL/ISO-like local timestamp into a local Date.
- * Supports "YYYY-MM-DD HH:MM:SS", "YYYY-MM-DDTHH:MM", "YYYY-MM-DDTHH:MM:SS".
- * Falls back to new Date(s) if pattern doesn't match.
- */
+/** Parse a SQL/ISO-like local timestamp into a local Date. */
 function toLocalDate(s) {
   if (!s) return null;
   if (s instanceof Date) return s;
   const str = String(s);
-  const m = str.match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/
-  );
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (m) {
     const [_, Y, Mo, D, H, Mi, S] = m;
     return new Date(+Y, +Mo - 1, +D, +H, +Mi, +(S || 0)); // LOCAL time
   }
   const d = new Date(str);
-  return isNaN(d) ? null : d; // last resort
+  return isNaN(d) ? null : d;
 }
 
 const pad = (n) => String(n).padStart(2, "0");
-const asCents = (v) => Math.round(Number(v || 0) * 100);
+/** Robust cents parser: handles "1.50" and "1,50" */
+const asCents = (v) => {
+  const n = parseFloat(String(v ?? 0).replace(',', '.'));
+  return Math.round((isNaN(n) ? 0 : n) * 100);
+};
 
 export default function PaymentDialog({
   show,
@@ -33,7 +32,8 @@ export default function PaymentDialog({
   const [reducMode, setReducMode] = useState("amount"); // 'amount' | 'percent'
   const [reducValue, setReducValue] = useState("");
 
-  // Money fields
+  // Method + money
+  const [method, setMethod] = useState("cash");         // cash|card|twint|voucher|transfer|other
   const [amountReceived, setAmountReceived] = useState("");
 
   // Time fields
@@ -52,9 +52,10 @@ export default function PaymentDialog({
 
   const dueAfterReducCents = Math.max(0, amountDueCents - reductionCents);
   const tipCents = useMemo(() => {
+    if (method !== 'cash') return 0;
     const rec = asCents(amountReceived);
     return Math.max(0, rec - dueAfterReducCents);
-  }, [amountReceived, dueAfterReducCents]);
+  }, [amountReceived, dueAfterReducCents, method]);
 
   const dueAfterReduc = (dueAfterReducCents / 100).toFixed(2);
   const tipPreview = (tipCents / 100).toFixed(2);
@@ -67,13 +68,13 @@ export default function PaymentDialog({
     )}:${pad(d.getMinutes())}`;
   }, [encaisseAt]);
 
-  // On open: set "now" and default Montant reçu to due-after-reduction
+  // On open: set "now" and default Montant reçu to due-after-reduction (for cash)
   useEffect(() => {
     if (!show) return;
     const now = new Date();
     setEncaisseAt(now);
-    setAmountReceived((dueAfterReducCents / 100).toFixed(2));
-  }, [show, dueAfterReducCents]);
+    if (method === 'cash') setAmountReceived((dueAfterReducCents / 100).toFixed(2));
+  }, [show, dueAfterReducCents, method]);
 
   // Robust elapsed computation (LOCAL) — recompute whenever input or RDV changes
   const recomputeElapsed = () => {
@@ -84,7 +85,7 @@ export default function PaymentDialog({
       return;
     }
     const diffMs = end.getTime() - start.getTime();
-    setElapsedMinutes(Math.max(0, Math.floor(diffMs / 60000))); // e.g. 13:00 -> 13:59 = 59
+    setElapsedMinutes(Math.max(0, Math.floor(diffMs / 60000)));
   };
 
   useEffect(() => {
@@ -99,13 +100,20 @@ export default function PaymentDialog({
   };
 
   const handleConfirm = async () => {
+    // settlement amount (we assume single-method settlement)
+    const payAmountCents = dueAfterReducCents;
+    const amountReceivedCents = method === 'cash' ? asCents(amountReceived) : payAmountCents;
+
     await onConfirm?.({
       amountDueCents,
       reductionCents,
-      amountReceivedCents: asCents(amountReceived),
+      amountReceivedCents,
       tipCents,
       encaisseAtIso: (toLocalDate(encaisseAt) || new Date()).toISOString(),
       elapsedMinutes: Number(elapsedMinutes) || 0,
+      // NEW: persist method(s)
+      method,
+      payments: [{ method, amount_cents: payAmountCents }]
     });
     onClose?.();
   };
@@ -164,21 +172,36 @@ export default function PaymentDialog({
                 </div>
               </div>
 
-              {/* Montant reçu */}
+              {/* Méthode de paiement */}
               <div className="mb-2">
-                <label className="form-label">Montant reçu</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  step="1.00"
-                  min="0"
-                  value={amountReceived}
-                  onChange={(e) => setAmountReceived(e.target.value)}
-                />
-                <div className="form-text">
-                  Pourboire calculé automatiquement: <strong>{tipPreview}</strong>
-                </div>
+                <label className="form-label">Méthode de paiement</label>
+                <select className="form-select" value={method} onChange={(e)=>setMethod(e.target.value)}>
+                  <option value="cash">Espèces</option>
+                  <option value="card">Carte</option>
+                  <option value="twint">TWINT</option>
+                  <option value="voucher">Bon / chèque-cadeau</option>
+                  <option value="transfer">Virement</option>
+                  <option value="other">Autre</option>
+                </select>
               </div>
+
+              {/* Montant reçu (cash only) */}
+              {method === 'cash' && (
+                <div className="mb-2">
+                  <label className="form-label">Montant reçu</label>
+                  <input
+                    className="form-control"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={amountReceived}
+                    onChange={(e) => setAmountReceived(e.target.value)}
+                  />
+                  <div className="form-text">
+                    Pourboire calculé automatiquement: <strong>{tipPreview}</strong>
+                  </div>
+                </div>
+              )}
 
               {/* Time */}
               <div className="row g-2">

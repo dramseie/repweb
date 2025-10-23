@@ -2,61 +2,125 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Login</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .login-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-        .login-container img {
-            max-width: 150px;
-            margin-bottom: 20px;
-        }
-        .login-container input {
-            width: 100%;
-            padding: 0.75rem;
-            margin: 0.5rem 0;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-        }
-        .login-container button {
-            width: 100%;
-            padding: 0.75rem;
-            background: #005bac;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            margin-top: 1rem;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Login</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .login-container {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+
+    .login-container img {
+      max-width: 160px;
+      margin-bottom: 20px;
+    }
+
+    .login-container input,
+    .login-container button {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 5px;
+      box-sizing: border-box;
+      font-size: 1rem;
+    }
+
+    .login-container input {
+      border: 1px solid #ccc;
+      margin: 0.5rem 0;
+    }
+
+    .login-container button {
+      background: #005bac;
+      color: white;
+      border: none;
+      margin-top: 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .login-container button:hover {
+      background: #004a8f;
+    }
+
+    /* --- secondary links zone --- */
+    .rw-actions-3 {
+      display: flex;
+      justify-content: center;
+      gap: 0.8rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .rw-link {
+      font-size: 0.9rem;
+      color: #005bac;
+      background: transparent;
+      border: none;
+      text-decoration: none;
+      cursor: pointer;
+      padding: 0.4rem 0.8rem;
+      border-radius: 5px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .rw-link:hover {
+      background: #e9f2fb;
+      color: #003f73;
+    }
+
+    .rw-link.contact {
+      color: #0a7e79;
+    }
+
+    .rw-link.contact:hover {
+      background: #e7f7f6;
+      color: #055c58;
+    }
+  </style>
 </head>
 <body>
-    <div class="login-container">
-        <img src="{{ asset('images/logo.png') }}" alt="Logo">
-        {% if error %}
-            <div style="color: red; margin-bottom: 1rem;">{{ error.messageKey|trans(error.messageData, 'security') }}</div>
-        {% endif %}
+  <div class="login-container">
+    <img src="{{ asset('images/logo.png') }}" alt="Repweb">
 
-        <form action="{{ path('app_login') }}" method="post">
-            <input type="email" name="_username" value="{{ last_username }}" placeholder="Email" required autofocus>
-            <input type="password" name="_password" placeholder="Password" required>
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
-            <button type="submit">Login</button>
-        </form>
+    {% if error %}
+      <div style="color: red; margin-bottom: 1rem;">
+        {{ error.messageKey|trans(error.messageData, 'security') }}
+      </div>
+    {% endif %}
+
+    <form action="{{ path('app_login') }}" method="post">
+      <input type="email" name="_username" value="{{ last_username }}" placeholder="Email" required autofocus>
+      <input type="password" name="_password" placeholder="Password" required>
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
+      <button type="submit">Login</button>
+    </form>
+
+    <div class="rw-actions-3">
+      <button id="repweb-intro-btn" type="button" class="rw-link">What’s Repweb?</button>
+      <button id="repweb-who-btn" type="button" class="rw-link">Who am I</button>
+      <a href="/request-access" class="rw-link contact">Contact</a>
     </div>
+  </div>
+
+  {# React mount point #}
+  <div id="repweb-intro-root" data-mode="modal"></div>
+
+  {{ encore_entry_link_tags('app') }}
+  {{ encore_entry_script_tags('app') }}
 </body>
 </html>

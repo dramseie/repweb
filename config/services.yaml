@@ -21,6 +21,13 @@ parameters:
   # Default timezone for calendar events
   google.default_tz: 'Europe/Paris'
 
+  # === Grafana JWT (new) ===
+  grafana_jwt.private_key_path: '/etc/repweb/grafana-jwt-private.pem'
+  grafana_jwt.cookie_name: 'repweb_jwt'
+  grafana_jwt.issuer: 'repweb'
+  grafana_jwt.audience: 'grafana'
+  grafana_jwt.ttl: 3600  # seconds
+
 services:
   _defaults:
     autowire: true
@@ -61,9 +68,70 @@ services:
   # CalendarSync has only service deps; autowiring is enough.
   App\Service\CalendarSync: ~
 
-
   App\Service\RocketChatClient:
     arguments:
       $baseUrl: '%env(ROCKETCHAT_BASE_URL)%'
       $botUser: '%env(ROCKETCHAT_BOT_USER)%'
       $botPass: '%env(ROCKETCHAT_BOT_PASS)%'
+
+  # ============================
+  #  FRW (Financial Reporting Wizard) — additions
+  # ============================
+
+  # Autowire/autoconfigure everything under src/Frw
+  App\Frw\:
+    resource: '../src/Frw/'
+    exclude:
+      - '../src/Frw/**/Tests/'
+      - '../src/Frw/**/Resources/'
+
+  # FRW controllers public (like your main controllers)
+  App\Frw\Controller\:
+    resource: '../src/Frw/Controller/'
+    public: true
+    tags: ['controller.service_arguments']
+
+  # Tag all pricing strategies that implement PricerInterface
+  _instanceof:
+    App\Frw\Domain\Pricing\PricerInterface:
+      tags: ['app.frw.pricer']
+
+  # Inject the tagged strategies into the registry
+  App\Frw\Domain\Pricing\PricerRegistry:
+    arguments:
+      $strategies: !tagged_iterator 'app.frw.pricer'
+
+  # ============================
+  #  Grafana JWT wiring (new)
+  # ============================
+
+  App\Service\GrafanaJwtService:
+    arguments:
+      $privateKeyPath: '%grafana_jwt.private_key_path%'
+
+  App\Controller\GrafanaAuthController:
+    public: true
+    tags: ['controller.service_arguments']
+
+  # ============================
+  #  Migration Manager wiring (new)
+  # ============================
+
+  # Feature flags from environment
+  App\Mig\Service\FeatureToggle:
+    arguments:
+      $migEnabled: '%env(bool:MIGRATION_MANAGER_ENABLED)%'
+      $eliseEnabled: '%env(bool:BLAUE_ELISE_ENABLED)%'
+      $piEnabled: '%env(bool:PROGRESS_INDICATORS_ENABLED)%'
+
+  # Controllers for the Migration Manager (public & tagged)
+  App\Mig\Controller\:
+    resource: '../src/Mig/Controller/'
+    public: true
+    tags: ['controller.service_arguments']
+
+  App\Twig\FlagsExtension:
+    arguments:
+      $ft: '@App\Mig\Service\FeatureToggle'
+    tags: ['twig.extension']
+ 

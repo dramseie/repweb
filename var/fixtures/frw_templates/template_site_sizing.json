@@ -1,0 +1,16 @@
+{
+  "code": "wizard_site_sizing",
+  "name": "Site Sizing & Aging",
+  "version": 1,
+  "steps": [
+    {"key":"location","title":"Select Location","fields":[{"key":"loc","type":"select","source":"lookup:location","required":true},{"key":"activation","type":"date","required":true}]},
+    {"key":"size","title":"Select Size","fields":[{"key":"size","type":"select","options":[{"value":"xs"},{"value":"s"},{"value":"m"},{"value":"l"},{"value":"xl"}],"required":true},{"key":"size_activation","type":"date","visibleIf":"answers.activation"}],"pricing":[{"catalog":"setup","qty":1,"args":{"size":"answers.size"}}]},
+    {"key":"ext_storage","title":"Storage Extensions","fields":[{"key":"ext_storage_n","type":"number","min":0},{"key":"ext_storage_activation","type":"date"}],"pricing":[{"catalog":"storage_ext","qty":"answers.ext_storage_n"}]},
+    {"key":"ext_compute","title":"Compute Extensions","fields":[{"key":"ext_compute_n","type":"number","min":0},{"key":"ext_compute_activation","type":"date"}],"pricing":[{"catalog":"compute_ext","qty":"answers.ext_compute_n"}]},
+    {"key":"vdi","title":"VDI Extensions","fields":[{"key":"vdi_n","type":"number","min":0},{"key":"vdi_activation","type":"date"}],"pricing":[{"catalog":"vdi_ext","qty":"answers.vdi_n"}]},
+    {"key":"network","title":"Network Devices","fields":[{"key":"net_devices","type":"number","min":0}],"pricing":[{"catalog":"network_device","qty":"answers.net_devices"}]},
+    {"key":"aging","title":"Monthly Recurring (Aging)","fields":[{"key":"age_table","type":"static","value":[{"year":1,"factor":1.0},{"year":2,"factor":0.9},{"year":3,"factor":0.8}]}],"pricing":[{"catalog":"mr_base","qty":1,"args":{"size":"answers.size"}},{"catalog":"age_discount","qty":1,"args":{"ageTable":"answers.age_table"}}]},
+    {"key":"location_markup","title":"Location Markup/Taxes","fields":[{"key":"markup_code","type":"select","source":"lookup:location_markup"}],"pricing":[{"catalog":"location_markup","qty":1,"args":{"loc":"answers.loc","code":"answers.markup_code"}}]},
+    {"key":"review","title":"Review & Save","submit":{"saveAs":"none"}}
+  ]
+}

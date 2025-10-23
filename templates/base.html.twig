@@ -20,5 +20,15 @@
 
     {{ encore_entry_script_tags('app') }}
     {% block javascripts %}{% endblock %}
+	<script>
+	  window.__repweb = window.__repweb || { flags: {
+		MIGRATION_MANAGER_ENABLED: {{ flags.MIGRATION_MANAGER_ENABLED ? 'true' : 'false' }},
+		BLAUE_ELISE_ENABLED: {{ flags.BLAUE_ELISE_ENABLED ? 'true' : 'false' }},
+		PROGRESS_INDICATORS_ENABLED: {{ flags.PROGRESS_INDICATORS_ENABLED ? 'true' : 'false' }},
+	  } };
+	</script>
+
+
   </body>
+
 </html>

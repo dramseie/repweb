@@ -1,0 +1,218 @@
+/* assets/styles/repweb-intro.css */
+/* ————————————————————————————————————————————
+   Repweb Intro Presentation — Clean Swiss Look
+   ———————————————————————————————————————————— */
+
+:root {
+  --rw-bg: #f4f6f8;
+  --rw-card: #ffffff;
+  --rw-accent: #0a7e79;
+  --rw-accent-700: #09625e;
+  --rw-text: #0b1020;
+  --rw-soft: #5b6b7a;
+  --rw-line: #e2e8ee;
+}
+
+.rw-btn,
+.rw-btn-primary,
+.rw-close,
+.rw-link {
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.rw-btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--rw-line);
+  background: #fff;
+}
+.rw-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rw-btn-primary {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 0;
+  background: var(--rw-accent);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(10, 126, 121, 0.25);
+}
+.rw-btn-primary:hover {
+  background: var(--rw-accent-700);
+}
+
+.rw-link {
+  color: var(--rw-accent);
+  text-decoration: none;
+}
+.rw-link:hover {
+  text-decoration: underline;
+}
+
+/* Modal shell */
+.rw-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+.rw-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 15, 25, 0.35);
+  backdrop-filter: blur(2px);
+}
+
+/* Card */
+.rw-card {
+  position: relative;
+  width: min(900px, 95vw);
+  max-height: 90vh;
+  background: var(--rw-card);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 80px rgba(8, 20, 40, 0.25);
+  overflow: hidden;
+}
+
+/* Page layout */
+.rw-page {
+  background: var(--rw-bg);
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+.rw-page .rw-card {
+  width: min(1100px, 96vw);
+  max-height: none;
+}
+
+/* Header */
+.rw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--rw-line);
+}
+.rw-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rw-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0a7e79, #11a29c);
+}
+.rw-title {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--rw-text);
+}
+.rw-tag {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--rw-soft);
+}
+.rw-close {
+  border: none;
+  background: none;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--rw-soft);
+}
+
+/* Slide */
+.rw-slide {
+  padding: 28px;
+  overflow-y: auto;
+}
+.rw-h2 {
+  font-weight: 700;
+  font-size: 24px;
+  margin: 0 0 6px;
+  color: var(--rw-text);
+}
+.rw-kicker {
+  margin: 0 0 14px;
+  color: var(--rw-soft);
+}
+.rw-points {
+  margin: 10px 0 0 18px;
+  color: var(--rw-text);
+}
+.rw-points li {
+  margin: 8px 0;
+}
+.rw-custom {
+  padding-top: 10px;
+}
+
+/* Footer */
+.rw-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--rw-line);
+}
+.rw-progress {
+  display: flex;
+  gap: 6px;
+}
+.rw-progress .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d5dee6;
+}
+.rw-progress .dot.on {
+  background: var(--rw-accent);
+}
+.rw-nav {
+  display: flex;
+  gap: 10px;
+}
+
+/* SVG */
+.rw-arch-svg {
+  width: 100%;
+  height: auto;
+}
+.rw-box {
+  fill: #fff;
+  stroke: #dfe7ee;
+  stroke-width: 1;
+}
+.rw-accent {
+  fill: #e8f6f5;
+  stroke: var(--rw-accent);
+  stroke-width: 2;
+}
+.rw-txt {
+  font-weight: 600;
+  font-size: 14px;
+  fill: #0b1020;
+}
+.rw-txt-xs {
+  font-weight: 500;
+  font-size: 12px;
+  fill: #5b6b7a;
+}
+.rw-arrows path {
+  stroke: #a5b6c7;
+  stroke-width: 2;
+  fill: none;
+  marker-end: url(#rwArrow);
+}

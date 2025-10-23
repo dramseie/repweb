@@ -1,0 +1,8 @@
+.eav-meta .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.eav-meta section { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; }
+.eav-meta section > header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+.eav-meta section > header h3 { margin: 0; font-size: 14px; }
+.eav-meta section .actions { display: flex; gap: 8px; }
+#pivot-box { grid-column: 1 / -1; }
+.card { border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 16px; }
+.card-body { padding: 12px; }

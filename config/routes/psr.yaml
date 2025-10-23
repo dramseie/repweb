@@ -1,0 +1,55 @@
+# config/routes/psr.yaml
+psr_project_index:
+  path: /api/psr/projects
+  controller: App\Controller\Psr\ProjectController::index
+  methods: [GET]
+
+psr_project_crud:
+  path: /api/psr/projects
+  controller: App\Controller\Psr\ProjectController::create
+  methods: [POST]
+
+psr_project_item:
+  path: /api/psr/projects/{id}
+  controller: App\Controller\Psr\ProjectController::show
+  methods: [GET]
+
+psr_project_update:
+  path: /api/psr/projects/{id}
+  controller: App\Controller\Psr\ProjectController::update
+  methods: [PUT, PATCH]
+
+psr_project_delete:
+  path: /api/psr/projects/{id}
+  controller: App\Controller\Psr\ProjectController::delete
+  methods: [DELETE]
+
+psr_task_tree:
+  path: /api/psr/projects/{id}/tasks
+  controller: App\Controller\Psr\TaskController::tree
+  methods: [GET]
+
+psr_task_crud:
+  path: /api/psr/tasks
+  controller: App\Controller\Psr\TaskController::create
+  methods: [POST]
+
+psr_task_item:
+  path: /api/psr/tasks/{id}
+  controller: App\Controller\Psr\TaskController::updateOrDelete
+  methods: [PUT, PATCH, DELETE]
+
+psr_snapshot_take:
+  path: /api/psr/snapshot
+  controller: App\Controller\Psr\SnapshotController::take
+  methods: [POST]
+
+psr_snapshot_compare:
+  path: /api/psr/compare/{versionA}/{versionB}
+  controller: App\Controller\Psr\SnapshotController::compare
+  methods: [GET]
+
+psr_version_list:
+  path: /api/psr/versions
+  controller: App\Controller\Psr\SnapshotController::versions
+  methods: [GET]

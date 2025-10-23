@@ -1,0 +1,7 @@
+# config/routes/migration_manager.yaml
+when@prod: &routing
+  controllers:
+    resource: ../../src/Mig/Controller/
+    type: attribute
+
+when@dev: *routing

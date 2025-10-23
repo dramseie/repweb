@@ -1,0 +1,14 @@
+{# templates/pos/accounting.html.twig #}
+{% extends 'base.html.twig' %}
+
+{% block title %}Comptage caisse{% endblock %}
+
+{% block body %}
+  <div id="accounting-root"></div>
+{% endblock %}
+
+{% block javascripts %}
+  {{ parent() }}
+  {# make sure your build outputs accounting.js, see webpack/esbuild entry below #}
+  <script src="{{ asset('build/accounting.js') }}"></script>
+{% endblock %}

@@ -1,10 +1,61 @@
 {# File: templates/eav/editor.html.twig #}
 {% extends 'base.html.twig' %}
+
 {% block title %}EAV Editor – {{ tenant }}/{{ entityType }}{% endblock %}
+
 {% block body %}
-	<div class="container-fluid mt-3">
-	  <div class="eav-editor-fullbleed">
-		<div id="eav-editor-root" data-tenant="cmdb" data-entity-type="vm"></div>
-	  </div>
-	</div>
+  <div class="container-fluid mt-3">
+    <ul class="nav nav-tabs" id="eavTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button
+          class="nav-link active"
+          id="editor-tab"
+          data-bs-toggle="tab"
+          data-bs-target="#editor-pane"
+          type="button"
+          role="tab"
+          aria-controls="editor-pane"
+          aria-selected="true">
+          Editor
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button
+          class="nav-link"
+          id="meta-tab"
+          data-bs-toggle="tab"
+          data-bs-target="#meta-pane"
+          type="button"
+          role="tab"
+          aria-controls="meta-pane"
+          aria-selected="false">
+          Meta
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content pt-3">
+      <div
+        class="tab-pane fade show active"
+        id="editor-pane"
+        role="tabpanel"
+        aria-labelledby="editor-tab">
+        <div class="eav-editor-fullbleed">
+          <div
+            id="eav-editor-root"
+            data-tenant="{{ tenant|default('cmdb') }}"
+            data-entity-type="{{ entityType|default('vm') }}">
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="tab-pane fade"
+        id="meta-pane"
+        role="tabpanel"
+        aria-labelledby="meta-tab">
+        <div id="eav-meta-root"></div>
+      </div>
+    </div>
+  </div>
 {% endblock %}

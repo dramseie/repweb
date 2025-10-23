@@ -19,30 +19,60 @@ class PosOrdersApiController extends AbstractController
     #[Route('/orders/{id<\d+>}', name: 'orders_read', methods: ['GET'])]
     public function read(int $id): JsonResponse
     {
-        // Base order
-        $o = $this->conn->fetchAssociative(
-            "SELECT o.id,
-                    o.created_at,
-                    o.total_cents,
-                    o.total_tax_cents,
-                    o.amount_received_cents,
-                    o.tip_cents,
-                    o.encaisse_at,
-                    o.elapsed_minutes,
-                    o.note,
-                    o.realizations_json,
-                    o.customer_id,
-                    o.appointment_id,
-                    /* may not exist until you run the DDL, so use IFNULL via select aliasing if needed */
-                    /* if columns exist, include them; otherwise SELECT will ignore */
-                    o.status,
-                    o.revoked_at,
-                    o.revoked_reason,
-                    o.replacement_appointment_id
-               FROM ongleri.orders o
-              WHERE o.id = ?",
-            [$id]
-        );
+        // Try with custom_items_json; fall back if column does not exist
+        try {
+            $o = $this->conn->fetchAssociative(
+                "SELECT o.id,
+                        o.created_at,
+                        o.total_cents,
+                        o.total_tax_cents,
+                        o.amount_received_cents,
+                        o.tip_cents,
+                        o.encaisse_at,
+                        o.elapsed_minutes,
+                        o.note,
+                        o.realizations_json,
+                        o.customer_id,
+                        o.appointment_id,
+                        o.status,
+                        o.revoked_at,
+                        o.revoked_reason,
+                        o.replacement_appointment_id,
+                        o.payment_method,
+                        o.payments_json,
+                        o.custom_items_json
+                   FROM ongleri.orders o
+                  WHERE o.id = ?",
+                [$id]
+            );
+            $hasCustomJson = true;
+        } catch (\Throwable $e) {
+            $o = $this->conn->fetchAssociative(
+                "SELECT o.id,
+                        o.created_at,
+                        o.total_cents,
+                        o.total_tax_cents,
+                        o.amount_received_cents,
+                        o.tip_cents,
+                        o.encaisse_at,
+                        o.elapsed_minutes,
+                        o.note,
+                        o.realizations_json,
+                        o.customer_id,
+                        o.appointment_id,
+                        o.status,
+                        o.revoked_at,
+                        o.revoked_reason,
+                        o.replacement_appointment_id,
+                        o.payment_method,
+                        o.payments_json
+                   FROM ongleri.orders o
+                  WHERE o.id = ?",
+                [$id]
+            );
+            $hasCustomJson = false;
+        }
+
         if (!$o) {
             return $this->json(['ok' => false, 'error' => 'Order not found'], 404);
         }
@@ -62,23 +92,34 @@ class PosOrdersApiController extends AbstractController
             [$id]
         );
 
-        // Customer (optional)
+        // Optional parsed custom items (Divers)
+        $customItems = null;
+        if ($hasCustomJson && array_key_exists('custom_items_json', $o) && $o['custom_items_json'] !== null) {
+            try {
+                $parsed = json_decode((string)$o['custom_items_json'], true);
+                $customItems = is_array($parsed) ? $parsed : null;
+            } catch (\Throwable $e) {
+                $customItems = null;
+            }
+        }
+
+        // Customer (optional) — WITHOUT private notes
         $customer = null;
         if (!empty($o['customer_id'])) {
             $customer = $this->conn->fetchAssociative(
-                "SELECT id, first_name, last_name, phone, email, notes_public, notes_private
+                "SELECT id, first_name, last_name, phone, email, notes_public
                    FROM ongleri.customers
                   WHERE id = ?",
                 [(int)$o['customer_id']]
             );
         }
 
-        // Appointment (optional)
+        // Appointment (optional) — WITHOUT private notes
         $appointment = null;
         if (!empty($o['appointment_id'])) {
             $appointment = $this->conn->fetchAssociative(
                 "SELECT id, customer_id, start_at, end_at, real_start_at, real_end_at,
-                        status, notes_public, notes_private
+                        status, notes_public
                    FROM ongleri.appointments
                   WHERE id = ?",
                 [(int)$o['appointment_id']]
@@ -86,24 +127,27 @@ class PosOrdersApiController extends AbstractController
         }
 
         return $this->json([
-            'ok'          => true,
-            'order'       => $o,
-            'items'       => $items,
-            'customer'    => $customer,
-            'appointment' => $appointment,
+            'ok'            => true,
+            'order'         => $o,
+            'items'         => $items,
+            'custom_items'  => $customItems,     // 👈 for Divers display in UI
+            'customer'      => $customer,
+            'appointment'   => $appointment,
         ]);
     }
 
     // =========================
-    // CREATE ORDER
+    // CREATE ORDER  (supports custom_items a.k.a. “Divers”)
     // =========================
     #[Route('/orders', name: 'orders_create', methods: ['POST'])]
     public function create(Request $req): JsonResponse
     {
         $p = json_decode($req->getContent(), true) ?? [];
 
-        $items = (array)($p['items'] ?? []); // [{item_id, qty}]
-        if (!$items) {
+        $items   = (array)($p['items'] ?? []);          // [{item_id, qty}]
+        $customs = (array)($p['custom_items'] ?? []);   // [{label, unit_cents, qty, tax_rate}]
+
+        if (!$items && !$customs) {
             return $this->json(['ok' => false, 'error' => 'No items'], 400);
         }
 
@@ -129,24 +173,28 @@ class PosOrdersApiController extends AbstractController
         }
         $realizationsJson = $realizations ? json_encode($realizations, JSON_UNESCAPED_UNICODE) : null;
 
-        // Price lookup
-        $ids = array_values(array_unique(array_map(fn($r) => (int)($r['item_id'] ?? 0), $items)));
-        $ids = array_filter($ids, fn($v) => $v > 0);
-        if (!$ids) return $this->json(['ok' => false, 'error' => 'No valid items'], 400);
-
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $rows = $this->conn->fetchAllAssociative(
-            "SELECT id, name, price_cents, tax_rate
-               FROM ongleri.items
-              WHERE id IN ($placeholders)",
-            $ids
-        );
+        // Price lookup for regular items (only if we have some)
         $byId = [];
-        foreach ($rows as $r) $byId[(int)$r['id']] = $r;
+        if ($items) {
+            $ids = array_values(array_unique(array_map(fn($r) => (int)($r['item_id'] ?? 0), $items)));
+            $ids = array_filter($ids, fn($v) => $v > 0);
+            if ($ids) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $rows = $this->conn->fetchAllAssociative(
+                    "SELECT id, name, price_cents, tax_rate
+                       FROM ongleri.items
+                      WHERE id IN ($placeholders)",
+                    $ids
+                );
+                foreach ($rows as $r) $byId[(int)$r['id']] = $r;
+            }
+        }
 
-        $lines = [];
-        $total = 0; $taxTotal = 0;
+        $lines   = [];            // regular items only go to order_items
+        $net     = 0;
+        $taxOnly = 0;
 
+        // Regular items
         foreach ($items as $it) {
             $iid = (int)($it['item_id'] ?? 0);
             $qty = max(1, (int)($it['qty'] ?? 1));
@@ -157,8 +205,8 @@ class PosOrdersApiController extends AbstractController
             $line = $unit * $qty;
             $tax  = (int)round($line * ($rate / 100));
 
-            $total    += $line;
-            $taxTotal += $tax;
+            $net     += $line;
+            $taxOnly += $tax;
 
             $lines[] = [
                 'item_id'          => $iid,
@@ -170,22 +218,64 @@ class PosOrdersApiController extends AbstractController
             ];
         }
 
-        if (!$lines) return $this->json(['ok' => false, 'error' => 'No valid items'], 400);
+        // 🔹 Custom items (Divers) — affect totals; persisted as JSON if column exists
+        $customsClean = [];
+        foreach ($customs as $c) {
+            if (!is_array($c)) continue;
+            $label = trim((string)($c['label'] ?? 'Divers'));
+            $qty   = max(1, (int)($c['qty'] ?? 1));
+            $unit  = max(0, (int)($c['unit_cents'] ?? 0));
+            $rate  = (float)($c['tax_rate'] ?? 0);
+            $line  = $unit * $qty;
+            $tax   = (int)round($line * $rate / 100);
+
+            $net     += $line;
+            $taxOnly += $tax;
+
+            $customsClean[] = [
+                'label'       => $label,
+                'unit_cents'  => $unit,
+                'qty'         => $qty,
+                'tax_rate'    => $rate,
+                'line_cents'  => $line,
+                'tax_cents'   => $tax,
+            ];
+        }
+
+        if (!$lines && !$customsClean) {
+            return $this->json(['ok' => false, 'error' => 'No valid items'], 400);
+        }
+
+        $total = $net + $taxOnly;
 
         $this->conn->beginTransaction();
         try {
-            // Insert order (✅ with realizations_json)
-            $this->conn->insert('ongleri.orders', [
-                'total_cents'         => $total,
-                'total_tax_cents'     => $taxTotal,
-                'note'                => $note,
-                'customer_id'         => $customerId ?: null,
-                'appointment_id'      => $appointmentId ?: null,
-                'realizations_json'   => $realizationsJson,
-            ]);
+            // Build base order insert
+            $orderInsert = [
+                'total_cents'       => $total,
+                'total_tax_cents'   => $taxOnly,
+                'note'              => $note,
+                'customer_id'       => $customerId ?: null,
+                'appointment_id'    => $appointmentId ?: null,
+                'realizations_json' => $realizationsJson,
+                'custom_items_json' => $customsClean ? json_encode($customsClean, JSON_UNESCAPED_UNICODE) : null,
+            ];
+
+            // Try insert with custom_items_json; if the column does not exist, retry without it
+            try {
+                $this->conn->insert('ongleri.orders', $orderInsert);
+            } catch (\Throwable $e) {
+                if (stripos($e->getMessage(), 'Unknown column') !== false && stripos($e->getMessage(), 'custom_items_json') !== false) {
+                    unset($orderInsert['custom_items_json']);
+                    $this->conn->insert('ongleri.orders', $orderInsert);
+                } else {
+                    throw $e;
+                }
+            }
+
             $orderId = (int)$this->conn->lastInsertId();
 
-            // Insert order lines
+            // Insert regular item lines
             foreach ($lines as $ln) {
                 $this->conn->insert('ongleri.order_items', [
                     'order_id'          => $orderId,
@@ -204,7 +294,7 @@ class PosOrdersApiController extends AbstractController
                 'ok'               => true,
                 'order_id'         => $orderId,
                 'total_cents'      => $total,
-                'total_tax_cents'  => $taxTotal,
+                'total_tax_cents'  => $taxOnly,
                 'customer_id'      => $customerId,
                 'appointment_id'   => $appointmentId,
                 'realizations'     => $realizations,
@@ -216,7 +306,7 @@ class PosOrdersApiController extends AbstractController
     }
 
     // =========================
-    // ENCAISSER
+    // ENCAISSER (persist payments_json + payment_method, set status=done)
     // =========================
     #[Route('/orders/{id<\d+>}/encaisser', name: 'orders_encaisser', methods: ['POST'])]
     public function encaisser(int $id, Request $req): JsonResponse
@@ -233,13 +323,21 @@ class PosOrdersApiController extends AbstractController
             return $this->json(['error' => 'Order not found'], 404);
         }
 
-        $amountDueCents      = (int)$order['total_cents'];
+        // Provided values from UI
         $amountReceivedCents = max(0, (int)($p['amountReceivedCents'] ?? 0));
-        $tipCents            = max(0, $amountReceivedCents - $amountDueCents);
+        $tipFromUi           = max(0, (int)($p['tipCents'] ?? 0));
+        $payments            = is_array($p['payments'] ?? null) ? $p['payments'] : [];
+        $method              = $payments[0]['method'] ?? ($p['method'] ?? null);
+
+        // Fallbacks
+        $amountDueCents  = (int)$order['total_cents'];
+        $tipComputed     = max(0, $amountReceivedCents - $amountDueCents);
+        $tipCents        = $tipFromUi > 0 ? $tipFromUi : $tipComputed;
 
         $encaisseAtIso = (string)($p['encaisseAtIso'] ?? (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM));
         $encaisseAt    = new \DateTimeImmutable($encaisseAtIso);
 
+        // Elapsed minutes — honor UI; else compute from appointment start if available
         $elapsedMinutes = $p['elapsedMinutes'] ?? null;
         if ($elapsedMinutes === null && !empty($order['appointment_id'])) {
             $startStr = $this->conn->fetchOne(
@@ -253,19 +351,25 @@ class PosOrdersApiController extends AbstractController
         }
         $elapsedMinutes = (int) max(0, (int)($elapsedMinutes ?? 0));
 
+        // Persist
         $this->conn->executeStatement(
             "UPDATE ongleri.orders
                 SET amount_received_cents = :ar,
                     tip_cents             = :tip,
                     encaisse_at           = :dt,
-                    elapsed_minutes       = :em
+                    elapsed_minutes       = :em,
+                    status                = 'done',
+                    payments_json         = :pjson,
+                    payment_method        = :pmethod
               WHERE id = :id",
             [
-                'ar' => $amountReceivedCents,
-                'tip'=> $tipCents,
-                'dt' => $encaisseAt->format('Y-m-d H:i:s'),
-                'em' => $elapsedMinutes,
-                'id' => $id,
+                'ar'     => $amountReceivedCents,
+                'tip'    => $tipCents,
+                'dt'     => $encaisseAt->format('Y-m-d H:i:s'),
+                'em'     => $elapsedMinutes,
+                'pjson'  => $payments ? json_encode($payments, JSON_UNESCAPED_UNICODE) : null,
+                'pmethod'=> $method,
+                'id'     => $id,
             ]
         );
 
@@ -278,17 +382,20 @@ class PosOrdersApiController extends AbstractController
                     elapsed_minutes,
                     appointment_id,
                     customer_id,
-                    realizations_json
+                    realizations_json,
+                    payments_json,
+                    payment_method,
+                    status
                FROM ongleri.orders
               WHERE id = ?",
             [$id]
         );
 
-        return $this->json(['item' => $row]);
+        return $this->json(['ok' => true, 'item' => $row]);
     }
 
     // =========================
-    // NEW: Update only note + réalisations (allowed anytime)
+    // Update note + réalisations + (NEW) payment_method (allowed anytime)
     // =========================
     #[Route('/orders/{id<\d+>}/meta', name: 'orders_update_meta', methods: ['PATCH'])]
     public function updateMeta(int $id, Request $req): JsonResponse
@@ -319,13 +426,25 @@ class PosOrdersApiController extends AbstractController
             $realizationsJson = $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null;
         }
 
-        // Build update set
+        // (NEW) payment_method update
         $set = [];
         if (array_key_exists('note', $data)) {
             $set['note'] = $note;
         }
         if (array_key_exists('realisations', $data) || array_key_exists('realizations', $data)) {
             $set['realizations_json'] = $realizationsJson;
+        }
+        if (array_key_exists('payment_method', $data)) {
+            $pm = $data['payment_method'];
+            if (is_string($pm)) {
+                $pm = strtolower(trim($pm));
+                if (!in_array($pm, ['cash','card','other'], true)) {
+                    $pm = null; // normalize invalid -> null
+                }
+            } else {
+                $pm = null;
+            }
+            $set['payment_method'] = $pm;
         }
 
         if (!$set) {
@@ -337,7 +456,149 @@ class PosOrdersApiController extends AbstractController
     }
 
     // =========================
-    // NEW: Revoke (annuler) an order and create a new rendez-vous
+    // Save public notes (order + customer + appointment)
+    // =========================
+    #[Route('/orders/{id<\d+>}/notes', name: 'orders_update_notes', methods: ['PATCH','POST'])]
+    public function updateNotes(int $id, Request $req): JsonResponse
+    {
+        $this->denyAccessUnlessGranted('ROLE_USER');
+
+        $payload = json_decode($req->getContent(), true) ?? [];
+
+        $orderNote = array_key_exists('order_note', $payload) ? (string)($payload['order_note'] ?? '') : null;
+        $custPub   = array_key_exists('customer_notes_public', $payload) ? (string)($payload['customer_notes_public'] ?? '') : null;
+        $apptPub   = array_key_exists('appointment_notes_public', $payload) ? (string)($payload['appointment_notes_public'] ?? '') : null;
+
+        // Load customer_id & appointment_id from the order
+        $o = $this->conn->fetchAssociative(
+            "SELECT customer_id, appointment_id FROM ongleri.orders WHERE id = ?",
+            [$id]
+        );
+        if (!$o) {
+            return new JsonResponse(['error' => 'Order not found'], 404);
+        }
+
+        $this->conn->beginTransaction();
+        try {
+            // Helper to try UPDATE with updated_at, then fallback without it
+            $tryUpdate = function (string $sqlWithUpdatedAt, array $argsWithUpdatedAt, string $sqlNoUpdatedAt, array $argsNoUpdatedAt) {
+                try {
+                    $this->conn->executeStatement($sqlWithUpdatedAt, $argsWithUpdatedAt);
+                } catch (\Throwable $e) {
+                    // Retry without updated_at
+                    $this->conn->executeStatement($sqlNoUpdatedAt, $argsNoUpdatedAt);
+                }
+            };
+
+            // Order note
+            if ($orderNote !== null) {
+                $tryUpdate(
+                    "UPDATE ongleri.orders SET note = ?, updated_at = NOW() WHERE id = ?",
+                    [$orderNote, $id],
+                    "UPDATE ongleri.orders SET note = ? WHERE id = ?",
+                    [$orderNote, $id]
+                );
+            }
+
+            // Customer public notes
+            if ($custPub !== null && !empty($o['customer_id'])) {
+                $cid = (int)$o['customer_id'];
+                $tryUpdate(
+                    "UPDATE ongleri.customers SET notes_public = ?, updated_at = NOW() WHERE id = ?",
+                    [$custPub, $cid],
+                    "UPDATE ongleri.customers SET notes_public = ? WHERE id = ?",
+                    [$custPub, $cid]
+                );
+            }
+
+            // Appointment public notes
+            if ($apptPub !== null && !empty($o['appointment_id'])) {
+                $aid = (int)$o['appointment_id'];
+                $tryUpdate(
+                    "UPDATE ongleri.appointments SET notes_public = ?, updated_at = NOW() WHERE id = ?",
+                    [$apptPub, $aid],
+                    "UPDATE ongleri.appointments SET notes_public = ? WHERE id = ?",
+                    [$apptPub, $aid]
+                );
+            }
+
+            $this->conn->commit();
+            return new JsonResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            $this->conn->rollBack();
+            return new JsonResponse(['error' => 'Failed to save notes', 'detail' => $e->getMessage()], 500);
+        }
+    }
+
+    // =========================
+    // DELETE order (and its items)
+    // =========================
+    #[Route('/orders/{id<\d+>}', name: 'orders_delete', methods: ['DELETE','POST'])]
+    public function deleteOrder(int $id, Request $req): JsonResponse
+    {
+        $this->denyAccessUnlessGranted('ROLE_USER');
+
+        $force = (string)$req->query->get('force', '0') === '1';
+
+        $o = $this->conn->fetchAssociative(
+            "SELECT id, encaisse_at, appointment_id FROM ongleri.orders WHERE id = ?",
+            [$id]
+        );
+        if (!$o) {
+            return $this->json(['ok' => false, 'error' => 'ORDER_NOT_FOUND'], 404);
+        }
+
+        if (!$force && !empty($o['encaisse_at'])) {
+            return $this->json([
+                'ok'    => false,
+                'error' => 'ORDER_ENCAISSED',
+                'hint'  => 'Use ?force=1 to delete anyway.'
+            ], 409);
+        }
+
+        $this->conn->beginTransaction();
+        try {
+            // Delete children first
+            $this->conn->executeStatement(
+                "DELETE FROM ongleri.order_items WHERE order_id = ?",
+                [$id]
+            );
+
+            // Delete the order itself
+            $this->conn->executeStatement(
+                "DELETE FROM ongleri.orders WHERE id = ?",
+                [$id]
+            );
+
+            // Reset appointment status to booked (if linked)
+            if (!empty($o['appointment_id'])) {
+                $this->conn->executeStatement(
+                    "UPDATE ongleri.appointments
+                        SET status = 'booked'
+                      WHERE id = ?",
+                    [(int)$o['appointment_id']]
+                );
+            }
+
+            $this->conn->commit();
+
+            return $this->json([
+                'ok'         => true,
+                'deleted_id' => $id,
+                'appointment_reset' => $o['appointment_id'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            $this->conn->rollBack();
+            return $this->json([
+                'ok'    => false,
+                'error' => 'TX_FAILED',
+                'detail'=> $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    // =========================
+    // Revoke (annuler) an order and create a new rendez-vous
     // =========================
     #[Route('/orders/{id<\d+>}/revoke', name: 'orders_revoke', methods: ['POST'])]
     public function revoke(int $id, Request $req): JsonResponse
@@ -408,18 +669,16 @@ class PosOrdersApiController extends AbstractController
             ]);
             $newApptId = (int)$this->conn->lastInsertId();
 
-            // Mark order as revoked (requires DDL above)
+            // Mark order as revoked
             $update = [
                 'revoked_at'                 => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
                 'revoked_reason'             => $reason ?: null,
                 'replacement_appointment_id' => $newApptId,
             ];
-            // If column exists, set status=revoked
             try {
                 $update['status'] = 'revoked';
                 $this->conn->update('ongleri.orders', $update, ['id' => $id]);
             } catch (\Throwable $e) {
-                // If status column doesn't exist yet, update without it
                 unset($update['status']);
                 $this->conn->update('ongleri.orders', $update, ['id' => $id]);
             }

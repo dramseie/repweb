@@ -12,6 +12,7 @@
         "doctrine/doctrine-migrations-bundle": "^3.4",
         "doctrine/orm": "^3.5",
         "easycorp/easyadmin-bundle": "^4.24",
+        "firebase/php-jwt": "^6.11",
         "google/apiclient": "^2.15",
         "openspout/openspout": "^4.28",
         "phpdocumentor/reflection-docblock": "^5.6",

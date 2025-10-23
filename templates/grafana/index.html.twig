@@ -1,8 +1,12 @@
+{% extends 'base.html.twig' %}
 
-        {% extends 'base.html.twig' %}
-        {% block body %}
-        <h2>Grafana Dashboards</h2>
-        <div id="react-root"></div>
-        <script src="{{ asset('build/app.js') }}"></script>
-        {% endblock %}
-        
+{% block body %}
+  <h2>Grafana Dashboards</h2>
+
+  <div id="react-root"
+       data-org-id="{{ grafana_org_id|default('1') }}"
+       data-grafana-base="{{ grafana_base_url|default('https://repweb.ramseier.com:3001') }}">
+  </div>
+
+  <script src="{{ asset('build/app.js') }}"></script>
+{% endblock %}

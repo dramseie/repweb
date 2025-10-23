@@ -66,3 +66,28 @@ security:
     - { path: ^/, roles: ROLE_USER }
 
     - { path: ^/_diag, roles: ROLE_ADMIN }
+    
+
+    - { path: ^/api/frw, roles: ROLE_FRW_VIEW }
+    - { path: ^/frw, roles: ROLE_FRW_VIEW }        
+
+  # Public build assets (if you serve a separate bundle)
+    - { path: ^/build/migration-manager, roles: PUBLIC_ACCESS }
+  # Migration Manager UI (guarded by feature flag inside controllers)
+    - { path: ^/mig, roles: ROLE_MIG_VIEW }
+  # Migration Manager API
+    - { path: ^/api/mig, roles: ROLE_MIG_VIEW }
+
+  
+  role_hierarchy:
+    ROLE_FRW_ADMIN: [ROLE_FRW_EDIT, ROLE_FRW_VIEW]
+    ROLE_FRW_EDIT:  [ROLE_FRW_VIEW]
+    ROLE_MIG_VIEW:     [ROLE_USER]
+    ROLE_MIG_PM:       [ROLE_MIG_VIEW]
+    ROLE_MIG_EXEC:     [ROLE_MIG_VIEW]
+    ROLE_MIG_APPROVER: [ROLE_MIG_VIEW]
+    ROLE_PI_VIEW:      [ROLE_USER]
+
+
+
+

@@ -16,7 +16,7 @@ final class CalendarSync
     public function upsertForAppointment(int $appointmentId): void
     {
         $a = $this->db->fetchAssociative(
-            "SELECT a.id, a.customer_id, a.start_at, a.end_at, a.notes_public, a.gcal_event_id,
+            "SELECT a.id, a.customer_id, a.start_at, a.end_at, a.notes_public, a.google_event_id,
                     c.first_name, c.last_name, c.phone, c.email
              FROM ongleri.appointments a
              LEFT JOIN ongleri.customers c ON c.id = a.customer_id
@@ -42,27 +42,27 @@ final class CalendarSync
         $eventId = $this->gcal->upsertEvent(
             $this->userId,
             $this->calendarId,
-            (string)($a['gcal_event_id'] ?? ''),
+            (string)($a['google_event_id'] ?? ''),
             $summary,
             $start,
             $end,
             $description
         );
 
-        if ($eventId && $eventId !== ($a['gcal_event_id'] ?? null)) {
-            $this->db->update('ongleri.appointments', ['gcal_event_id' => $eventId], ['id' => $appointmentId]);
+        if ($eventId && $eventId !== ($a['google_event_id'] ?? null)) {
+            $this->db->update('ongleri.appointments', ['google_event_id' => $eventId], ['id' => $appointmentId]);
         }
     }
 
     public function deleteForAppointment(int $appointmentId): void
     {
         $eventId = $this->db->fetchOne(
-            "SELECT gcal_event_id FROM ongleri.appointments WHERE id = ?",
+            "SELECT google_event_id FROM ongleri.appointments WHERE id = ?",
             [$appointmentId]
         );
         if ($eventId) {
             $this->gcal->deleteEvent($this->userId, $this->calendarId, (string)$eventId);
-            $this->db->update('ongleri.appointments', ['gcal_event_id' => null], ['id' => $appointmentId]);
+            $this->db->update('ongleri.appointments', ['google_event_id' => null], ['id' => $appointmentId]);
         }
     }
 }

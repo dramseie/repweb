@@ -1,0 +1,60 @@
+{# templates/public/what_is_repweb.html.twig #}
+{% extends 'base.html.twig' %}
+
+{% block title %}What’s Repweb?{% endblock %}
+
+{% block body %}
+  <style>
+    /* Keep it visually aligned with your login look */
+    .rw-page-wrap {
+      min-height: 100vh;
+      background: #f4f6f8;
+      display: grid;
+      place-items: start center;
+      padding: 32px 16px;
+      box-sizing: border-box;
+    }
+    .rw-topbar {
+      width: min(1100px, 96vw);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      font-family: Arial, sans-serif;
+    }
+    .rw-topbar .left {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .rw-topbar .logo {
+      width: 34px; height: 34px; border-radius: 8px;
+      background: linear-gradient(135deg,#0a7e79,#11a29c);
+    }
+    .rw-topbar .brand {
+      font-weight: 700; color: #0b1020;
+    }
+    .rw-topbar a.back {
+      text-decoration: none; color: #005bac;
+      border: 1px solid #d9e2ea; padding: 8px 12px; border-radius: 10px;
+    }
+    .rw-topbar a.back:hover { background: #eaf2fb; }
+  </style>
+
+  <div class="rw-page-wrap">
+    <div class="rw-topbar">
+      <div class="left">
+        <div class="logo" aria-hidden="true"></div>
+        <div class="brand">repweb — Where data comes together</div>
+      </div>
+      <div class="right">
+        <a href="{{ path('app_login') }}" class="back">Back to Login</a>
+      </div>
+    </div>
+
+    {# React will render the full presentation here #}
+    <div id="repweb-intro-root" data-mode="page" class="rw-page-container"></div>
+  </div>
+
+  {{ encore_entry_link_tags('app') }}
+  {{ encore_entry_script_tags('app') }}
+{% endblock %}

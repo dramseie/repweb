@@ -1,0 +1,10 @@
+/* assets/frw/styles/frw.css */
+.frw-stepper button {
+  display: block !important;
+  width: 100% !important;
+}
+.frw-stepper nav {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: .5rem;
+}

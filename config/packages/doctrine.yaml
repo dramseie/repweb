@@ -1,13 +1,11 @@
 doctrine:
   dbal:
     url: '%env(resolve:DATABASE_URL)%'
-    # 👇 Tell Doctrine we're on MariaDB (adjust version if needed)
     server_version: 'mariadb-10.5'
     charset: utf8mb4
     default_table_options:
       charset: utf8mb4
       collate: utf8mb4_unicode_ci
-
     profiling_collect_backtrace: '%kernel.debug%'
     use_savepoints: true
 
@@ -18,7 +16,6 @@ doctrine:
     validate_xml_mapping: true
     naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
 
-    # NOTE: Removed Postgres-only identity_generation_preferences
     auto_mapping: true
     mappings:
       App:
@@ -27,14 +24,20 @@ doctrine:
         dir: '%kernel.project_dir%/src/Entity'
         prefix: 'App\Entity'
         alias: App
+      Mig:                       # 👈 NEW
+        type: attribute
+        is_bundle: false
+        dir: '%kernel.project_dir%/src/Mig/Entity'
+        prefix: 'App\Mig\Entity'
+        alias: Mig
+
+    # (optional; unrelated to ORM mappings)
     controller_resolver:
       auto_mapping: false
 
 when@test:
   doctrine:
     dbal:
-      # Test DB shares the same server; Doctrine will connect to e.g. repweb_test…
-      # Ensure this DB exists or your CI creates it.
       dbname_suffix: '_test%env(default::TEST_TOKEN)%'
 
 when@prod:

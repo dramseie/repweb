@@ -7,9 +7,8 @@ Encore
   .setPublicPath('/build')
   //.setManifestKeyPrefix('build/')
 
-  .addEntry('app', './assets/app.js')
-
   // existing entries
+  .addEntry('app', './assets/app.js')
   .addEntry('plotly', './assets/plotly.js')
   .addEntry('cmdb-modeler', './assets/tools/cmdb-modeler/index.jsx')
 
@@ -19,8 +18,14 @@ Encore
   // enables React support
   .enableReactPreset()
 
+  // ✅ TypeScript/TSX support (required for ./assets/react/qw/entry.tsx)
+  .enableTypeScriptLoader()
+
   // enables versioning (e.g. app.abc123.css)
   .enableVersioning(true)
+
+  .enableSassLoader()
+
 
   // enables single runtime chunk (recommended for Symfony)
   .enableSingleRuntimeChunk()
@@ -30,6 +35,22 @@ Encore
 
   // cleans output before build
   .cleanupOutputBeforeBuild()
+
+  // split chunks
+  .splitEntryChunks()
+
+  // other entries
+  .addEntry('frw', './assets/frw/app.js')
+  .addEntry('flow-studio', './assets/flow-studio.jsx')
+  .addEntry('accounting', './assets/js/accounting_boot.js')
+
+  // QW builder entry (TSX)
+  .addEntry('qw-entry', './assets/react/qw/entry.tsx')
+  
+  .addEntry('migration-manager', './assets/react/migration-manager/index.jsx')
+
+  .addEntry('psr', './assets/psr/index.tsx')
+
 ;
 
 const config = Encore.getWebpackConfig();

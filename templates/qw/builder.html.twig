@@ -1,0 +1,45 @@
+{# templates/qw/builder.html.twig #}
+{% extends 'base.html.twig' %}
+
+{% block title %}Questionnaire Builder{% endblock %}
+
+{% block body %}
+  <style>
+    /* --- Two-pane shell (no Tailwind needed) --- */
+    .qw-shell{
+      display:flex; gap:16px;
+      height:calc(100vh - 140px);  /* adjust header/footer offset if needed */
+      padding:16px 0;
+    }
+    .qw-left{
+      flex:0 0 320px; width:320px;
+      overflow:auto;
+      background:#fff; border:1px solid #e6e6e6; border-radius:12px; padding:12px;
+    }
+    .qw-right{
+      flex:1 1 auto;
+      overflow:auto;
+      background:#fff; border:1px solid #e6e6e6; border-radius:12px; padding:16px;
+      min-width:0;
+    }
+    .qw-h1{ font-size:24px; font-weight:600; margin:0 0 12px; }
+    .qw-btn{ display:inline-block; padding:8px 12px; border:1px solid #ddd; border-radius:8px; background:#f6f6f6; font-size:14px; }
+    .qw-btn + .qw-btn{ margin-left:8px; }
+    .qw-chip{ font-size:11px; padding:2px 8px; border-radius:999px; background:#f1f3f5; color:#555; }
+    .qw-card{ border:1px solid #eee; border-radius:12px; background:#fff; margin-bottom:10px; }
+    .qw-card-hd{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; }
+    .qw-card-help{ padding:0 12px 10px 12px; color:#6b7280; font-size:12px; }
+    .qw-toolbar .qw-btn{ padding:6px 8px; font-size:12px; }
+    .qw-group{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
+    .qw-pill{ border:1px solid #e5e7eb; border-radius:8px; padding:8px; font-size:12px; text-align:center; cursor:grab; background:#fafafa; }
+    .qw-pill:hover{ background:#f3f4f6; }
+    .qw-sticky{ position:sticky; top:12px; }
+  </style>
+
+  <div class="container mx-auto">
+    <div id="qw-root" data-qid="{{ qid }}"></div>
+  </div>
+
+  {{ encore_entry_link_tags('qw-entry') }}
+  {{ encore_entry_script_tags('qw-entry') }}
+{% endblock %}
