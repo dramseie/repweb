@@ -41,3 +41,4 @@ npm run build
 - Icons: put Bootstrap Icons CSS in your base layout if you use `bi` classes.
 - API returns fields: `id, label, url, icon, external, megaGroup, children[]`.
 - Role filtering & route resolution are handled server-side by `MenuBuilder`.
+# repweb
