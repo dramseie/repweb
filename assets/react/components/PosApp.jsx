@@ -1,3 +1,8 @@
+/* Full modified PosApp.jsx
+   - Timer ticks every second (setInterval) so seconds are visible.
+   - saveOrder() captures the timer elapsed (seconds persisted in localStorage) and passes rounded minutes to PaymentDialog via elapsedMinutesInitial.
+   - PaymentDialog uses elapsedMinutesInitial to pre-fill the "Temps écoulé" field.
+*/
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import PaymentDialog from './PaymentDialog';
 import OrderDialog from './OrderDialog';
@@ -166,16 +171,7 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
           const r = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`, { signal: reverseAbortRef.current.signal });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const j = await r.json();
-            // Ensure currentOrder.id exists after order creation
-  const __newId = (j?.id ?? j?.order_id) ?? null;
-  if (__newId) {
-    setCurrentOrder(prev => ({
-      ...prev,
-      id: __newId,
-      total_cents: (j?.total_cents ?? prev?.total_cents ?? 0),
-    }));
-  }
-if (!j?.address) throw new Error('Aucune adresse trouvée');
+          if (!j?.address) throw new Error('Aucune adresse trouvée');
 
           const a = j.address || {};
           const addr = {
@@ -277,7 +273,7 @@ if (!j?.address) throw new Error('Aucune adresse trouvée');
     } catch (e2) {
       if (e2.name !== 'AbortError') setError(e2.message || 'Recherche échouée');
     } finally {
-      setBusy(false);
+           setBusy(false);
     }
   };
 
@@ -408,24 +404,12 @@ const fmtHMS = (totalSec) => {
   return `${h}:${m}:${ss}`;
 };
 
-/**
- * usePosTimer — robust ticker that shows visible progress.
- * Model:
- *   - baseElapsed (seconds) accumulated while not running
- *   - startedAt (ms epoch) when running
- *   - elapsed = baseElapsed + (running ? (now - startedAt)/1000 : 0)
- * Rendering:
- *   - while running, re-render every 250ms via setInterval
- *   - state persists in localStorage under `posTimer:{storageKey}`
- */
+// Small localStorage-backed engine with setInterval so seconds visibly update
 function usePosTimer(storageKey) {
   const key = `posTimer:${storageKey || 'default'}`;
-
-  const [status, setStatus] = useState('idle'); // 'idle' | 'running' | 'paused' | 'stopped'
-  const [baseElapsed, setBaseElapsed] = useState(0); // seconds accumulated
-  const startedAtRef = useRef(null);                 // ms epoch
+  const [status, setStatus] = useState('idle'); // idle | running | stopped
+  const [elapsed, setElapsed] = useState(0);    // seconds (integer)
   const intervalRef = useRef(null);
-  const [, forceTick] = useState(0);                // dummy state to force re-render
 
   // load persisted state
   useEffect(() => {
@@ -434,113 +418,98 @@ function usePosTimer(storageKey) {
       if (raw) {
         const j = JSON.parse(raw);
         setStatus(j.status ?? 'idle');
-        setBaseElapsed(Number(j.baseElapsed ?? 0));
-        startedAtRef.current = Number.isFinite(j.startedAt) ? j.startedAt : null;
+        setElapsed(Math.round(Number(j.elapsed ?? 0)));
       } else {
-        setStatus('idle');
-        setBaseElapsed(0);
-        startedAtRef.current = null;
+        setStatus('idle'); setElapsed(0);
       }
-    } catch {}
-    // cleanup any interval on key change/unmount
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    } catch {
+      // ignore
+    }
+    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
   }, [key]);
 
-  const persist = useCallback((st = status, be = baseElapsed, sa = startedAtRef.current) => {
+  const persist = useCallback((st = status, el = elapsed) => {
     try {
-      localStorage.setItem(key, JSON.stringify({ status: st, baseElapsed: be, startedAt: sa }));
+      localStorage.setItem(key, JSON.stringify({ status: st, elapsed: el }));
     } catch {}
-  }, [key, status, baseElapsed]);
+  }, [key, status, elapsed]);
 
-  // visible ticking while running
-  useEffect(() => {
-    if (status !== 'running') {
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      return;
-    }
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => {
-      // force a re-render so the computed elapsed updates from Date.now()
-      forceTick(t => (t + 1) & 1023);
-    }, 250);
-    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
-  }, [status]);
-
-  const elapsed = (() => {
-    if (status === 'running' && startedAtRef.current != null) {
-      return baseElapsed + (Date.now() - startedAtRef.current) / 1000;
-    }
-    return baseElapsed;
-  })();
-
+  // start timer: if persisted state says running we also resync using the saved elapsed
   const start = useCallback(() => {
-    if (status !== 'idle') return;
-    startedAtRef.current = Date.now();
+    if (intervalRef.current) return;
+    // mark running and persist
     setStatus('running');
-    persist('running', baseElapsed, startedAtRef.current);
-  }, [status, baseElapsed, persist]);
-
-  const pause = useCallback(() => {
-    if (status !== 'running') return;
-    const now = Date.now();
-    const extra = startedAtRef.current ? (now - startedAtRef.current) / 1000 : 0;
-    startedAtRef.current = null;
-    setBaseElapsed(be => {
-      const v = be + extra;
-      setStatus('paused');
-      persist('paused', v, null);
-      return v;
+    // use functional update to ensure we have latest elapsed
+    setElapsed((prev) => {
+      persist('running', prev);
+      return prev;
     });
-  }, [status, persist]);
-
-  const resume = useCallback(() => {
-    if (status !== 'paused') return;
-    startedAtRef.current = Date.now();
-    setStatus('running');
-    persist('running', baseElapsed, startedAtRef.current);
-  }, [status, baseElapsed, persist]);
-
-  const stop = useCallback(() => {
-    // compute final total and go to 'stopped'
-    const now = Date.now();
-    const extra = status === 'running' && startedAtRef.current ? (now - startedAtRef.current) / 1000 : 0;
-    startedAtRef.current = null;
-    setBaseElapsed(be => {
-      const v = be + extra;
-      setStatus('stopped');
-      persist('stopped', v, null);
-      return v;
-    });
-  }, [status, persist]);
-
-  const reset = useCallback(() => {
-    startedAtRef.current = null;
-    setBaseElapsed(0);
-    setStatus('idle');
-    persist('idle', 0, null);
+    // every second increment elapsed by 1 so UI visibly updates seconds
+    intervalRef.current = setInterval(() => {
+      setElapsed((prev) => {
+        const next = prev + 1;
+        persist('running', next);
+        return next;
+      });
+    }, 1000);
   }, [persist]);
 
-  return { status, elapsed, start, pause, resume, stop, reset };
+  const stop = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setStatus('stopped');
+    setElapsed((prev) => {
+      persist('stopped', prev);
+      return prev;
+    });
+  }, [persist]);
+
+  const reset = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setStatus('idle');
+    setElapsed(0);
+    persist('idle', 0);
+  }, [persist]);
+
+  // if persisted status is running after mount, resume visual ticking
+  useEffect(() => {
+    if (status === 'running' && !intervalRef.current) {
+      // ensure interval runs to show seconds
+      intervalRef.current = setInterval(() => {
+        setElapsed((prev) => {
+          const next = prev + 1;
+          persist('running', next);
+          return next;
+        });
+      }, 1000);
+    }
+    return () => {
+      // cleanup on unmount
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    };
+  }, [status, persist]);
+
+  return { status, elapsed, start, stop, reset };
 }
 
 // === Timer UI (exposes stop() via ref) ===
 const Timer = React.forwardRef(function Timer({ storageKey, onStopped, disabled }, ref) {
-  const { status, elapsed, start, pause, resume, stop, reset } = usePosTimer(storageKey);
+  const { status, elapsed, start, stop, reset } = usePosTimer(storageKey);
 
-	React.useImperativeHandle(ref, () => ({
-	  /** read current elapsed in whole seconds (no side effects) */
-	  snapshotSeconds: () => Math.round(elapsed),
-
-	  /** stop the timer and return elapsed in whole seconds */
-	  stopAndGetSeconds: () => {
-		const secs = Math.round(elapsed);
-		stop();
-		return secs;
-	  },
-
-	  /** hard stop without returning anything */
-	  hardStop: () => stop(),
-	}), [stop, elapsed]);
+  React.useImperativeHandle(ref, () => ({
+    stopAndReturn: () => {
+      const before = Math.round(elapsed);
+      stop();
+      const t = fmtHMS(before);
+      return t; // display format
+    },
+    hardStop: () => stop(),
+  }), [stop, elapsed]);
 
   const doStop = () => {
     const before = Math.round(elapsed);
@@ -551,74 +520,21 @@ const Timer = React.forwardRef(function Timer({ storageKey, onStopped, disabled 
 
   return (
     <div className="d-flex align-items-center gap-2">
-      {/* ticking display */}
-      <div
-        className="fw-bold"
-        style={{ minWidth: 90, fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace' }}
-        aria-live="polite"
-      >
+      <div className="fw-bold" style={{ minWidth: 90, fontVariantNumeric:'tabular-nums' }}>
         {fmtHMS(elapsed)}
       </div>
 
-      {/* Start */}
-      <button
-        className="btn btn-sm btn-success"
-        onClick={start}
-        disabled={disabled || status !== 'idle'}
-        title="Start"
-        type="button"
-      >
-        <i className="fa-solid fa-play" aria-hidden="true" />
-        <span className="visually-hidden">Start</span>
-      </button>
+      <button className="btn btn-sm btn-success"
+              onClick={start}
+              disabled={disabled || status==='running'} aria-label="Start timer">▶︎</button>
 
-      {/* Pause */}
-      <button
-        className="btn btn-sm btn-warning"
-        onClick={pause}
-        disabled={disabled || status !== 'running'}
-        title="Pause"
-        type="button"
-      >
-        <i className="fa-solid fa-pause" aria-hidden="true" />
-        <span className="visually-hidden">Pause</span>
-      </button>
+      <button className="btn btn-sm btn-danger"
+              onClick={doStop}
+              disabled={disabled || status!=='running'} aria-label="Stop timer">■</button>
 
-      {/* Resume */}
-      <button
-        className="btn btn-sm btn-info"
-        onClick={resume}
-        disabled={disabled || status !== 'paused'}
-        title="Resume"
-        type="button"
-      >
-        <i className="fa-solid fa-play" aria-hidden="true" />
-        <span className="visually-hidden">Resume</span>
-      </button>
-
-      {/* Stop */}
-      <button
-        className="btn btn-sm btn-danger"
-        onClick={doStop}
-        disabled={disabled || (status !== 'running' && status !== 'paused')}
-        title="Stop"
-        type="button"
-      >
-        <i className="fa-solid fa-stop" aria-hidden="true" />
-        <span className="visually-hidden">Stop</span>
-      </button>
-
-      {/* Reset */}
-      <button
-        className="btn btn-sm btn-outline-secondary"
-        onClick={reset}
-        disabled={disabled || (status === 'idle' && Math.floor(elapsed) === 0)}
-        title="Reset"
-        type="button"
-      >
-        <i className="fa-solid fa-rotate-left" aria-hidden="true" />
-        <span className="visually-hidden">Reset</span>
-      </button>
+      <button className="btn btn-sm btn-outline-secondary"
+              onClick={reset}
+              disabled={disabled || (status==='idle' && elapsed===0)} aria-label="Reset timer">⟲</button>
     </div>
   );
 });
@@ -781,7 +697,7 @@ export default function PosApp() {
         console.error(e);
         setCats({});
       } finally {
-        setLoading(false);
+               setLoading(false);
       }
     })();
   }, []);
@@ -993,27 +909,37 @@ export default function PosApp() {
   };
   const clearReals = () => setSelectedReals([]);
 
+  // ⏱ storage key follows selected RDV, or global when none
+  const timerStorageKey = activeAppointmentId ? `appt-${activeAppointmentId}` : 'global';
+
   // Create order, then open modal
-	const timerRef = useRef(null);
+  const timerRef = useRef(null);
+  const saveOrder = async () => {
+    if (!cart.length) return;
 
-	const saveOrder = async () => {
-	  if (!cart.length) return;
+    // Capture timer elapsed (in minutes) by reading persisted value.
+    // We stop the visible timer (hardStop) so the persisted elapsed is stable.
+    let elapsedMinutesInitial = null;
+    try {
+      try { timerRef.current?.hardStop?.(); } catch {}
+      const raw = localStorage.getItem(`posTimer:${timerStorageKey}`);
+      if (raw) {
+        try {
+          const j = JSON.parse(raw);
+          const secs = Number(j.elapsed ?? 0);
+          if (Number.isFinite(secs)) elapsedMinutesInitial = Math.max(0, Math.round(secs / 60));
+        } catch {}
+      }
+    } catch (e) {
+      console.error('Failed to read persisted timer', e);
+    }
 
-	  // Stop timer and capture elapsed minutes (rounded)
-	  let elapsedMinutesFromTimer = null;
-	  try {
-		const secs = timerRef.current?.stopAndGetSeconds?.();
-		if (typeof secs === 'number') {
-		  elapsedMinutesFromTimer = Math.max(0, Math.round(secs / 60));
-		}
-	  } catch {}
-
-	  if (activeAppointmentId) {
-		await fetch(`/api/pos/appointments/${activeAppointmentId}`, {
-		  method:'PATCH', headers:{'Content-Type':'application/json'},
-		  body: JSON.stringify({ real_end_at: nowSql(), status: 'done' })
-		});
-	  }
+    if (activeAppointmentId) {
+      await fetch(`/api/pos/appointments/${activeAppointmentId}`, {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ real_end_at: nowSql(), status: 'done' })
+      });
+    }
 
     const items = cart.filter(l => !l.isCustom).map(l => ({ item_id: l.id, qty: l.qty }));
     const customItems = cart.filter(l => l.isCustom).map(l => ({
@@ -1036,42 +962,45 @@ export default function PosApp() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     const data = await r.json();
-
-  if (data.ok) {
-    // ... keep existing setCurrentOrder
-    setPayOpen(true);
-    // store elapsed to use in <PaymentDialog />
-    setCurrentOrder(prev => ({ ...prev, elapsedMinutesFromTimer }));
-  } else {
-    alert('Erreur: ' + (data.error || 'inconnue'));
-  }
-};
+    if (data.ok) {
+      const apptId = data.appointment_id ?? activeAppointmentId ?? null;
+      let startIso2 = null;
+      if (apptId && custDetail?.appointments?.length) {
+        const a = custDetail.appointments.find(x => x.id === apptId);
+        const start = a?.start_at || null;
+        if (start) startIso2 = start.replace(' ', 'T');
+      }
+      setCurrentOrder({
+        id: data.order_id,
+        total_cents: data.total_cents,
+        appointment_id: apptId,
+        rendezVousStartIso: startIso2,
+        elapsedMinutesInitial: elapsedMinutesInitial,
+      });
+      setPayOpen(true);
+    } else {
+      alert('Erreur: ' + (data.error || 'inconnue'));
+    }
+  };
 
   // Confirm payment
-const confirmPayment = async (payload) => {
-  // Get order ID from payload if currentOrder is lost
-  const orderId = payload.orderId || currentOrder?.id;
-  
-  if (!orderId) {
-    console.error('Order missing - currentOrder:', currentOrder, 'payload:', payload);
-    throw new Error('Order missing');
-  }
-  
-  const r = await fetch(`/api/pos/orders/${orderId}/encaisser`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  
-  if (!r.ok) throw new Error(await r.text());
-  
-  setPayOpen(false);
-  setCart([]);
-  setTechNotes('');
-  setSelectedReals([]);
-  if (customer?.id) await loadCustomerDetail(customer.id);
-  window.location.reload();
-};
+  const confirmPayment = async (payload) => {
+    if (!currentOrder?.id) throw new Error('Order missing');
+    const r = await fetch(`/api/pos/orders/${currentOrder.id}/encaisser`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) throw new Error(await r.text());
+
+    setPayOpen(false);
+    setCart([]);
+    setTechNotes('');
+    setSelectedReals([]);
+    if (customer?.id) await loadCustomerDetail(customer.id);
+
+    window.location.reload();
+  };
 
   const isActiveAppt = a => a.id === activeAppointmentId;
 
@@ -1252,9 +1181,6 @@ const confirmPayment = async (payload) => {
     { symbol: '🙅', title: 'Dépose' },
     { symbol: '🛠️', title: 'Réparation' },
   ];
-
-  // ⏱ storage key follows selected RDV, or global when none
-  const timerStorageKey = activeAppointmentId ? `appt-${activeAppointmentId}` : 'global';
 
   return (
     <div className="row g-3">
@@ -1596,12 +1522,7 @@ const confirmPayment = async (payload) => {
                       <div className="d-flex align-items-center justify-content-between">
                         <label className="form-label small mb-0">Notes pour le rendez-vous</label>
                         <div className="d-flex gap-1">
-                          {[
-                            { symbol: '✋', title: 'Main' },
-                            { symbol: '🦶', title: 'Pieds' },
-                            { symbol: '🙅', title: 'Dépose' },
-                            { symbol: '🛠️', title: 'Réparation' },
-                          ].map(e => (
+                          {QUICK_EMOJIS.map(e => (
                             <button
                               key={e.symbol}
                               type="button"
@@ -1752,16 +1673,14 @@ const confirmPayment = async (payload) => {
       />
 
       {/* 💳 Payment Modal */}
-	<PaymentDialog
-	  show={payOpen}
-	  onClose={() => setPayOpen(false)}
-	  onConfirm={confirmPayment}
-	  amountDueCents={currentOrder?.total_cents ?? totals.total}
-	  rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
-	  elapsedMinutesInitial={currentOrder?.elapsedMinutesFromTimer ?? null}
-	  orderId={currentOrder?.id} 
-	/>
-
+      <PaymentDialog
+        show={payOpen}
+        onClose={() => setPayOpen(false)}
+        onConfirm={confirmPayment}
+        amountDueCents={currentOrder?.total_cents ?? totals.total}
+        rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
+        elapsedMinutesInitial={currentOrder?.elapsedMinutesInitial ?? null}
+      />
 
       {/* ✏️ Customer Edit Modal */}
       <div className={`modal ${editOpen ? 'd-block show' : ''}`} tabIndex="-1" style={{ background: editOpen ? 'rgba(0,0,0,.5)' : 'transparent' }} role="dialog" aria-modal={editOpen ? 'true' : undefined}>
