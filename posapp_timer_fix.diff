@@ -1,0 +1,117 @@
+diff --git a/assets/react/components/PaymentDialog.jsx b/assets/react/components/PaymentDialog.jsx
+index 1111111..2222222 100644
+--- a/assets/react/components/PaymentDialog.jsx
++++ b/assets/react/components/PaymentDialog.jsx
+@@ -1,9 +1,12 @@
+ export default function PaymentDialog({
+   show,
+   onClose,
+   onConfirm,
+   amountDueCents = 0,
+-  rendezVousAtIso = null,
++  rendezVousAtIso = null,
++  // NEW: prefilled minutes coming from the running POS timer. If null,
++  // we fall back to computing from RDV start → encaisse time.
++  elapsedMinutesInitial = null,
+ }) {
+@@
+-  // Recompute elapsed each time the dialog opens or encaisse time changes
+-  useEffect(() => {
+-    if (!show) return;
+-    recomputeElapsed();
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [show, encaisseAt, rendezVousAtIso]);
++  /**
++   * On open:
++   *  - If we got a timer value from the POS, use it to prefill "Temps écoulé"
++   *  - Otherwise compute from RDV start → encaisse time.
++   * We do NOT depend on encaisseAt here to avoid clobbering manual edits right after open.
++   */
++  useEffect(() => {
++    if (!show) return;
++    if (elapsedMinutesInitial != null && Number.isFinite(Number(elapsedMinutesInitial))) {
++      setElapsedMinutes(Math.max(0, Math.round(Number(elapsedMinutesInitial))));
++    } else {
++      recomputeElapsed();
++    }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [show, rendezVousAtIso, elapsedMinutesInitial]);
++
++  // If no initial timer value was provided, keep recomputing when encaisseAt changes
++  useEffect(() => {
++    if (!show) return;
++    if (elapsedMinutesInitial == null) recomputeElapsed();
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [encaisseAt]);
+
+diff --git a/assets/react/components/PosApp.jsx b/assets/react/components/PosApp.jsx
+index 3333333..4444444 100644
+--- a/assets/react/components/PosApp.jsx
++++ b/assets/react/components/PosApp.jsx
+@@ -1,6 +1,7 @@
+ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+ import PaymentDialog from './PaymentDialog';
+ import OrderDialog from './OrderDialog';
++// timerRef already exists below
+@@
+-  // Create order, then open modal
+-  const timerRef = useRef(null);
++  // Create order, then open modal (timer used to capture elapsed minutes)
++  const timerRef = useRef(null);
+@@
+   const saveOrder = async () => {
+     if (!cart.length) return;
+ 
+-    // (Optional) stop the visible timer here; comment out if you prefer manual stop:
+-    try { timerRef.current?.hardStop?.(); } catch {}
++    // Stop timer and capture elapsed minutes (rounded)
++    let elapsedMinutesFromTimer = null;
++    try {
++      const secs = timerRef.current?.stopAndGetSeconds?.();
++      if (typeof secs === 'number') {
++        elapsedMinutesFromTimer = Math.max(0, Math.round(secs / 60));
++      }
++    } catch {}
+@@
+-    if (data.ok) {
+-      const apptId = data.appointment_id ?? activeAppointmentId ?? null;
+-      let startIso2 = null;
+-      if (apptId && custDetail?.appointments?.length) {
+-        const a = custDetail.appointments.find(x => x.id === apptId);
+-        const start = a?.start_at || null;
+-        if (start) startIso2 = start.replace(' ', 'T');
+-      }
+-      setCurrentOrder({
+-        id: data.order_id,
+-        total_cents: data.total_cents,
+-        appointment_id: apptId,
+-        rendezVousStartIso: startIso2,
+-      });
+-      setPayOpen(true);
+-    } else {
++    if (data.ok) {
++      const apptId = data.appointment_id ?? activeAppointmentId ?? null;
++      let startIso2 = null;
++      if (apptId && custDetail?.appointments?.length) {
++        const a = custDetail.appointments.find(x => x.id === apptId);
++        const start = a?.start_at || null;
++        if (start) startIso2 = start.replace(' ', 'T');
++      }
++      // Keep ID (fixes "Order missing") and pass timer minutes to the dialog
++      setCurrentOrder({
++        id: data.order_id,
++        total_cents: data.total_cents,
++        appointment_id: apptId,
++        rendezVousStartIso: startIso2,
++        elapsedMinutesFromTimer,
++      });
++      setPayOpen(true);
++    } else {
+       alert('Erreur: ' + (data.error || 'inconnue'));
+     }
+   };
+@@
+-      rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
++      rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
++      elapsedMinutesInitial={currentOrder?.elapsedMinutesFromTimer ?? null}
+   />

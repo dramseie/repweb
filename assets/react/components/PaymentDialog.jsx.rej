@@ -1,0 +1,3 @@
+diff a/assets/react/components/PaymentDialog.jsx b/assets/react/components/PaymentDialog.jsx	(rejected hunks)
+@@ -0,0 +265 @@
++import React, { useEffect, useMemo, useState } from "react";

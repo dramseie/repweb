@@ -166,7 +166,16 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
           const r = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`, { signal: reverseAbortRef.current.signal });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const j = await r.json();
-          if (!j?.address) throw new Error('Aucune adresse trouvée');
+            // Ensure currentOrder.id exists after order creation
+  const __newId = (j?.id ?? j?.order_id) ?? null;
+  if (__newId) {
+    setCurrentOrder(prev => ({
+      ...prev,
+      id: __newId,
+      total_cents: (j?.total_cents ?? prev?.total_cents ?? 0),
+    }));
+  }
+if (!j?.address) throw new Error('Aucune adresse trouvée');
 
           const a = j.address || {};
           const addr = {
@@ -268,7 +277,7 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
     } catch (e2) {
       if (e2.name !== 'AbortError') setError(e2.message || 'Recherche échouée');
     } finally {
-           setBusy(false);
+      setBusy(false);
     }
   };
 
@@ -399,115 +408,117 @@ const fmtHMS = (totalSec) => {
   return `${h}:${m}:${ss}`;
 };
 
-// Small localStorage-backed engine
+/**
+ * usePosTimer — robust ticker that shows visible progress.
+ * Model:
+ *   - baseElapsed (seconds) accumulated while not running
+ *   - startedAt (ms epoch) when running
+ *   - elapsed = baseElapsed + (running ? (now - startedAt)/1000 : 0)
+ * Rendering:
+ *   - while running, re-render every 250ms via setInterval
+ *   - state persists in localStorage under `posTimer:{storageKey}`
+ */
 function usePosTimer(storageKey) {
   const key = `posTimer:${storageKey || 'default'}`;
-  const [status, setStatus] = useState('idle'); // idle | running | paused | stopped
-  const [elapsed, setElapsed] = useState(0);
-  const lastTickRef = useRef(null);
-  const rafRef = useRef(null);
 
-  // load
+  const [status, setStatus] = useState('idle'); // 'idle' | 'running' | 'paused' | 'stopped'
+  const [baseElapsed, setBaseElapsed] = useState(0); // seconds accumulated
+  const startedAtRef = useRef(null);                 // ms epoch
+  const intervalRef = useRef(null);
+  const [, forceTick] = useState(0);                // dummy state to force re-render
+
+  // load persisted state
   useEffect(() => {
     try {
       const raw = localStorage.getItem(key);
       if (raw) {
         const j = JSON.parse(raw);
         setStatus(j.status ?? 'idle');
-        setElapsed(Number(j.elapsed ?? 0));
-        lastTickRef.current = j.lastTick ?? null;
+        setBaseElapsed(Number(j.baseElapsed ?? 0));
+        startedAtRef.current = Number.isFinite(j.startedAt) ? j.startedAt : null;
       } else {
-        setStatus('idle'); setElapsed(0); lastTickRef.current = null;
+        setStatus('idle');
+        setBaseElapsed(0);
+        startedAtRef.current = null;
       }
-    } catch {
-      // ignore
-    }
-    // cleanup any RAF on key change
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch {}
+    // cleanup any interval on key change/unmount
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [key]);
 
-  const persist = useCallback((st = status, el = elapsed, lt = lastTickRef.current) => {
+  const persist = useCallback((st = status, be = baseElapsed, sa = startedAtRef.current) => {
     try {
-      localStorage.setItem(key, JSON.stringify({ status: st, elapsed: el, lastTick: lt }));
+      localStorage.setItem(key, JSON.stringify({ status: st, baseElapsed: be, startedAt: sa }));
     } catch {}
-  }, [key, status, elapsed]);
+  }, [key, status, baseElapsed]);
 
-  const renderTick = useCallback(() => {
-    if (status !== 'running') return;
-    const now = Date.now();
-    const lt = lastTickRef.current || now;
-    const delta = (now - lt) / 1000;
-    lastTickRef.current = now;
-    setElapsed((e) => {
-      const v = e + delta;
-      persist('running', v, lastTickRef.current);
-      return v;
-    });
-    rafRef.current = requestAnimationFrame(renderTick);
-  }, [status, persist]);
+  // visible ticking while running
+  useEffect(() => {
+    if (status !== 'running') {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      return;
+    }
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      // force a re-render so the computed elapsed updates from Date.now()
+      forceTick(t => (t + 1) & 1023);
+    }, 250);
+    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
+  }, [status]);
+
+  const elapsed = (() => {
+    if (status === 'running' && startedAtRef.current != null) {
+      return baseElapsed + (Date.now() - startedAtRef.current) / 1000;
+    }
+    return baseElapsed;
+  })();
 
   const start = useCallback(() => {
     if (status !== 'idle') return;
-    lastTickRef.current = Date.now();
+    startedAtRef.current = Date.now();
     setStatus('running');
-    persist('running', elapsed, lastTickRef.current);
-    rafRef.current = requestAnimationFrame(renderTick);
-  }, [status, elapsed, persist, renderTick]);
+    persist('running', baseElapsed, startedAtRef.current);
+  }, [status, baseElapsed, persist]);
 
   const pause = useCallback(() => {
     if (status !== 'running') return;
     const now = Date.now();
-    const lt = lastTickRef.current || now;
-    const delta = (now - lt) / 1000;
-    lastTickRef.current = null;
-    setElapsed((e) => {
-      const v = e + delta;
+    const extra = startedAtRef.current ? (now - startedAtRef.current) / 1000 : 0;
+    startedAtRef.current = null;
+    setBaseElapsed(be => {
+      const v = be + extra;
       setStatus('paused');
       persist('paused', v, null);
       return v;
     });
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
   }, [status, persist]);
 
   const resume = useCallback(() => {
     if (status !== 'paused') return;
-    lastTickRef.current = Date.now();
+    startedAtRef.current = Date.now();
     setStatus('running');
-    persist('running', elapsed, lastTickRef.current);
-    rafRef.current = requestAnimationFrame(renderTick);
-  }, [status, elapsed, persist, renderTick]);
+    persist('running', baseElapsed, startedAtRef.current);
+  }, [status, baseElapsed, persist]);
 
   const stop = useCallback(() => {
-    setElapsed((e) => {
-      let v = e;
-      if (status === 'running') {
-        const now = Date.now();
-        const lt = lastTickRef.current || now;
-        v = e + (now - lt) / 1000;
-      }
-      lastTickRef.current = null;
+    // compute final total and go to 'stopped'
+    const now = Date.now();
+    const extra = status === 'running' && startedAtRef.current ? (now - startedAtRef.current) / 1000 : 0;
+    startedAtRef.current = null;
+    setBaseElapsed(be => {
+      const v = be + extra;
       setStatus('stopped');
       persist('stopped', v, null);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
       return v;
     });
   }, [status, persist]);
 
   const reset = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    lastTickRef.current = null;
-    setStatus('idle'); setElapsed(0);
+    startedAtRef.current = null;
+    setBaseElapsed(0);
+    setStatus('idle');
     persist('idle', 0, null);
   }, [persist]);
-
-  // auto-resume visuals after reload while running
-  useEffect(() => {
-    if (status === 'running' && !rafRef.current) {
-      lastTickRef.current = Date.now();
-      rafRef.current = requestAnimationFrame(renderTick);
-    }
-  }, [status, renderTick]);
 
   return { status, elapsed, start, pause, resume, stop, reset };
 }
@@ -516,14 +527,20 @@ function usePosTimer(storageKey) {
 const Timer = React.forwardRef(function Timer({ storageKey, onStopped, disabled }, ref) {
   const { status, elapsed, start, pause, resume, stop, reset } = usePosTimer(storageKey);
 
-  React.useImperativeHandle(ref, () => ({
-    stopAndReturn: () => {
-      stop();
-      const t = fmtHMS((Math.round((elapsed + (status==='running' ? 0 : 0)) * 1000) / 1000));
-      return t; // display format
-    },
-    hardStop: () => stop(),
-  }), [stop, elapsed, status]);
+	React.useImperativeHandle(ref, () => ({
+	  /** read current elapsed in whole seconds (no side effects) */
+	  snapshotSeconds: () => Math.round(elapsed),
+
+	  /** stop the timer and return elapsed in whole seconds */
+	  stopAndGetSeconds: () => {
+		const secs = Math.round(elapsed);
+		stop();
+		return secs;
+	  },
+
+	  /** hard stop without returning anything */
+	  hardStop: () => stop(),
+	}), [stop, elapsed]);
 
   const doStop = () => {
     const before = Math.round(elapsed);
@@ -534,29 +551,74 @@ const Timer = React.forwardRef(function Timer({ storageKey, onStopped, disabled 
 
   return (
     <div className="d-flex align-items-center gap-2">
-      <div className="fw-bold" style={{ minWidth: 90, fontVariantNumeric:'tabular-nums' }}>
+      {/* ticking display */}
+      <div
+        className="fw-bold"
+        style={{ minWidth: 90, fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace' }}
+        aria-live="polite"
+      >
         {fmtHMS(elapsed)}
       </div>
 
-      <button className="btn btn-sm btn-success"
-              onClick={start}
-              disabled={disabled || status!=='idle'}>Start</button>
+      {/* Start */}
+      <button
+        className="btn btn-sm btn-success"
+        onClick={start}
+        disabled={disabled || status !== 'idle'}
+        title="Start"
+        type="button"
+      >
+        <i className="fa-solid fa-play" aria-hidden="true" />
+        <span className="visually-hidden">Start</span>
+      </button>
 
-      <button className="btn btn-sm btn-warning"
-              onClick={pause}
-              disabled={disabled || status!=='running'}>Pause</button>
+      {/* Pause */}
+      <button
+        className="btn btn-sm btn-warning"
+        onClick={pause}
+        disabled={disabled || status !== 'running'}
+        title="Pause"
+        type="button"
+      >
+        <i className="fa-solid fa-pause" aria-hidden="true" />
+        <span className="visually-hidden">Pause</span>
+      </button>
 
-      <button className="btn btn-sm btn-info"
-              onClick={resume}
-              disabled={disabled || status!=='paused'}>Resume</button>
+      {/* Resume */}
+      <button
+        className="btn btn-sm btn-info"
+        onClick={resume}
+        disabled={disabled || status !== 'paused'}
+        title="Resume"
+        type="button"
+      >
+        <i className="fa-solid fa-play" aria-hidden="true" />
+        <span className="visually-hidden">Resume</span>
+      </button>
 
-      <button className="btn btn-sm btn-danger"
-              onClick={doStop}
-              disabled={disabled || (status!=='running' && status!=='paused')}>Stop</button>
+      {/* Stop */}
+      <button
+        className="btn btn-sm btn-danger"
+        onClick={doStop}
+        disabled={disabled || (status !== 'running' && status !== 'paused')}
+        title="Stop"
+        type="button"
+      >
+        <i className="fa-solid fa-stop" aria-hidden="true" />
+        <span className="visually-hidden">Stop</span>
+      </button>
 
-      <button className="btn btn-sm btn-outline-secondary"
-              onClick={reset}
-              disabled={disabled || (status==='idle' && elapsed===0)}>Reset</button>
+      {/* Reset */}
+      <button
+        className="btn btn-sm btn-outline-secondary"
+        onClick={reset}
+        disabled={disabled || (status === 'idle' && Math.floor(elapsed) === 0)}
+        title="Reset"
+        type="button"
+      >
+        <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+        <span className="visually-hidden">Reset</span>
+      </button>
     </div>
   );
 });
@@ -719,7 +781,7 @@ export default function PosApp() {
         console.error(e);
         setCats({});
       } finally {
-               setLoading(false);
+        setLoading(false);
       }
     })();
   }, []);
@@ -932,19 +994,26 @@ export default function PosApp() {
   const clearReals = () => setSelectedReals([]);
 
   // Create order, then open modal
-  const timerRef = useRef(null);
-  const saveOrder = async () => {
-    if (!cart.length) return;
+	const timerRef = useRef(null);
 
-    // (Optional) stop the visible timer here; comment out if you prefer manual stop:
-    try { timerRef.current?.hardStop?.(); } catch {}
+	const saveOrder = async () => {
+	  if (!cart.length) return;
 
-    if (activeAppointmentId) {
-      await fetch(`/api/pos/appointments/${activeAppointmentId}`, {
-        method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ real_end_at: nowSql(), status: 'done' })
-      });
-    }
+	  // Stop timer and capture elapsed minutes (rounded)
+	  let elapsedMinutesFromTimer = null;
+	  try {
+		const secs = timerRef.current?.stopAndGetSeconds?.();
+		if (typeof secs === 'number') {
+		  elapsedMinutesFromTimer = Math.max(0, Math.round(secs / 60));
+		}
+	  } catch {}
+
+	  if (activeAppointmentId) {
+		await fetch(`/api/pos/appointments/${activeAppointmentId}`, {
+		  method:'PATCH', headers:{'Content-Type':'application/json'},
+		  body: JSON.stringify({ real_end_at: nowSql(), status: 'done' })
+		});
+	  }
 
     const items = cart.filter(l => !l.isCustom).map(l => ({ item_id: l.id, qty: l.qty }));
     const customItems = cart.filter(l => l.isCustom).map(l => ({
@@ -967,44 +1036,42 @@ export default function PosApp() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     const data = await r.json();
-    if (data.ok) {
-      const apptId = data.appointment_id ?? activeAppointmentId ?? null;
-      let startIso2 = null;
-      if (apptId && custDetail?.appointments?.length) {
-        const a = custDetail.appointments.find(x => x.id === apptId);
-        const start = a?.start_at || null;
-        if (start) startIso2 = start.replace(' ', 'T');
-      }
-      setCurrentOrder({
-        id: data.order_id,
-        total_cents: data.total_cents,
-        appointment_id: apptId,
-        rendezVousStartIso: startIso2,
-      });
-      setPayOpen(true);
-    } else {
-      alert('Erreur: ' + (data.error || 'inconnue'));
-    }
-  };
+
+  if (data.ok) {
+    // ... keep existing setCurrentOrder
+    setPayOpen(true);
+    // store elapsed to use in <PaymentDialog />
+    setCurrentOrder(prev => ({ ...prev, elapsedMinutesFromTimer }));
+  } else {
+    alert('Erreur: ' + (data.error || 'inconnue'));
+  }
+};
 
   // Confirm payment
-  const confirmPayment = async (payload) => {
-    if (!currentOrder?.id) throw new Error('Order missing');
-    const r = await fetch(`/api/pos/orders/${currentOrder.id}/encaisser`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!r.ok) throw new Error(await r.text());
-
-    setPayOpen(false);
-    setCart([]);
-    setTechNotes('');
-    setSelectedReals([]);
-    if (customer?.id) await loadCustomerDetail(customer.id);
-
-    window.location.reload();
-  };
+const confirmPayment = async (payload) => {
+  // Get order ID from payload if currentOrder is lost
+  const orderId = payload.orderId || currentOrder?.id;
+  
+  if (!orderId) {
+    console.error('Order missing - currentOrder:', currentOrder, 'payload:', payload);
+    throw new Error('Order missing');
+  }
+  
+  const r = await fetch(`/api/pos/orders/${orderId}/encaisser`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  
+  if (!r.ok) throw new Error(await r.text());
+  
+  setPayOpen(false);
+  setCart([]);
+  setTechNotes('');
+  setSelectedReals([]);
+  if (customer?.id) await loadCustomerDetail(customer.id);
+  window.location.reload();
+};
 
   const isActiveAppt = a => a.id === activeAppointmentId;
 
@@ -1529,7 +1596,12 @@ export default function PosApp() {
                       <div className="d-flex align-items-center justify-content-between">
                         <label className="form-label small mb-0">Notes pour le rendez-vous</label>
                         <div className="d-flex gap-1">
-                          {QUICK_EMOJIS.map(e => (
+                          {[
+                            { symbol: '✋', title: 'Main' },
+                            { symbol: '🦶', title: 'Pieds' },
+                            { symbol: '🙅', title: 'Dépose' },
+                            { symbol: '🛠️', title: 'Réparation' },
+                          ].map(e => (
                             <button
                               key={e.symbol}
                               type="button"
@@ -1680,13 +1752,16 @@ export default function PosApp() {
       />
 
       {/* 💳 Payment Modal */}
-      <PaymentDialog
-        show={payOpen}
-        onClose={() => setPayOpen(false)}
-        onConfirm={confirmPayment}
-        amountDueCents={currentOrder?.total_cents ?? totals.total}  // ← include Divers via fallback
-        rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
-      />
+	<PaymentDialog
+	  show={payOpen}
+	  onClose={() => setPayOpen(false)}
+	  onConfirm={confirmPayment}
+	  amountDueCents={currentOrder?.total_cents ?? totals.total}
+	  rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
+	  elapsedMinutesInitial={currentOrder?.elapsedMinutesFromTimer ?? null}
+	  orderId={currentOrder?.id} 
+	/>
+
 
       {/* ✏️ Customer Edit Modal */}
       <div className={`modal ${editOpen ? 'd-block show' : ''}`} tabIndex="-1" style={{ background: editOpen ? 'rgba(0,0,0,.5)' : 'transparent' }} role="dialog" aria-modal={editOpen ? 'true' : undefined}>

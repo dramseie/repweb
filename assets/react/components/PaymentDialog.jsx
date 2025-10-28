@@ -27,7 +27,11 @@ export default function PaymentDialog({
   onConfirm,
   amountDueCents = 0,
   rendezVousAtIso = null, // e.g. "2025-09-10T13:00:00"
+  elapsedMinutesInitial = null,  // NEW
+  orderId = null, // ← ADD THIS LINE
 }) {
+
+
   // Reduction state
   const [reducMode, setReducMode] = useState("amount"); // 'amount' | 'percent'
   const [reducValue, setReducValue] = useState("");
@@ -88,35 +92,48 @@ export default function PaymentDialog({
     setElapsedMinutes(Math.max(0, Math.floor(diffMs / 60000)));
   };
 
-  useEffect(() => {
-    if (!show) return;
-    recomputeElapsed();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show, rendezVousAtIso, encaisseAt]);
+	// On open: if a timer value is provided, use it; otherwise compute from RDV start → encaisseAt
+	useEffect(() => {
+	  if (!show) return;
+	  if (elapsedMinutesInitial != null && Number.isFinite(Number(elapsedMinutesInitial))) {
+		setElapsedMinutes(Math.max(0, Math.round(Number(elapsedMinutesInitial))));
+	  } else {
+		recomputeElapsed();
+	  }
+	  // We intentionally DO NOT depend on encaisseAt here so we don't overwrite manual edits
+	  // eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [show, rendezVousAtIso, elapsedMinutesInitial]);
+
+	// If no initial timer value, keep the field in sync when the encaisse time changes
+	useEffect(() => {
+	  if (!show) return;
+	  if (elapsedMinutesInitial == null) recomputeElapsed();
+	  // eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [encaisseAt]);
+
 
   const handleEncaisseAtChange = (e) => {
     const d = toLocalDate(e.target.value);
     if (d) setEncaisseAt(d);
   };
 
-  const handleConfirm = async () => {
-    // settlement amount (we assume single-method settlement)
-    const payAmountCents = dueAfterReducCents;
-    const amountReceivedCents = method === 'cash' ? asCents(amountReceived) : payAmountCents;
-
-    await onConfirm?.({
-      amountDueCents,
-      reductionCents,
-      amountReceivedCents,
-      tipCents,
-      encaisseAtIso: (toLocalDate(encaisseAt) || new Date()).toISOString(),
-      elapsedMinutes: Number(elapsedMinutes) || 0,
-      // NEW: persist method(s)
-      method,
-      payments: [{ method, amount_cents: payAmountCents }]
-    });
-    onClose?.();
-  };
+const handleConfirm = async () => {
+  const payAmountCents = dueAfterReducCents;
+  const amountReceivedCents = method === 'cash' ? asCents(amountReceived) : payAmountCents;
+  
+  await onConfirm?.({
+    orderId,  // ← ADD THIS LINE (at the beginning of the object)
+    amountDueCents,
+    reductionCents,
+    amountReceivedCents,
+    tipCents,
+    encaisseAtIso: (toLocalDate(encaisseAt) || new Date()).toISOString(),
+    elapsedMinutes: Number(elapsedMinutes) || 0,
+    method,
+    payments: [{ method, amount_cents: payAmountCents }]
+  });
+  onClose?.();
+};
 
   if (!show) return null;
 
