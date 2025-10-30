@@ -5,35 +5,60 @@
 
 {% block body %}
   <style>
-    /* --- Two-pane shell (no Tailwind needed) --- */
     .qw-shell{
-      display:flex; gap:16px;
-      height:calc(100vh - 140px);  /* adjust header/footer offset if needed */
-      padding:16px 0;
+      display:flex;
+      gap:24px;
+      min-height:calc(100vh - 140px);
+      padding:24px;
+      background:linear-gradient(180deg,#f9fafb 0%,#f3f4f6 100%);
+      border-radius:18px;
     }
     .qw-left{
-      flex:0 0 320px; width:320px;
+      flex:0 0 300px;
+      width:300px;
       overflow:auto;
-      background:#fff; border:1px solid #e6e6e6; border-radius:12px; padding:12px;
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:16px;
+      padding:18px;
+      box-shadow:0 12px 24px rgba(15,23,42,0.06);
     }
     .qw-right{
       flex:1 1 auto;
-      overflow:auto;
-      background:#fff; border:1px solid #e6e6e6; border-radius:12px; padding:16px;
       min-width:0;
+      overflow:auto;
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:16px;
+      padding:20px;
+      box-shadow:0 16px 32px rgba(15,23,42,0.08);
     }
-    .qw-h1{ font-size:24px; font-weight:600; margin:0 0 12px; }
-    .qw-btn{ display:inline-block; padding:8px 12px; border:1px solid #ddd; border-radius:8px; background:#f6f6f6; font-size:14px; }
-    .qw-btn + .qw-btn{ margin-left:8px; }
-    .qw-chip{ font-size:11px; padding:2px 8px; border-radius:999px; background:#f1f3f5; color:#555; }
-    .qw-card{ border:1px solid #eee; border-radius:12px; background:#fff; margin-bottom:10px; }
-    .qw-card-hd{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; }
-    .qw-card-help{ padding:0 12px 10px 12px; color:#6b7280; font-size:12px; }
-    .qw-toolbar .qw-btn{ padding:6px 8px; font-size:12px; }
-    .qw-group{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
-    .qw-pill{ border:1px solid #e5e7eb; border-radius:8px; padding:8px; font-size:12px; text-align:center; cursor:grab; background:#fafafa; }
-    .qw-pill:hover{ background:#f3f4f6; }
+    .qw-h1{ font-size:22px; font-weight:600; margin:0 0 16px; color:#111827; }
+    .qw-group{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+    .qw-pill{ border:1px solid #d1d5db; border-radius:12px; padding:12px; font-size:13px; text-align:center; cursor:grab; background:#f9fafb; font-weight:500; color:#111827; transition:all .18s ease; }
+    .qw-pill:hover{ background:#eef2ff; border-color:#6366f1; color:#4338ca; box-shadow:0 6px 14px rgba(99,102,241,0.18); }
     .qw-sticky{ position:sticky; top:12px; }
+    .qw-btn{ display:inline-flex; align-items:center; justify-content:center; padding:8px 14px; border:1px solid #d1d5db; border-radius:10px; background:#f8fafc; font-size:13px; font-weight:500; color:#1f2937; transition:all .15s ease; }
+    .qw-btn:hover{ background:#4338ca; color:#f9fafb; border-color:#4338ca; }
+    .qw-btn-icon{ display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border:1px solid #d1d5db; border-radius:8px; background:#fff; font-size:12px; color:#1f2937; transition:all .12s ease; }
+    .qw-btn-icon:hover{ background:#4338ca; color:#fff; border-color:#4338ca; }
+    .qw-toolbar{ display:flex; align-items:center; gap:10px; }
+    .qw-toolbar-row{ display:flex; gap:6px; }
+    .qw-chip{ font-size:11px; padding:3px 10px; border-radius:999px; background:#eef2ff; color:#4338ca; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+    .qw-card{ border:1px solid #e5e7eb; border-radius:16px; background:#fff; margin-bottom:14px; padding:14px 16px; box-shadow:0 4px 16px rgba(15,23,42,0.04); cursor:pointer; transition:all .16s ease; }
+    .qw-card:hover{ border-color:#6366f1; box-shadow:0 10px 24px rgba(99,102,241,0.18); transform:translateY(-1px); }
+    .qw-card.is-selected{ border-color:#4338ca; box-shadow:0 12px 28px rgba(67,56,202,0.25); background:linear-gradient(180deg,#eef2ff 0%,#fff 100%); }
+    .qw-card-hd{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+    .qw-card-meta{ display:flex; align-items:flex-start; gap:12px; }
+    .qw-card-outline{ display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:12px; background:#eef2ff; color:#4338ca; font-weight:700; font-size:14px; }
+    .qw-card-texts{ display:flex; flex-direction:column; gap:6px; }
+    .qw-card-title{ font-size:16px; font-weight:600; color:#111827; }
+    .qw-card-sub{ display:flex; align-items:center; gap:8px; color:#6b7280; font-size:12px; }
+    .qw-help{ display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:999px; background:#4338ca; color:#fff; font-weight:600; font-size:12px; cursor:help; }
+    .qw-branch{ position:relative; margin-bottom:12px; }
+    .qw-branch-root{ margin-bottom:12px; }
+  .qw-branch::before{ content:''; position:absolute; left:6px; top:12px; bottom:14px; width:2px; background:linear-gradient(180deg,rgba(99,102,241,0.18),rgba(99,102,241,0)); border-radius:999px; }
+    .qw-branch-root::before{ display:none; }
   </style>
 
   <div class="container mx-auto">

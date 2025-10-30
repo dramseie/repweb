@@ -41,17 +41,55 @@ CREATE TABLE `mig_checklist` (
   KEY `migration_id` (`migration_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `mig_calendar_slot`;
+DROP TABLE IF EXISTS `mig_calendar`;
 DROP TABLE IF EXISTS `mig_container`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `mig_container` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `wave_id` bigint(20) unsigned NOT NULL,
+  `application_id` bigint(20) unsigned DEFAULT NULL,
   `name` varchar(150) NOT NULL,
   `notes` text DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `wave_id` (`wave_id`)
+  KEY `wave_id` (`wave_id`),
+  KEY `application_id` (`application_id`),
+  CONSTRAINT `fk_mig_container_app` FOREIGN KEY (`application_id`) REFERENCES `discovery_application` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `mig_calendar`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `mig_calendar` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `method` enum('LiftShift','Reinstall','P2V','V2V','vMotion','Decomm') NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `description` text DEFAULT NULL,
+  `timezone` varchar(64) NOT NULL DEFAULT 'UTC',
+  `active_from` datetime DEFAULT NULL,
+  `active_to` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `method` (`method`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `mig_calendar_slot`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `mig_calendar_slot` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `calendar_id` bigint(20) unsigned NOT NULL,
+  `label` varchar(150) NOT NULL,
+  `starts_at` datetime NOT NULL,
+  `ends_at` datetime NOT NULL,
+  `capacity` int(11) NOT NULL DEFAULT 1,
+  `notes` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `calendar_id` (`calendar_id`),
+  CONSTRAINT `fk_mig_calendar_slot_calendar` FOREIGN KEY (`calendar_id`) REFERENCES `mig_calendar` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `mig_dependency`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -204,9 +242,17 @@ CREATE TABLE `mig_server` (
   `application` varchar(200) DEFAULT NULL,
   `method` enum('LiftShift','Reinstall','P2V','V2V','vMotion','Decomm') NOT NULL DEFAULT 'LiftShift',
   `ci_entity_id` bigint(20) unsigned DEFAULT NULL,
+  `calendar_id` bigint(20) unsigned DEFAULT NULL,
+  `slot_id` bigint(20) unsigned DEFAULT NULL,
+  `scheduled_start` datetime DEFAULT NULL,
+  `scheduled_end` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_container_host` (`container_id`,`hostname`),
-  KEY `application` (`application`)
+  KEY `application` (`application`),
+  KEY `calendar_id` (`calendar_id`),
+  KEY `slot_id` (`slot_id`),
+  CONSTRAINT `fk_mig_server_calendar` FOREIGN KEY (`calendar_id`) REFERENCES `mig_calendar` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_mig_server_slot` FOREIGN KEY (`slot_id`) REFERENCES `mig_calendar_slot` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `mig_slot`;

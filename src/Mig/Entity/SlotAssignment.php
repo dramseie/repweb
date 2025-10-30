@@ -1,8 +1,10 @@
 <?php
 namespace App\Mig\Entity;
+
+use App\Mig\Repository\SlotAssignmentRepository;
 use Doctrine\ORM\Mapping as ORM;
 
-#[ORM\Entity(repositoryClass: App\Mig\Repository\SlotAssignmentRepository::class)]
+#[ORM\Entity(repositoryClass: SlotAssignmentRepository::class)]
 #[ORM\Table(name: 'repweb_mig.mig_slot_assignment')]
 class SlotAssignment
 {

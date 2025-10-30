@@ -1,9 +1,10 @@
 <?php
 namespace App\Mig\Entity;
 
+use App\Mig\Repository\ProjectRepository;
 use Doctrine\ORM\Mapping as ORM;
 
-#[ORM\Entity(repositoryClass: App\Mig\Repository\ProjectRepository::class)]
+#[ORM\Entity(repositoryClass: ProjectRepository::class)]
 #[ORM\Table(name: 'repweb_mig.mig_project')]
 class Project
 {

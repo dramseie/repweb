@@ -1,0 +1,12 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Discovery Manager{% endblock %}
+
+{% block body %}
+  <div id="discovery-root" data-api-base="/api/discovery"></div>
+{% endblock %}
+
+{% block javascripts %}
+  {{ parent() }}
+  {{ encore_entry_script_tags('app') }}
+{% endblock %}

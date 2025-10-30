@@ -152,6 +152,7 @@ import WidgetsHomeTabs from './react/components/WidgetsHomeTabs.jsx';
 import WidgetsDashboard from './react/components/WidgetsDashboard';
 
 import ProgressPage from './react/pages/ProgressPage';
+import DiscoveryManagerApp from './react/discovery/DiscoveryManagerApp.jsx';
 
 // EAV Editor boot
 import mountEavEditor from './react/pages/EavEditorPage';
@@ -179,7 +180,7 @@ L.Icon.Default.mergeOptions({ iconRetinaUrl: icon2x, iconUrl: icon, shadowUrl: s
 // Expose for Twig mounts
 window.React = React;
 window.ReactDOMClient = ReactDOMClient;
-window.App = Object.assign(window.App || {}, { ProgressPage });
+window.App = Object.assign(window.App || {}, { ProgressPage, DiscoveryManagerApp });
 
 /* ======================================================================
    EasyAdmin form editors: Trumbowyg (WYSIWYG) + CodeMirror v5
@@ -356,6 +357,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Progress page
   const elProgress = document.getElementById('progress-root');
   if (elProgress) createRoot(elProgress).render(<ProgressPage />);
+
+  const discoveryRoot = document.getElementById('discovery-root');
+  if (discoveryRoot) {
+    const apiBase = discoveryRoot.getAttribute('data-api-base') || '/api/discovery';
+    createRoot(discoveryRoot).render(<DiscoveryManagerApp apiBase={apiBase} />);
+  }
 
   // Rest API Explorer
   const restRoot = document.getElementById('rest-explorer-root');

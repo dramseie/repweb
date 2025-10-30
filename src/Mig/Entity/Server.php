@@ -1,8 +1,10 @@
 <?php
 namespace App\Mig\Entity;
+
+use App\Mig\Repository\ServerRepository;
 use Doctrine\ORM\Mapping as ORM;
 
-#[ORM\Entity(repositoryClass: App\Mig\Repository\ServerRepository::class)]
+#[ORM\Entity(repositoryClass: ServerRepository::class)]
 #[ORM\Table(name: 'repweb_mig.mig_server')]
 class Server
 {
@@ -26,6 +28,18 @@ class Server
     #[ORM\Column(type: 'bigint', nullable: true, options: ['unsigned' => true])]
     private ?string $ciEntityId = null;
 
+    #[ORM\Column(type: 'bigint', nullable: true, options: ['unsigned' => true])]
+    private ?string $calendarId = null;
+
+    #[ORM\Column(type: 'bigint', nullable: true, options: ['unsigned' => true])]
+    private ?string $slotId = null;
+
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeInterface $scheduledStart = null;
+
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeInterface $scheduledEnd = null;
+
     public function getId(): ?string { return $this->id; }
     public function getContainerId(): string { return $this->containerId; }
     public function setContainerId(string $v): self { $this->containerId = $v; return $this; }
@@ -37,4 +51,12 @@ class Server
     public function setMethod(string $v): self { $this->method = $v; return $this; }
     public function getCiEntityId(): ?string { return $this->ciEntityId; }
     public function setCiEntityId(?string $v): self { $this->ciEntityId = $v; return $this; }
+    public function getCalendarId(): ?string { return $this->calendarId; }
+    public function setCalendarId(?string $v): self { $this->calendarId = $v; return $this; }
+    public function getSlotId(): ?string { return $this->slotId; }
+    public function setSlotId(?string $v): self { $this->slotId = $v; return $this; }
+    public function getScheduledStart(): ?\DateTimeInterface { return $this->scheduledStart; }
+    public function setScheduledStart(?\DateTimeInterface $v): self { $this->scheduledStart = $v; return $this; }
+    public function getScheduledEnd(): ?\DateTimeInterface { return $this->scheduledEnd; }
+    public function setScheduledEnd(?\DateTimeInterface $v): self { $this->scheduledEnd = $v; return $this; }
 }

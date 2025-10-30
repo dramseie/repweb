@@ -23,4 +23,12 @@ final class QwPageController extends AbstractController
             'qid' => $id,
         ]);
     }
+
+    #[Route('/qw/run/{ciKey}', name: 'qw_runner', requirements: ['ciKey' => '[A-Za-z0-9_.:-]+'])]
+    public function runner(string $ciKey): Response
+    {
+        return $this->render('qw/runner.html.twig', [
+            'ci_key' => $ciKey,
+        ]);
+    }
 }

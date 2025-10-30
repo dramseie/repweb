@@ -18,8 +18,27 @@ function toTree(items: ItemDTO[]) {
     nodes.sort((a, b) => a.sort - b.sort);
     nodes.forEach((n: any) => sortRec(n.children));
   };
+  const addOutline = (nodes: any[], prefix: number[] = []) => {
+    nodes.forEach((node: any, index: number) => {
+      const outlineParts = [...prefix, index + 1];
+      node.outline = outlineParts.join('.');
+      addOutline(node.children, outlineParts);
+    });
+  };
   sortRec(roots);
+  addOutline(roots);
   return roots;
+}
+
+function stripHtml(value: string): string {
+  if (!value) return '';
+  return value
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 type FieldRowModel = {
@@ -37,34 +56,62 @@ type FieldRowModel = {
 /* ---------- node card (on canvas) ---------- */
 function NodeCard({
   n,
+  selected,
   onSelect,
   onMove,
   onSettings,
 }: {
   n: any;
+  selected: boolean;
   onSelect: (id: Id) => void;
   onMove: (id: number, dir: 'up' | 'down' | 'in' | 'out') => void;
   onSettings: (id: number) => void;
 }) {
+  const helpText = n.help ? stripHtml(n.help) : '';
+  const typeLabel = n.type === 'question' ? 'Question' : 'Title';
+
   return (
-    <div className="qw-card" onClick={() => onSelect(n.id)}>
+    <div
+      className={`qw-card${selected ? ' is-selected' : ''}`}
+      onClick={() => onSelect(n.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(n.id);
+        }
+      }}
+    >
       <div className="qw-card-hd">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: '#9ca3af', fontSize: 12, width: 40 }}>{n.outline || ''}</span>
-          <span style={{ fontWeight: 600 }}>{n.title}</span>
-          <span className="qw-chip">{n.type}</span>
-        </div>
-        <div className="qw-toolbar" style={{ display: 'flex', gap: 6 }}>
-          <div>
-            <button className="qw-btn" onClick={e => { e.stopPropagation(); onMove(n.id, 'up'); }}>↑</button>
-            <button className="qw-btn" onClick={e => { e.stopPropagation(); onMove(n.id, 'down'); }}>↓</button>
-            <button className="qw-btn" onClick={e => { e.stopPropagation(); onMove(n.id, 'in'); }}>→</button>
-            <button className="qw-btn" onClick={e => { e.stopPropagation(); onMove(n.id, 'out'); }}>←</button>
+        <div className="qw-card-meta">
+          <span className="qw-card-outline">{n.outline}</span>
+          <div className="qw-card-texts">
+            <span className="qw-card-title">{n.title || (n.type === 'question' ? 'Untitled question' : 'Untitled section')}</span>
+            <div className="qw-card-sub">
+              <span className="qw-chip">{typeLabel}</span>
+              {helpText && (
+                <span
+                  className="qw-help"
+                  title={helpText}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  ?
+                </span>
+              )}
+            </div>
           </div>
-          <button className="qw-btn" onClick={e => { e.stopPropagation(); onSettings(n.id); }}>Settings</button>
+        </div>
+        <div className="qw-toolbar" aria-label="Item actions">
+          <div className="qw-toolbar-row">
+            <button className="qw-btn-icon" onClick={e => { e.stopPropagation(); onMove(n.id, 'up'); }} title="Move up" type="button">↑</button>
+            <button className="qw-btn-icon" onClick={e => { e.stopPropagation(); onMove(n.id, 'down'); }} title="Move down" type="button">↓</button>
+            <button className="qw-btn-icon" onClick={e => { e.stopPropagation(); onMove(n.id, 'in'); }} title="Indent" type="button">→</button>
+            <button className="qw-btn-icon" onClick={e => { e.stopPropagation(); onMove(n.id, 'out'); }} title="Outdent" type="button">←</button>
+          </div>
+          <button className="qw-btn" onClick={e => { e.stopPropagation(); onSettings(n.id); }} type="button">Settings</button>
         </div>
       </div>
-      {n.help && <div className="qw-card-help" dangerouslySetInnerHTML={{ __html: n.help }} />}
     </div>
   );
 }
@@ -395,6 +442,7 @@ export default function QuestionnaireBuilder({ qid }: { qid: number }) {
   }
 
   function makeDropHandlers(n: any, depth: number) {
+    const indent = depth > 0 ? 24 : 0;
     return {
       onDragOver: (ev: React.DragEvent<HTMLDivElement>) => {
         ev.preventDefault();
@@ -420,14 +468,24 @@ export default function QuestionnaireBuilder({ qid }: { qid: number }) {
           }
         }
       },
-      style: { marginLeft: depth * 16 },
+  className: depth > 0 ? 'qw-branch' : 'qw-branch qw-branch-root',
+      style: {
+        marginLeft: depth > 0 ? 12 : 0,
+        paddingLeft: indent,
+      },
     };
   }
 
   function render(nodes: any[], depth = 0) {
     return nodes.map((n: any) => (
       <div key={n.id} {...makeDropHandlers(n, depth)}>
-        <NodeCard n={n} onSelect={() => setSelectedId(n.id)} onMove={handleMove} onSettings={onSettings} />
+        <NodeCard
+          n={n}
+          selected={selectedId === n.id}
+          onSelect={(id) => setSelectedId(id)}
+          onMove={handleMove}
+          onSettings={onSettings}
+        />
         {n.type === 'question' && <FieldsRow itemId={Number(n.id)} nonce={fieldsNonce} />}
         {n.children?.length > 0 && render(n.children, depth + 1)}
       </div>
@@ -437,7 +495,7 @@ export default function QuestionnaireBuilder({ qid }: { qid: number }) {
   function onDragEnd(_e: DragEndEvent) {}
 
   const elements = [
-    { key: 'header', label: 'Header' },
+    { key: 'header', label: 'Title' },
     { key: 'question', label: 'Question' },
   ];
   const fields: UiType[] = [
@@ -488,7 +546,7 @@ export default function QuestionnaireBuilder({ qid }: { qid: number }) {
         </div>
 
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-          {q && render(toTree(q.items))}
+          {q && render(tree)}
         </DndContext>
 
         {busy && <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>Saving…</div>}

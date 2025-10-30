@@ -46,8 +46,9 @@ Encore
 
   // QW builder entry (TSX)
   .addEntry('qw-entry', './assets/react/qw/entry.tsx')
+  .addEntry('qw-runner', './assets/react/qw/runnerEntry.tsx')
   
-  .addEntry('migration-manager', './assets/react/migration-manager/index.jsx')
+  .addEntry('migration-manager', './assets/react/mig/entry.tsx')
 
   .addEntry('psr', './assets/psr/index.tsx')
 

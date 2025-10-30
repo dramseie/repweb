@@ -1,0 +1,40 @@
+<h2>Discovery Session Recap</h2>
+<p><strong>Project:</strong> {{ project.name }} ({{ project.code }})</p>
+<p><strong>Session:</strong> {{ session.title }}</p>
+{% if session.heldAt %}
+  <p><strong>Date:</strong> {{ session.heldAt|date('Y-m-d H:i') }}</p>
+{% endif %}
+
+{% if session.summary %}
+  <h3>Summary</h3>
+  <p>{{ session.summary }}</p>
+{% endif %}
+
+{% if session.minutesHtml %}
+  <h3>Minutes</h3>
+  <div>{{ session.minutesHtml|raw }}</div>
+{% endif %}
+
+{% if session.participants %}
+  <h3>Participants</h3>
+  <ul>
+    {% for participant in session.participants %}
+      <li>{{ participant.name ?? participant.email ?? participant }}</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+{% if session.actionItems %}
+  <h3>Action Items</h3>
+  <ul>
+    {% for item in session.actionItems %}
+      <li>
+        <strong>{{ item.title ?? item }}</strong>
+        {% if item.owner %} – Owner: {{ item.owner }}{% endif %}
+        {% if item.dueDate %} (Due {{ item.dueDate }}){% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+<p>Sent automatically by Repweb Discovery Manager.</p>

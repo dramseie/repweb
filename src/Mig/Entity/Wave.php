@@ -1,8 +1,10 @@
 <?php
 namespace App\Mig\Entity;
+
+use App\Mig\Repository\WaveRepository;
 use Doctrine\ORM\Mapping as ORM;
 
-#[ORM\Entity(repositoryClass: App\Mig\Repository\WaveRepository::class)]
+#[ORM\Entity(repositoryClass: WaveRepository::class)]
 #[ORM\Table(name: 'repweb_mig.mig_wave2')]
 class Wave
 {
