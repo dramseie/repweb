@@ -32,9 +32,9 @@ class DiscoveryQuestionnaireRuntimeService
      *
      * @return array<string,mixed>
      */
-    public function load(string $ciKey): array
+    public function load(string $ciKey, ?int $questionnaireId = null): array
     {
-        $context = $this->resolveContext($ciKey);
+        $context = $this->resolveContext($ciKey, $questionnaireId);
         return $this->buildRuntimePayload($context);
     }
 
@@ -44,14 +44,46 @@ class DiscoveryQuestionnaireRuntimeService
      * @param array<int, array<string, mixed>> $answers
      * @return array<string, mixed>
      */
-    public function save(string $ciKey, array $answers, string $status): array
+    public function save(string $ciKey, array $answers, string $status, ?int $questionnaireId = null): array
     {
-        $context = $this->resolveContext($ciKey);
+        $context = $this->resolveContext($ciKey, $questionnaireId);
+        $this->assertStatus($status);
+        $this->persistAnswers($context, $answers, $status);
+        $this->mirrorApplicationStatus($context, $status);
+        return $this->buildRuntimePayload($context);
+    }
 
+    public function loadResponse(int $responseId): array
+    {
+        $context = $this->resolveContextByResponseId($responseId);
+        return $this->buildRuntimePayload($context);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $answers
+     */
+    public function saveResponse(int $responseId, array $answers, string $status): array
+    {
+        $context = $this->resolveContextByResponseId($responseId);
+        $this->assertStatus($status);
+        $this->persistAnswers($context, $answers, $status);
+        $this->mirrorApplicationStatus($context, $status);
+        return $this->buildRuntimePayload($context);
+    }
+
+    private function assertStatus(string $status): void
+    {
         if (!in_array($status, ['in_progress', 'submitted'], true)) {
             throw new BadRequestHttpException('Unsupported status value');
         }
+    }
 
+    /**
+     * @param array<string, mixed> $context
+     * @param array<int, array<string, mixed>> $answers
+     */
+    private function persistAnswers(array $context, array $answers, string $status): void
+    {
         $responseId = $context['responseId'];
 
         $this->connection->transactional(function (Connection $conn) use ($answers, $responseId, $status): void {
@@ -62,7 +94,7 @@ class DiscoveryQuestionnaireRuntimeService
             foreach ($answers as $answer) {
                 $itemId = isset($answer['itemId']) ? (int) $answer['itemId'] : null;
                 if (!$itemId) {
-                    continue; // skip malformed entry
+                    continue;
                 }
 
                 $fieldId = $answer['fieldId'] ?? null;
@@ -110,24 +142,29 @@ class DiscoveryQuestionnaireRuntimeService
             }
             $conn->update('qw_response', $update, ['id' => $responseId]);
         });
+    }
 
-        // Mirror the status into the Doctrine entity for discovery applications.
-        if ($context['mode'] === 'application') {
-            /** @var DiscoveryApplication $application */
-            $application = $context['application'];
-            $responseEntity = $this->locateResponseEntity($application, $context['responseId']);
-            if ($responseEntity) {
-                $responseEntity->setStatus($status);
-                $responseEntity->setSnapshot([
-                    'savedAt' => (new DateTimeImmutable())->format(DATE_ATOM),
-                    'status' => $status,
-                ]);
-                $this->em->persist($responseEntity);
-                $this->em->flush();
-            }
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function mirrorApplicationStatus(array $context, string $status): void
+    {
+        if ($context['mode'] !== 'application') {
+            return;
         }
 
-        return $this->buildRuntimePayload($context);
+        /** @var DiscoveryApplication $application */
+        $application = $context['application'];
+        $responseEntity = $this->locateResponseEntity($application, $context['responseId']);
+        if ($responseEntity) {
+            $responseEntity->setStatus($status);
+            $responseEntity->setSnapshot([
+                'savedAt' => (new DateTimeImmutable())->format(DATE_ATOM),
+                'status' => $status,
+            ]);
+            $this->em->persist($responseEntity);
+            $this->em->flush();
+        }
     }
 
     /**
@@ -258,11 +295,61 @@ class DiscoveryQuestionnaireRuntimeService
     /**
      * @return array<string, mixed>
      */
-    private function resolveContext(string $ciKey): array
+    private function resolveContext(string $ciKey, ?int $questionnaireId = null): array
     {
         $appRepo = $this->em->getRepository(DiscoveryApplication::class);
         /** @var DiscoveryApplication|null $application */
         $application = $appRepo->findOneBy(['appCi' => $ciKey]);
+
+        if ($questionnaireId !== null) {
+            if ($application && $application->getQuestionnaireId() === $questionnaireId) {
+                $responseId = $this->answerCloner->ensureResponseExists($application);
+
+                return [
+                    'mode' => 'application',
+                    'application' => $application,
+                    'questionnaireId' => (int) $application->getQuestionnaireId(),
+                    'responseId' => $responseId,
+                    'ciKey' => $ciKey,
+                    'tenantId' => $application->getTenantId(),
+                    'ciName' => $application->getAppName(),
+                ];
+            }
+
+            $ciRow = $this->connection->fetchAssociative(
+                'SELECT id, ci_name, tenant_id FROM qw_ci WHERE ci_key = :ciKey',
+                ['ciKey' => $ciKey]
+            );
+
+            if (!$ciRow) {
+                throw new NotFoundHttpException('CI not found');
+            }
+
+            $questionnaireRow = $this->connection->fetchAssociative(
+                'SELECT id, tenant_id FROM qw_questionnaire WHERE id = :qid',
+                ['qid' => $questionnaireId]
+            );
+
+            if (!$questionnaireRow) {
+                throw new NotFoundHttpException('Questionnaire not found');
+            }
+
+            if ((int) $questionnaireRow['tenant_id'] !== (int) $ciRow['tenant_id']) {
+                throw new BadRequestHttpException('Questionnaire does not belong to CI tenant');
+            }
+
+            $responseId = $this->ensureGenericResponse((int) $questionnaireRow['id']);
+
+            return [
+                'mode' => 'ci',
+                'application' => null,
+                'questionnaireId' => (int) $questionnaireRow['id'],
+                'responseId' => $responseId,
+                'ciKey' => $ciKey,
+                'tenantId' => (int) $ciRow['tenant_id'],
+                'ciName' => $ciRow['ci_name'],
+            ];
+        }
 
         if ($application && $application->getQuestionnaireId()) {
             $responseId = $this->answerCloner->ensureResponseExists($application);
@@ -303,6 +390,64 @@ class DiscoveryQuestionnaireRuntimeService
             'ciKey' => $ciKey,
             'tenantId' => (int) $row['tenant_id'],
             'ciName' => $row['ci_name'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveContextByResponseId(int $responseId): array
+    {
+        $row = $this->connection->fetchAssociative(
+            'SELECT r.id AS response_id,
+                    r.questionnaire_id,
+                    q.tenant_id,
+                    c.ci_key,
+                    c.ci_name,
+                    dar.application_id
+               FROM qw_response r
+          INNER JOIN qw_questionnaire q ON q.id = r.questionnaire_id
+           LEFT JOIN qw_ci c ON c.id = q.ci_id
+           LEFT JOIN discovery_application_response dar ON dar.response_id = r.id
+              WHERE r.id = :rid',
+            ['rid' => $responseId]
+        );
+
+        if (!$row) {
+            throw new NotFoundHttpException('Response not found');
+        }
+
+        if (!empty($row['application_id'])) {
+            /** @var DiscoveryApplication|null $application */
+            $application = $this->em->getRepository(DiscoveryApplication::class)->find((int) $row['application_id']);
+            if (!$application) {
+                throw new NotFoundHttpException('Application not found for response');
+            }
+
+            $questionnaireId = (int) $application->getQuestionnaireId();
+            if (!$questionnaireId) {
+                throw new NotFoundHttpException('Questionnaire missing for application response');
+            }
+
+            return [
+                'mode' => 'application',
+                'application' => $application,
+                'questionnaireId' => $questionnaireId,
+                'responseId' => $responseId,
+                'ciKey' => $application->getAppCi(),
+                'tenantId' => $application->getTenantId(),
+                'ciName' => $application->getAppName(),
+            ];
+        }
+
+        return [
+            'mode' => 'ci',
+            'application' => null,
+            'questionnaireId' => (int) $row['questionnaire_id'],
+            'responseId' => $responseId,
+            'ciKey' => $row['ci_key'] ?? ('response:' . $responseId),
+            'tenantId' => isset($row['tenant_id']) ? (int) $row['tenant_id'] : 0,
+            'ciName' => $row['ci_name'] ?? ($row['ci_key'] ?? ('Response #' . $responseId)),
         ];
     }
 

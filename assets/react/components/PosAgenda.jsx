@@ -130,7 +130,7 @@ export default function PosAgenda() {
     const ext = info.event.extendedProps || {};
     setApptId(Number(info.event.id));
     if (ext.customer_id) {
-      setCust({ id: ext.customer_id, first_name: ext.first_name || '', last_name: ext.last_name || '' });
+      setCust({ id: ext.customer_id, first_name: ext.first_name || '', last_name: ext.last_name || '', status: ext.customer_status || 'active' });
     }
 
     const s = info.event.start ? new Date(info.event.start) : new Date();
@@ -203,11 +203,12 @@ export default function PosAgenda() {
   const doSearch = async (qq) => {
     if (!qq || qq.trim().length < 2) { setResults([]); return; }
     const data = await api.searchCustomers(qq.trim());
-    setResults(data.items || []);
+    const items = Array.isArray(data.items) ? data.items : [];
+    setResults(items.map((item) => ({ ...item, status: item.status || 'active' })));
   };
   const fastCreateCustomer = async () => {
-    const d = await api.createCustomer({ first_name:'Client', last_name:'SansNom', phone:null, email:null, gdpr_ok:1 });
-    if (d.ok) setCust({ id:d.id, first_name:'Client', last_name:'SansNom' });
+    const d = await api.createCustomer({ first_name:'Client', last_name:'SansNom', phone:null, email:null, gdpr_ok:1, status:'active' });
+    if (d.ok) setCust({ id:d.id, first_name:'Client', last_name:'SansNom', status: d.status || 'active' });
     else setFormErr(d.error || 'Erreur client');
   };
 
@@ -289,7 +290,7 @@ export default function PosAgenda() {
                       <div className="list-group small" style={{maxHeight:200, overflowY:'auto'}}>
                         {results.map(r => (
                           <button key={r.id} className="list-group-item list-group-item-action"
-                                  onClick={()=>setCust(r)}>
+                                  onClick={()=>setCust({ ...r, status: r.status || 'active' })}>
                             {r.last_name} {r.first_name} — {r.phone || r.email || '—'}
                           </button>
                         ))}

@@ -78,7 +78,11 @@
   </style>
 
   <div class="container mx-auto">
-    <div id="qw-runner-root" data-ci="{{ ci_key }}"></div>
+    <div
+      id="qw-runner-root"
+      data-ci="{{ ci_key }}"
+      {% if questionnaire_id is defined and questionnaire_id is not null %}data-qid="{{ questionnaire_id }}"{% endif %}
+    ></div>
   </div>
 
   {{ encore_entry_link_tags('qw-runner') }}

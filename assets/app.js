@@ -150,6 +150,7 @@ import TilesDashboard from './components/TilesDashboard';
 import WidgetsHomeTabs from './react/components/WidgetsHomeTabs.jsx';
 // Legacy single-page widgets dashboard (compat)
 import WidgetsDashboard from './react/components/WidgetsDashboard';
+import ColorInspector from './react/components/ColorInspector.jsx';
 
 import ProgressPage from './react/pages/ProgressPage';
 import DiscoveryManagerApp from './react/discovery/DiscoveryManagerApp.jsx';
@@ -362,6 +363,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (discoveryRoot) {
     const apiBase = discoveryRoot.getAttribute('data-api-base') || '/api/discovery';
     createRoot(discoveryRoot).render(<DiscoveryManagerApp apiBase={apiBase} />);
+  }
+
+  const colorInspectorRoot = document.getElementById('color-inspector-root');
+  if (colorInspectorRoot) {
+    const ideasEndpoint = colorInspectorRoot.getAttribute('data-ideas-endpoint') || null;
+    createRoot(colorInspectorRoot).render(
+      <ColorInspector ideasEndpoint={ideasEndpoint || null} />
+    );
   }
 
   // Rest API Explorer

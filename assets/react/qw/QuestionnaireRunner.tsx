@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { loadRuntime, saveRuntime } from './runtimeApi';
+import { loadRuntime, saveRuntime, type SaveRuntimeRequest } from './runtimeApi';
 import type { RuntimeField, RuntimeItem, RuntimePayload } from './types';
 
 type AnswerValue = string | string[] | number | boolean | Record<string, unknown> | null;
@@ -7,13 +7,20 @@ type AnswerState = Record<string, AnswerValue>;
 type ResponseStatus = 'in_progress' | 'submitted' | string;
 
 interface QuestionnaireRunnerProps {
-  ciKey: string;
+  ciKey?: string;
+  questionnaireId?: number | null;
+  adapter?: RuntimeAdapter;
 }
 
 interface ItemNode {
   item: RuntimeItem;
   children: ItemNode[];
   depth: number;
+}
+
+interface RuntimeAdapter {
+  load: () => Promise<RuntimePayload>;
+  save: (payload: SaveRuntimeRequest) => Promise<RuntimePayload>;
 }
 
 function buildItemTree(items: RuntimeItem[]): ItemNode[] {
@@ -158,7 +165,7 @@ function asBoolean(value: AnswerValue): boolean {
   return false;
 }
 
-const QuestionnaireRunner: React.FC<QuestionnaireRunnerProps> = ({ ciKey }) => {
+const QuestionnaireRunner: React.FC<QuestionnaireRunnerProps> = ({ ciKey, questionnaireId = null, adapter }) => {
   const [payload, setPayload] = useState<RuntimePayload | null>(null);
   const [answers, setAnswers] = useState<AnswerState>({});
   const [status, setStatus] = useState<ResponseStatus>('in_progress');
@@ -170,13 +177,36 @@ const QuestionnaireRunner: React.FC<QuestionnaireRunnerProps> = ({ ciKey }) => {
   const [activeItemId, setActiveItemId] = useState<number | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
+  const effectiveLoad = React.useCallback(() => {
+    if (adapter) {
+      return adapter.load();
+    }
+    if (ciKey) {
+      return loadRuntime(ciKey, questionnaireId);
+    }
+    return Promise.reject(new Error('No questionnaire selected'));
+  }, [adapter, ciKey, questionnaireId]);
+
+  const effectiveSave = React.useCallback(
+    (savePayload: SaveRuntimeRequest) => {
+      if (adapter) {
+        return adapter.save(savePayload);
+      }
+      if (ciKey) {
+        return saveRuntime(ciKey, savePayload, questionnaireId);
+      }
+      return Promise.reject(new Error('No questionnaire selected'));
+    },
+    [adapter, ciKey, questionnaireId]
+  );
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     setFeedback(null);
 
-    loadRuntime(ciKey)
+    effectiveLoad()
       .then((data) => {
         if (cancelled) return;
         setPayload(data);
@@ -201,7 +231,7 @@ const QuestionnaireRunner: React.FC<QuestionnaireRunnerProps> = ({ ciKey }) => {
     return () => {
       cancelled = true;
     };
-  }, [ciKey, reloadToken]);
+  }, [effectiveLoad, reloadToken]);
 
   useEffect(() => {
     if (!feedback) return undefined;
@@ -284,7 +314,7 @@ const QuestionnaireRunner: React.FC<QuestionnaireRunnerProps> = ({ ciKey }) => {
     setError(null);
     try {
       const outgoing = buildOutgoingAnswers(payload, answers);
-      const updated = await saveRuntime(ciKey, {
+      const updated = await effectiveSave({
         answers: outgoing.map((entry) => ({
           itemId: entry.itemId,
           fieldId: entry.fieldId,

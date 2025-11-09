@@ -1,7 +1,7 @@
 // assets/react/qw/QuestionnaireBuilder.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { getQuestionnaire, addItem, patchItem, addField, listFields, patchField } from './api';
+import { getQuestionnaire, addItem, patchItem, addField, listFields, patchField, listCis, patchQuestionnaire } from './api';
 import type { QuestionnaireDTO, ItemDTO, Id, UiType } from './types';
 
 /* ---------- helpers ---------- */
@@ -51,6 +51,13 @@ type FieldRowModel = {
   max_value?: number | null;
   step_value?: number | null;
   options_json?: any; // where we store "label" non-destructively
+};
+
+type CiSummary = {
+  id: number;
+  tenantId: number;
+  ciKey: string;
+  ciName: string;
 };
 
 /* ---------- node card (on canvas) ---------- */
@@ -398,10 +405,62 @@ export default function QuestionnaireBuilder({ qid }: { qid: number }) {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fieldsNonce, setFieldsNonce] = useState(0); // bump to re-fetch fields after drop
+  const [ciSearch, setCiSearch] = useState('');
+  const [ciOptions, setCiOptions] = useState<CiSummary[]>([]);
+  const [ciLoading, setCiLoading] = useState(false);
+  const [ciError, setCiError] = useState<string | null>(null);
+  const [ciSaving, setCiSaving] = useState(false);
 
   useEffect(() => { getQuestionnaire(qid).then(setQ); }, [qid]);
 
   const tree = useMemo(() => (q ? toTree(q.items) : []), [q]);
+
+  useEffect(() => {
+    if (!q) return;
+    let alive = true;
+    setCiLoading(true);
+    setCiError(null);
+    const timer = window.setTimeout(() => {
+      const tenant = q.tenantId != null ? Number(q.tenantId) : undefined;
+      listCis(tenant, ciSearch.trim() ? ciSearch.trim() : undefined)
+        .then((rows) => {
+          if (!alive) return;
+          const arr = Array.isArray(rows) ? rows : [];
+          setCiOptions(arr.map((row: any) => ({
+            id: Number(row.id),
+            tenantId: Number(row.tenantId ?? row.tenant_id ?? tenant ?? 0),
+            ciKey: String(row.ciKey ?? row.ci_key ?? ''),
+            ciName: String(row.ciName ?? row.ci_name ?? ''),
+          })));
+        })
+        .catch((err) => {
+          if (!alive) return;
+          setCiError(err instanceof Error ? err.message : 'Unable to load CIs');
+        })
+        .finally(() => {
+          if (alive) setCiLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [q, ciSearch]);
+
+  const mergedCiOptions = useMemo(() => {
+    if (!q) return ciOptions;
+    const currentId = q.ciId != null ? Number(q.ciId) : null;
+    if (!currentId) return ciOptions;
+    if (ciOptions.some((ci) => ci.id === currentId)) return ciOptions;
+    const fallback: CiSummary = {
+      id: currentId,
+      tenantId: Number(q.tenantId ?? 0),
+      ciKey: q.ciKey ?? `ci-${currentId}`,
+      ciName: q.ciName ?? `CI #${currentId}`,
+    };
+    return [...ciOptions, fallback];
+  }, [ciOptions, q]);
 
   async function refresh() { setQ(await getQuestionnaire(qid)); }
 
@@ -506,6 +565,22 @@ export default function QuestionnaireBuilder({ qid }: { qid: number }) {
 
   const selected = selectedId && q ? q.items.find(i => i.id === selectedId) ?? null : null;
 
+  async function handleCiChange(nextId: string) {
+    if (!q) return;
+    const numeric = nextId === '' ? null : Number(nextId);
+    if ((q.ciId ?? null) === (numeric ?? null)) return;
+    setCiError(null);
+    try {
+      setCiSaving(true);
+      await patchQuestionnaire(q.id, { ci_id: numeric });
+      await refresh();
+    } catch (err) {
+      setCiError(err instanceof Error ? err.message : 'Unable to update CI');
+    } finally {
+      setCiSaving(false);
+    }
+  }
+
   return (
     <div className="qw-shell">
       {/* LEFT pane */}
@@ -541,8 +616,46 @@ export default function QuestionnaireBuilder({ qid }: { qid: number }) {
 
       {/* RIGHT pane */}
       <main className="qw-right">
-        <div style={{ marginBottom: 12 }}>
-          <h1 className="qw-h1">{q?.title ?? 'Questionnaire'}</h1>
+        <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+            <h1 className="qw-h1" style={{ margin: 0 }}>{q?.title ?? 'Questionnaire'}</h1>
+            <div style={{ minWidth: 280, maxWidth: 360, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+              <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: 4 }}>Configuration Item</div>
+              <div style={{ fontWeight: 600, color: '#111827', marginBottom: 8 }}>{q?.ciName ?? 'Unassigned'}</div>
+              <label style={{ display: 'block', marginBottom: 6, fontSize: 12, color: '#6b7280' }}>
+                Search
+                <input
+                  type="text"
+                  value={ciSearch}
+                  onChange={(e) => setCiSearch(e.target.value)}
+                  placeholder="Type to search..."
+                  style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #d1d5db', padding: '6px 8px', fontSize: 13 }}
+                />
+              </label>
+              <label style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>
+                Select CI
+                <select
+                  value={q?.ciId ?? ''}
+                  onChange={(e) => handleCiChange(e.target.value)}
+                  disabled={ciLoading || ciSaving}
+                  style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #d1d5db', padding: '6px 8px', fontSize: 13 }}
+                >
+                  <option value="">Select...</option>
+                  {mergedCiOptions
+                    .slice()
+                    .sort((a, b) => a.ciName.localeCompare(b.ciName))
+                    .map(ci => (
+                      <option key={ci.id} value={ci.id}>{ci.ciName} ({ci.ciKey})</option>
+                    ))}
+                </select>
+              </label>
+              <div style={{ fontSize: 12, marginTop: 6, minHeight: 16 }}>
+                {ciLoading && <span style={{ color: '#6b7280' }}>Loading CIs...</span>}
+                {ciSaving && <span style={{ color: '#6b7280' }}>Updating...</span>}
+                {!ciLoading && !ciSaving && ciError && <span style={{ color: '#dc2626' }}>{ciError}</span>}
+              </div>
+            </div>
+          </div>
         </div>
 
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>

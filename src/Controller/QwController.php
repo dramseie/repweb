@@ -1,6 +1,7 @@
 <?php
 namespace App\Controller;
 
+use App\Service\Discovery\DiscoveryQuestionnaireRuntimeService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\{JsonResponse, Request};
 use Symfony\Component\Routing\Annotation\Route;
@@ -31,7 +32,56 @@ class QwController extends AbstractController
         return $pdo;
     }
 
-    public function __construct(private readonly \App\Service\QwOutlineNumberingService $numbering) {}
+    public function __construct(
+        private readonly \App\Service\QwOutlineNumberingService $numbering,
+        private readonly DiscoveryQuestionnaireRuntimeService $runtime,
+    ) {}
+
+    #[Route('/questionnaires', methods: ['GET'])]
+    public function listQuestionnaires(Request $req): JsonResponse
+    {
+        $tenantId = $req->query->getInt('tenant_id', 1);
+        $ciId = $req->query->has('ci_id') ? $req->query->getInt('ci_id') : null;
+        $search = trim((string) $req->query->get('q', ''));
+
+        $pdo = $this->pdo();
+        $sql = 'SELECT q.id, q.title, q.status, q.ci_id, q.version, q.updated_at, c.ci_name, c.ci_key
+                  FROM qw_questionnaire q
+             LEFT JOIN qw_ci c ON c.id = q.ci_id
+                 WHERE q.tenant_id = :tenant_id';
+        $bind = [':tenant_id' => $tenantId];
+
+        if ($ciId) {
+            $sql .= ' AND q.ci_id = :ci_id';
+            $bind[':ci_id'] = $ciId;
+        }
+
+        if ($search !== '') {
+            $sql .= ' AND (q.title LIKE :needle OR q.code LIKE :needle)';
+            $bind[':needle'] = '%' . $search . '%';
+        }
+
+        $sql .= ' ORDER BY q.updated_at DESC, q.id DESC';
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($bind);
+        $rows = $stmt->fetchAll();
+
+        $normalized = array_map(static function (array $row): array {
+            return [
+                'id' => (int) $row['id'],
+                'title' => $row['title'],
+                'status' => $row['status'],
+                'ciId' => $row['ci_id'] !== null ? (int) $row['ci_id'] : null,
+                'ciName' => $row['ci_name'] ?? null,
+                'ciKey' => $row['ci_key'] ?? null,
+                'version' => isset($row['version']) ? (int) $row['version'] : null,
+                'updatedAt' => $row['updated_at'],
+            ];
+        }, $rows);
+
+        return $this->json($normalized);
+    }
 
     #[Route('/questionnaires', methods: ['POST'])]
     public function createQuestionnaire(Request $req): JsonResponse
@@ -50,11 +100,95 @@ class QwController extends AbstractController
         return $this->json(['id' => (int)$pdo->lastInsertId()]);
     }
 
+    #[Route('/questionnaires/{id}/responses', methods: ['GET'])]
+    public function listQuestionnaireResponses(int $id): JsonResponse
+    {
+        $pdo = $this->pdo();
+        $stmt = $pdo->prepare('SELECT id, status, started_at, submitted_at, approved_at, rejected_at FROM qw_response WHERE questionnaire_id = :id ORDER BY id DESC');
+        $stmt->execute([':id' => $id]);
+        $rows = $stmt->fetchAll();
+        $normalized = array_map(static function (array $row): array {
+            return [
+                'id' => (int) $row['id'],
+                'status' => $row['status'],
+                'startedAt' => $row['started_at'],
+                'submittedAt' => $row['submitted_at'],
+                'approvedAt' => $row['approved_at'],
+                'rejectedAt' => $row['rejected_at'],
+            ];
+        }, $rows);
+
+        return $this->json($normalized);
+    }
+
+    #[Route('/questionnaires/{id}/responses', methods: ['POST'])]
+    public function createQuestionnaireResponse(int $id, Request $req): JsonResponse
+    {
+        $payload = json_decode($req->getContent() ?: '[]', true) ?? [];
+        $cloneFrom = isset($payload['cloneFrom']) ? (int) $payload['cloneFrom'] : null;
+
+        $pdo = $this->pdo();
+        $pdo->beginTransaction();
+        try {
+            if ($cloneFrom) {
+                $belongs = $pdo->prepare('SELECT questionnaire_id FROM qw_response WHERE id = :rid');
+                $belongs->execute([':rid' => $cloneFrom]);
+                $sourceQid = $belongs->fetchColumn();
+                if (!$sourceQid) {
+                    $pdo->rollBack();
+                    return $this->json(['error' => 'source_not_found'], 404);
+                }
+                if ((int) $sourceQid !== $id) {
+                    $pdo->rollBack();
+                    return $this->json(['error' => 'source_mismatch'], 400);
+                }
+            }
+
+            $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $stmt = $pdo->prepare('INSERT INTO qw_response (questionnaire_id, status, started_at, submitted_by_user_id, submitted_at, approved_at, rejected_at) VALUES (:qid, :status, :started_at, NULL, NULL, NULL, NULL)');
+            $stmt->execute([
+                ':qid' => $id,
+                ':status' => 'in_progress',
+                ':started_at' => $now,
+            ]);
+
+            $newId = (int) $pdo->lastInsertId();
+
+            if ($cloneFrom) {
+                $answers = $pdo->prepare('INSERT INTO qw_answer (response_id, item_id, field_id, value_text, value_json, created_at, updated_at)
+                                          SELECT :target, item_id, field_id, value_text, value_json, NOW(), NOW()
+                                            FROM qw_answer WHERE response_id = :source');
+                $answers->execute([
+                    ':target' => $newId,
+                    ':source' => $cloneFrom,
+                ]);
+
+                $attachments = $pdo->prepare('INSERT INTO qw_attachment (response_id, item_id, field_id, storage_path, original_name, mime_type, size_bytes, created_at)
+                                               SELECT :target, item_id, field_id, storage_path, original_name, mime_type, size_bytes, created_at
+                                                 FROM qw_attachment WHERE response_id = :source');
+                $attachments->execute([
+                    ':target' => $newId,
+                    ':source' => $cloneFrom,
+                ]);
+            }
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+
+        return $this->json(['id' => $newId]);
+    }
+
     #[Route('/questionnaires/{id}', methods: ['GET'])]
     public function getQuestionnaire(int $id): JsonResponse
     {
         $pdo = $this->pdo();
-        $qh = $pdo->prepare('SELECT id, title, status FROM qw_questionnaire WHERE id=:id');
+        $qh = $pdo->prepare('SELECT q.id, q.title, q.status, q.tenant_id AS tenant_id, q.ci_id AS ci_id, c.ci_name AS ci_name, c.ci_key AS ci_key
+                               FROM qw_questionnaire q
+                          LEFT JOIN qw_ci c ON c.id = q.ci_id
+                              WHERE q.id = :id');
         $qh->execute([':id' => $id]);
         $q = $qh->fetch();
         if (!$q) return $this->json(['error' => 'not_found'], 404);
@@ -71,8 +205,55 @@ class QwController extends AbstractController
             'id' => (int)$q['id'],
             'title' => $q['title'],
             'status' => $q['status'],
+            'tenantId' => isset($q['tenant_id']) ? (int)$q['tenant_id'] : null,
+            'ciId' => isset($q['ci_id']) ? (int)$q['ci_id'] : null,
+            'ciName' => $q['ci_name'] ?? null,
+            'ciKey' => $q['ci_key'] ?? null,
             'items' => $rows,
         ]);
+    }
+
+    #[Route('/questionnaires/{id}', methods: ['PATCH'])]
+    public function patchQuestionnaire(int $id, Request $req): JsonResponse
+    {
+        $payload = json_decode($req->getContent(), true) ?? [];
+        if (!is_array($payload) || $payload === []) {
+            return $this->json(['error' => 'empty_payload'], 400);
+        }
+
+        $pdo = $this->pdo();
+        $sets = [];
+        $bind = [':id' => $id];
+
+        $map = [
+            'title' => 'title',
+            'description' => 'description',
+            'status' => 'status',
+            'ci_id' => 'ci_id',
+        ];
+
+        foreach ($map as $jsonKey => $column) {
+            if (!array_key_exists($jsonKey, $payload)) {
+                continue;
+            }
+            $placeholder = ':' . $column;
+            if ($column === 'ci_id') {
+                $value = $payload[$jsonKey];
+                $bind[$placeholder] = $value === null || $value === '' ? null : (int)$value;
+            } else {
+                $bind[$placeholder] = $payload[$jsonKey];
+            }
+            $sets[] = sprintf('%s = %s', $column, $placeholder);
+        }
+
+        if (!$sets) {
+            return $this->json(['error' => 'no_fields'], 400);
+        }
+
+        $sql = 'UPDATE qw_questionnaire SET ' . implode(', ', $sets) . ', updated_at = NOW() WHERE id = :id';
+        $pdo->prepare($sql)->execute($bind);
+
+        return $this->getQuestionnaire($id);
     }
 
     #[Route('/questionnaires/{id}/items', methods: ['POST'])]
@@ -179,6 +360,57 @@ class QwController extends AbstractController
     {
         $this->numbering->rebuild($qid);
         return $this->json(['ok'=>true]);
+    }
+
+    #[Route('/cis', methods: ['GET'])]
+    public function listCis(Request $req): JsonResponse
+    {
+        $tenantId = $req->query->getInt('tenant_id', 1);
+        $search = trim((string)$req->query->get('q', ''));
+
+        $pdo = $this->pdo();
+        $sql = 'SELECT id, tenant_id AS tenantId, ci_key AS ciKey, ci_name AS ciName FROM qw_ci WHERE tenant_id = :tenant_id';
+        $bind = [':tenant_id' => $tenantId];
+
+        if ($search !== '') {
+            $sql .= ' AND (ci_key LIKE :needle OR ci_name LIKE :needle)';
+            $bind[':needle'] = '%'.$search.'%';
+        }
+
+        $sql .= ' ORDER BY ci_name ASC';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($bind);
+        $rows = $stmt->fetchAll();
+        $normalized = array_map(static function (array $row): array {
+            return [
+                'id' => (int) $row['id'],
+                'tenantId' => isset($row['tenantId']) ? (int) $row['tenantId'] : null,
+                'ciKey' => $row['ciKey'] ?? null,
+                'ciName' => $row['ciName'] ?? null,
+            ];
+        }, $rows);
+
+        return $this->json($normalized);
+    }
+
+    #[Route('/responses/{id}', methods: ['GET'])]
+    public function getResponse(int $id): JsonResponse
+    {
+        $payload = $this->runtime->loadResponse($id);
+        return $this->json($payload);
+    }
+
+    #[Route('/responses/{id}', methods: ['POST'])]
+    public function saveResponse(int $id, Request $req): JsonResponse
+    {
+        $payload = json_decode($req->getContent() ?: '[]', true) ?? [];
+        $answers = $payload['answers'] ?? [];
+        if (!is_array($answers)) {
+            return $this->json(['error' => 'answers_must_be_array'], 400);
+        }
+        $status = (string) ($payload['status'] ?? 'in_progress');
+        $data = $this->runtime->saveResponse($id, $answers, $status);
+        return $this->json($data);
     }
 
 

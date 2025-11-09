@@ -18,4 +18,12 @@ final class PageController extends AbstractController
 
         return $this->render('mig/dashboard.html.twig');
     }
+
+    #[Route('/mig/mail', name: 'mig_mail_ui', methods: ['GET'])]
+    public function mail(): Response
+    {
+        $this->denyAccessUnlessGranted('ROLE_MIG_VIEW');
+
+        return $this->render('mig/mail.html.twig');
+    }
 }

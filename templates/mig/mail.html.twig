@@ -1,0 +1,8 @@
+{% extends 'base.html.twig' %}
+{% block title %}Mail Client{% endblock %}
+{% block body %}
+  <div class="container-fluid mt-3 px-3">
+    <div id="migration-manager-root" data-view="mail"></div>
+    <script src="{{ asset('build/migration-manager.js') }}" defer></script>
+  </div>
+{% endblock %}

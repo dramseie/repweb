@@ -26,6 +26,10 @@ export interface QuestionnaireDTO {
   id: Id;
   title: string;
   status: string;
+  tenantId?: number | null;
+  ciId?: number | null;
+  ciName?: string | null;
+  ciKey?: string | null;
   items: ItemDTO[];
 }
 
@@ -100,4 +104,31 @@ export interface RuntimePayload {
   items: RuntimeItem[];
   fields: RuntimeField[];
   response: RuntimeResponse;
+}
+
+export interface CiSummary {
+  id: Id;
+  tenantId: number;
+  ciKey: string;
+  ciName: string;
+}
+
+export interface QuestionnaireSummary {
+  id: Id;
+  title: string;
+  status: string;
+  ciId: Id | null;
+  ciName?: string | null;
+  ciKey?: string | null;
+  version?: number | null;
+  updatedAt?: string | null;
+}
+
+export interface ResponseSummary {
+  id: Id;
+  status: string;
+  startedAt?: string | null;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
 }

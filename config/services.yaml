@@ -134,4 +134,15 @@ services:
     arguments:
       $ft: '@App\Mig\Service\FeatureToggle'
     tags: ['twig.extension']
+
+  # ============================
+  #  AI / Mistral wiring
+  # ============================
+
+  App\Service\Ai\MistralClient:
+    arguments:
+      $http: '@http_client'
+      $apiKey: '%env(string:MISTRAL_API_KEY)%'
+      $baseUrl: '%env(string:MISTRAL_API_BASE)%'
+      $model: '%env(string:MISTRAL_MODEL)%'
  

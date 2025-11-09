@@ -119,6 +119,7 @@ CREATE TABLE `customers` (
   `notes_private` text DEFAULT NULL,
   `preferences` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`preferences`)),
   `gdpr_ok` tinyint(1) NOT NULL DEFAULT 0,
+  `status` enum('active','inactive','banned','test') NOT NULL DEFAULT 'active',
   `address` longtext DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `u_cust_email` (`email`),

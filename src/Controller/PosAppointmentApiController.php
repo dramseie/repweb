@@ -22,7 +22,8 @@ class PosAppointmentApiController extends AbstractController
         $from = $from ? str_replace('T', ' ', substr($from, 0, 19)) : null;
         $to   = $to   ? str_replace('T', ' ', substr($to,   0, 19)) : null;
 
-        $sql = "SELECT a.id, a.customer_id, c.first_name, c.last_name,
+    $sql = "SELECT a.id, a.customer_id, c.first_name, c.last_name,
+               COALESCE(c.status, 'active') AS customer_status,
                        a.start_at, a.end_at, a.real_start_at, a.real_end_at,
                        a.status, a.notes_public
                   FROM ongleri.appointments a

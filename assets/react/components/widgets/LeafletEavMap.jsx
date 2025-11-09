@@ -81,6 +81,7 @@ export default function LeafletEavMap({
 
   const wrapperRef = useRef(null);
   const mapRef = useRef(null);
+  const resolvedMinHeight = height || '360px';
 
   // Build URL
   const url = useMemo(() => {
@@ -277,8 +278,19 @@ export default function LeafletEavMap({
   }
 
   return (
-    <div ref={wrapperRef} className={`map-wrap ${fullscreen ? 'map-fullscreen' : ''}`} style={{ height }}>
-      <div className="card shadow-sm" style={{ height: '100%' }}>
+    <div
+      ref={wrapperRef}
+      className={`map-wrap ${fullscreen ? 'map-fullscreen' : ''}`}
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        minHeight: fullscreen ? 0 : resolvedMinHeight,
+        height: fullscreen ? '100%' : undefined,
+      }}
+    >
+      <div className="card shadow-sm d-flex flex-column" style={{ flex: 1 }}>
         <div className="card-header py-2 d-flex justify-content-between align-items-center">
           <strong>World Map</strong>
           <div className="d-flex align-items-center gap-2">
@@ -324,9 +336,9 @@ export default function LeafletEavMap({
           </div>
         )}
 
-        <div className="card-body p-0" style={{ height: `calc(${height} - 56px)` }}>
+        <div className="card-body p-0 d-flex flex-column" style={{ flex: 1 }}>
           <MapContainer
-            style={{ height: '100%', width: '100%' }}
+            style={{ height: '100%', width: '100%', flex: 1 }}
             center={[20, 0]} zoom={2} scrollWheelZoom
             whenCreated={(map) => (mapRef.current = map)}
           >

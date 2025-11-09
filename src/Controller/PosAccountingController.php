@@ -84,6 +84,213 @@ class PosAccountingController extends AbstractController
         ];
     }
 
+    /**
+     * Strip optional fond-de-caisse metadata from notes and return both the clean note and metadata.
+     * Metadata format (JSON): {"amount_cents":12345,"from_category_id":1,"to_category_id":2}
+     */
+    private function splitFondNotes(?string $notesInput): array
+    {
+        $meta = [
+            'amount_cents' => 0,
+            'from_category_id' => null,
+            'to_category_id' => null,
+            'breakdown' => [],
+        ];
+
+        if (!is_string($notesInput) || trim($notesInput) === '') {
+            return ['notes' => '', 'meta' => $meta];
+        }
+
+        $notes = trim($notesInput);
+        if (preg_match('/FOND_CAISSE=(\{.*\})$/s', $notes, $m)) {
+            $json = json_decode($m[1] ?? '', true);
+            if (is_array($json)) {
+                $meta['amount_cents'] = isset($json['amount_cents']) ? (int)$json['amount_cents'] : 0;
+                $meta['from_category_id'] = isset($json['from_category_id']) ? (int)$json['from_category_id'] : null;
+                $meta['to_category_id'] = isset($json['to_category_id']) ? (int)$json['to_category_id'] : null;
+                $meta['breakdown'] = $this->sanitizeFondBreakdownMeta($json['breakdown'] ?? []);
+            }
+            $notes = trim(preg_replace('/(\|\|\s*)?FOND_CAISSE=\{.*\}$/s', '', $notes));
+        }
+
+        return ['notes' => $notes, 'meta' => $meta];
+    }
+
+    /**
+     * Append fond metadata (if any) back to the notes string.
+     */
+    private function sanitizeFondBreakdownMeta($raw): array
+    {
+        if (!is_iterable($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $den => $qty) {
+            $denInt = (int)$den;
+            if ($denInt <= 0) {
+                continue;
+            }
+            $qtyInt = max(0, (int)$qty);
+            if ($qtyInt <= 0) {
+                continue;
+            }
+            $out[(string)$denInt] = $qtyInt;
+        }
+
+        ksort($out, SORT_NUMERIC);
+
+        return $out;
+    }
+
+    /**
+     * Append fond metadata (if any) back to the notes string.
+     */
+    private function appendFondMeta(string $cleanNotes, int $amountCents, ?int $fromId, ?int $toId, array $breakdown = []): string
+    {
+        $breakdownClean = $this->sanitizeFondBreakdownMeta($breakdown);
+
+        if (!empty($breakdownClean) && $amountCents <= 0) {
+            $recomputed = 0;
+            foreach ($breakdownClean as $den => $qty) {
+                $recomputed += ((int)$den) * (int)$qty;
+            }
+            if ($recomputed > 0) {
+                $amountCents = $recomputed;
+            }
+        }
+
+        if ($amountCents <= 0 && empty($breakdownClean)) {
+            return trim($cleanNotes);
+        }
+
+        $meta = [
+            'amount_cents' => $amountCents,
+            'from_category_id' => $fromId,
+            'to_category_id' => $toId,
+        ];
+
+        if (!empty($breakdownClean)) {
+            $meta['breakdown'] = $breakdownClean;
+        }
+
+        $payload = 'FOND_CAISSE=' . json_encode($meta, JSON_UNESCAPED_UNICODE);
+
+        $base = trim($cleanNotes);
+        if ($base === '') {
+            return $payload;
+        }
+
+        return $base . ' || ' . $payload;
+    }
+
+    private function ensureCategoryExists(Connection $db, int $categoryId): array
+    {
+        $row = $db->fetchAssociative(
+            "SELECT id, name FROM ongleri.accounting_categories WHERE id = :id",
+            ['id' => $categoryId]
+        );
+
+        if (!$row) {
+            throw new \InvalidArgumentException('Unknown accounting category id ' . $categoryId);
+        }
+
+        return [
+            'id' => (int)$row['id'],
+            'name' => (string)$row['name'],
+        ];
+    }
+
+    private function insertFondTransfer(Connection $db, string $date, int $amountCents, array $fromCat, array $toCat, string $direction): void
+    {
+        if ($amountCents <= 0) {
+            return;
+        }
+
+        $labelBase = sprintf('Fond de caisse %s', $direction);
+        $noteMarker = sprintf('[FOND_CAISSE_AUTO:%s]', $date);
+
+        $db->executeStatement(
+            "INSERT INTO ongleri.accounting_entries (date, label, amount_cents, category_id, notes)
+             VALUES (:date, :label, :amount_cents, :category_id, :notes)",
+            [
+                'date' => $date,
+                'label' => $labelBase . ' (' . $fromCat['name'] . ' → ' . $toCat['name'] . ')',
+                'amount_cents' => -$amountCents,
+                'category_id' => $fromCat['id'],
+                'notes' => $noteMarker,
+            ]
+        );
+
+        $db->executeStatement(
+            "INSERT INTO ongleri.accounting_entries (date, label, amount_cents, category_id, notes)
+             VALUES (:date, :label, :amount_cents, :category_id, :notes)",
+            [
+                'date' => $date,
+                'label' => $labelBase . ' (contrepartie)',
+                'amount_cents' => $amountCents,
+                'category_id' => $toCat['id'],
+                'notes' => $noteMarker,
+            ]
+        );
+    }
+
+    private function adjustFondCaisseTransfers(
+        Connection $db,
+        string $date,
+        int $newAmount,
+        ?int $newFromId,
+        ?int $newToId,
+        array $previousMeta
+    ): void {
+        $oldAmount = (int)($previousMeta['amount_cents'] ?? 0);
+        $oldFromId = $previousMeta['from_category_id'] ?? null;
+        $oldToId = $previousMeta['to_category_id'] ?? null;
+
+        // Nothing to do if both old and new are zero.
+        if ($oldAmount === 0 && $newAmount === 0) {
+            return;
+        }
+
+        // Validate new categories if we have a new amount.
+        if ($newAmount > 0) {
+            if (!$newFromId || !$newToId || $newFromId === $newToId) {
+                throw new \InvalidArgumentException('Fond de caisse requires distinct source and destination categories.');
+            }
+        }
+
+        // If we need to reverse previous fond (categories changed or amount set to zero), do it first.
+        if ($oldAmount > 0 && ($newAmount === 0 || $oldFromId !== $newFromId || $oldToId !== $newToId)) {
+            if (!$oldFromId || !$oldToId) {
+                throw new \RuntimeException('Impossible de réajuster le fond de caisse : catégories précédentes introuvables.');
+            }
+
+            $fromCat = $this->ensureCategoryExists($db, $oldToId);
+            $toCat = $this->ensureCategoryExists($db, $oldFromId);
+            $this->insertFondTransfer($db, $date, $oldAmount, $fromCat, $toCat, '-');
+
+            $oldAmount = 0;
+            $oldFromId = $newFromId;
+            $oldToId = $newToId;
+        }
+
+        $delta = $newAmount - $oldAmount;
+
+        if ($delta > 0) {
+            $fromCat = $this->ensureCategoryExists($db, (int)$newFromId);
+            $toCat = $this->ensureCategoryExists($db, (int)$newToId);
+            $this->insertFondTransfer($db, $date, $delta, $fromCat, $toCat, '+');
+        } elseif ($delta < 0) {
+            if (!$oldToId || !$oldFromId) {
+                throw new \RuntimeException('Impossible de diminuer le fond de caisse : catégories précédentes manquantes.');
+            }
+            $amount = abs($delta);
+            $fromCat = $this->ensureCategoryExists($db, (int)$oldToId);
+            $toCat = $this->ensureCategoryExists($db, (int)$oldFromId);
+            $this->insertFondTransfer($db, $date, $amount, $fromCat, $toCat, '-');
+        }
+    }
+
     /* ---------------------------------------------------------
        MONTH SUMMARY
        GET /api/pos/accounting/month?ym=YYYY-MM
@@ -109,17 +316,25 @@ class PosAccountingController extends AbstractController
             LIMIT 1
         ", ['eom' => $end]) ?: null;
 
-        return $this->json([
-            'ok' => true,
-            'period' => ['start' => $start, 'end' => $end],
-            'totals' => $totals,
-            'last_cash_count' => $last ? [
+        $lastData = null;
+        if ($last) {
+            $split = $this->splitFondNotes($last['notes'] ?? '');
+            $lastData = [
                 'id' => (int)$last['id'],
                 'created_at' => $last['created_at'],
                 'total_cents' => (int)$last['total_cents'],
                 'expected_cash_cents' => (int)$last['expected_cash_cents'],
                 'diff_cents' => (int)$last['diff_cents'],
-            ] : null,
+                'notes' => $split['notes'],
+                'fond_caisse' => $split['meta'],
+            ];
+        }
+
+        return $this->json([
+            'ok' => true,
+            'period' => ['start' => $start, 'end' => $end],
+            'totals' => $totals,
+            'last_cash_count' => $lastData,
         ]);
     }
 
@@ -146,6 +361,8 @@ class PosAccountingController extends AbstractController
 
         if (!$row) return $this->json(['ok' => true, 'item' => null]);
 
+        $split = $this->splitFondNotes($row['notes'] ?? '');
+
         return $this->json([
             'ok' => true,
             'item' => [
@@ -155,7 +372,8 @@ class PosAccountingController extends AbstractController
                 'expected_cash_cents' => (int)$row['expected_cash_cents'],
                 'diff_cents' => (int)$row['diff_cents'],
                 'breakdown' => json_decode($row['breakdown_json'] ?? '[]', true) ?: [],
-                'notes' => $row['notes'],
+                'notes' => $split['notes'],
+                'fond_caisse' => $split['meta'],
                 'created_at' => $row['created_at'],
             ]
         ]);
@@ -170,16 +388,58 @@ class PosAccountingController extends AbstractController
     {
         $p = json_decode($req->getContent() ?: '{}', true);
 
-        $scope = (string)($p['scope'] ?? 'day');
-        $date  = (string)($p['date']  ?? (new DateTimeImmutable('today'))->format('Y-m-d'));
-        $breakdown = (array)($p['breakdown'] ?? []);
-        $notes = $p['notes'] ?? null;
+    $scope = (string)($p['scope'] ?? 'day');
+    $date  = (string)($p['date']  ?? (new DateTimeImmutable('today'))->format('Y-m-d'));
+    $breakdownInput = $p['breakdown'] ?? [];
+        $rawNotes = is_string($p['notes'] ?? null) ? trim((string)$p['notes']) : '';
+
+        $fondAmountCents = (int)($p['fond_caisse_cents'] ?? $p['float_cents'] ?? 0);
+        $fondAmountCents = max(0, $fondAmountCents);
+        $fondFromId = isset($p['fond_from_category_id']) ? (int)$p['fond_from_category_id'] : (isset($p['float_from_category_id']) ? (int)$p['float_from_category_id'] : null);
+        $fondToId = isset($p['fond_to_category_id']) ? (int)$p['fond_to_category_id'] : (isset($p['float_to_category_id']) ? (int)$p['float_to_category_id'] : null);
 
         $counted = 0;
-        foreach ($breakdown as $denStr => $qty) {
+        $breakdown = [];
+        if (!is_iterable($breakdownInput)) {
+            return $this->json(['error' => 'Invalid breakdown'], 400);
+        }
+        foreach ($breakdownInput as $denStr => $qty) {
             $den = (int)$denStr;
+            if ($den <= 0) {
+                continue;
+            }
             $q   = max(0, (int)$qty);
+            $breakdown[(string)$den] = $q;
             $counted += $den * $q;
+        }
+        ksort($breakdown, SORT_NUMERIC);
+
+        $fondBreakdown = $this->sanitizeFondBreakdownMeta($p['fond_breakdown'] ?? []);
+        if (!empty($fondBreakdown)) {
+            foreach ($fondBreakdown as $denKey => $qty) {
+                $available = (int)($breakdown[$denKey] ?? 0);
+                if ($qty > $available) {
+                    $fondBreakdown[$denKey] = $available;
+                }
+                if ($fondBreakdown[$denKey] <= 0) {
+                    unset($fondBreakdown[$denKey]);
+                }
+            }
+            ksort($fondBreakdown, SORT_NUMERIC);
+        }
+
+        $fondBreakdownAmount = 0;
+        foreach ($fondBreakdown as $denKey => $qty) {
+            $fondBreakdownAmount += ((int)$denKey) * (int)$qty;
+        }
+        if ($fondBreakdownAmount > 0) {
+            $fondAmountCents = min($fondBreakdownAmount, $counted);
+        }
+
+        if ($fondAmountCents > 0 && (!$fondFromId || !$fondToId || $fondFromId === $fondToId)) {
+            return $this->json([
+                'error' => 'Veuillez sélectionner des catégories distinctes pour le fond de caisse.',
+            ], 400);
         }
 
         if ($scope === 'month') {
@@ -200,6 +460,19 @@ class PosAccountingController extends AbstractController
         $now = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
         $userId = $this->getUser()?->getId();
 
+        $existing = $db->fetchAssociative(
+            "SELECT notes FROM ongleri.cash_counts WHERE count_date = :d",
+            ['d' => $date]
+        );
+        $previousMeta = $existing ? ($this->splitFondNotes($existing['notes'] ?? '')['meta'] ?? []) : [
+            'amount_cents' => 0,
+            'from_category_id' => null,
+            'to_category_id' => null,
+            'breakdown' => [],
+        ];
+
+    $notesFinal = $this->appendFondMeta($rawNotes, $fondAmountCents, $fondFromId, $fondToId, $fondBreakdown);
+
         $sql = "
             INSERT INTO ongleri.cash_counts
                 (user_id, count_date, total_cents, expected_cash_cents, diff_cents, breakdown_json, notes, created_at)
@@ -215,25 +488,40 @@ class PosAccountingController extends AbstractController
                 created_at = VALUES(created_at)
         ";
 
-        $db->executeStatement($sql, [
-            'user_id' => $userId,
-            'count_date' => $date,
-            'total_cents' => $counted,
-            'expected_cash_cents' => $expected,
-            'diff_cents' => $diff,
-            'breakdown_json' => json_encode($breakdown, JSON_UNESCAPED_UNICODE),
-            'notes' => $notes,
-            'created_at' => $now,
-        ]);
+        $db->beginTransaction();
+        try {
+            $db->executeStatement($sql, [
+                'user_id' => $userId,
+                'count_date' => $date,
+                'total_cents' => $counted,
+                'expected_cash_cents' => $expected,
+                'diff_cents' => $diff,
+                'breakdown_json' => json_encode($breakdown, JSON_UNESCAPED_UNICODE),
+                'notes' => $notesFinal,
+                'created_at' => $now,
+            ]);
+
+            if ($scope === 'month') {
+                $this->adjustFondCaisseTransfers($db, $end, $fondAmountCents, $fondFromId, $fondToId, $previousMeta);
+            }
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            return $this->json([
+                'error' => 'Echec enregistrement comptage',
+                'detail' => $e->getMessage(),
+            ], 500);
+        }
 
         if ($scope === 'month') {
             $ym = substr($start, 0, 7);
             $req2 = new Request(['ym' => $ym]);
             return $this->month($req2, $db);
-        } else {
-            $req2 = new Request(['date' => $date]);
-            return $this->day($req2, $db);
         }
+
+        $req2 = new Request(['date' => $date]);
+        return $this->day($req2, $db);
     }
 
     /* ---------------------------------------------------------
@@ -253,18 +541,25 @@ class PosAccountingController extends AbstractController
             LIMIT 1
         ", ['d' => $date]) ?: null;
 
-        return $this->json([
-            'date' => $date,
-            'totals' => $totals,
-            'last_cash_count' => $last ? [
+        $lastData = null;
+        if ($last) {
+            $split = $this->splitFondNotes($last['notes'] ?? '');
+            $lastData = [
                 'id' => (int)$last['id'],
                 'created_at' => $last['created_at'],
                 'total_cents' => (int)$last['total_cents'],
                 'expected_cash_cents' => (int)$last['expected_cash_cents'],
                 'diff_cents' => (int)$last['diff_cents'],
-                'notes' => $last['notes'],
+                'notes' => $split['notes'],
+                'fond_caisse' => $split['meta'],
                 'breakdown' => json_decode($last['breakdown_json'] ?? '[]', true) ?: [],
-            ] : null,
+            ];
+        }
+
+        return $this->json([
+            'date' => $date,
+            'totals' => $totals,
+            'last_cash_count' => $lastData,
         ]);
     }
 
@@ -586,5 +881,265 @@ class PosAccountingController extends AbstractController
             'totals' => ['debit_cents' => $totDebit, 'credit_cents' => $totCredit],
         ]);
     }
-		
+
+    /** ------------------------------------------------------------------
+     * Monthly income vs expense breakdown used by the “Rapport” tab.
+     * GET /api/pos/accounting/report?ym=YYYY-MM
+     * ------------------------------------------------------------------ */
+    #[Route('/api/pos/accounting/report', name: 'api_pos_accounting_report', methods: ['GET'])]
+    public function report(Request $req, Connection $db): JsonResponse
+    {
+        $ym = (string)$req->query->get('ym', '');
+        if (!preg_match('/^\d{4}-\d{2}$/', $ym)) {
+            return $this->json(['error' => 'Invalid ym (YYYY-MM)'], 400);
+        }
+
+        [$Y, $M] = array_map('intval', explode('-', $ym));
+        $start = sprintf('%04d-%02d-01', $Y, $M);
+        $end   = (new \DateTimeImmutable("$start 00:00:00"))->modify('last day of this month')->format('Y-m-d');
+
+        // Orders with an associated customer (income side)
+        $orderRows = $db->fetchAllAssociative(
+            "SELECT o.id,
+                    o.encaisse_at,
+                    o.total_cents,
+                    o.customer_id,
+                    o.note,
+                    o.payment_method,
+                    c.first_name,
+                    c.last_name,
+                    COALESCE(c.status, 'active') AS customer_status
+               FROM ongleri.orders o
+          LEFT JOIN ongleri.customers c ON c.id = o.customer_id
+              WHERE o.encaisse_at IS NOT NULL
+                AND o.encaisse_at >= :start
+                AND o.encaisse_at < DATE_ADD(:end, INTERVAL 1 DAY)
+                AND o.customer_id IS NOT NULL
+           ORDER BY o.encaisse_at ASC, o.id ASC",
+            ['start' => $start, 'end' => $end]
+        );
+
+        $incomes = [];
+        $incomeTotal = 0;
+        foreach ($orderRows as $row) {
+            $total = (int)($row['total_cents'] ?? 0);
+            $incomeTotal += $total;
+            $firstName = (string)($row['first_name'] ?? '');
+            $lastName  = (string)($row['last_name'] ?? '');
+            $fullName  = trim(sprintf('%s %s', $lastName, $firstName));
+
+            $incomes[] = [
+                'order_id'       => (int)$row['id'],
+                'encaisse_at'    => $row['encaisse_at'],
+                'total_cents'    => $total,
+                'payment_method' => $row['payment_method'],
+                'note'           => $row['note'],
+                'customer'       => [
+                    'id'         => $row['customer_id'] !== null ? (int)$row['customer_id'] : null,
+                    'first_name' => $firstName,
+                    'last_name'  => $lastName,
+                    'full_name'  => $fullName !== '' ? $fullName : null,
+                    'status'     => (string)($row['customer_status'] ?? 'active'),
+                ],
+            ];
+        }
+
+        // Expense entries for the month (categories flagged as "expense")
+        $expenseRows = $db->fetchAllAssociative(
+            "SELECT e.id,
+                    e.date,
+                    e.label,
+                    e.amount_cents,
+                    e.notes,
+                    c.id   AS category_id,
+                    c.name AS category_name,
+                    c.kind AS category_kind
+               FROM ongleri.accounting_entries e
+               JOIN ongleri.accounting_categories c ON c.id = e.category_id
+              WHERE e.date >= :start
+                AND e.date <= :end
+                AND c.kind = 'expense'
+           ORDER BY e.date ASC, e.id ASC",
+            ['start' => $start, 'end' => $end]
+        );
+
+        $expenses = [];
+        $expenseTotal = 0;
+        foreach ($expenseRows as $row) {
+            $amount = (int)($row['amount_cents'] ?? 0);
+            $expenseTotal += abs($amount);
+            $expenses[] = [
+                'id'           => (int)$row['id'],
+                'date'         => $row['date'],
+                'label'        => $row['label'],
+                'amount_cents' => $amount,
+                'notes'        => $row['notes'],
+                'side'         => $amount < 0 ? 'debit' : 'credit',
+                'category'     => [
+                    'id'   => (int)$row['category_id'],
+                    'name' => (string)$row['category_name'],
+                    'kind' => (string)$row['category_kind'],
+                ],
+            ];
+        }
+
+        return $this->json([
+            'ok' => true,
+            'ym' => $ym,
+            'period' => ['start' => $start, 'end' => $end],
+            'incomes' => $incomes,
+            'incomes_total_cents' => $incomeTotal,
+            'expenses' => $expenses,
+            'expenses_total_cents' => $expenseTotal,
+            'net_cents' => $incomeTotal - $expenseTotal,
+        ]);
+    }
+
+    /** ------------------------------------------------------------------
+     * Customer income aggregation for charting (color-coded per year).
+     * GET /api/pos/accounting/customer-income?years=5&limit=20&until=2025
+     * ------------------------------------------------------------------ */
+    #[Route('/api/pos/accounting/customer-income', name: 'api_pos_accounting_customer_income', methods: ['GET'])]
+    public function customerIncome(Request $req, Connection $db): JsonResponse
+    {
+        $yearsQty = (int)$req->query->get('years', 5);
+        if ($yearsQty < 1) {
+            $yearsQty = 1;
+        } elseif ($yearsQty > 10) {
+            $yearsQty = 10;
+        }
+
+        $limit = (int)$req->query->get('limit', 20);
+        if ($limit < 1) {
+            $limit = 1;
+        } elseif ($limit > 50) {
+            $limit = 50;
+        }
+
+        $nowYear = (int)(new DateTimeImmutable('now'))->format('Y');
+        $untilYear = (int)$req->query->get('until', $nowYear);
+        if ($untilYear < 2000 || $untilYear > 9999) {
+            $untilYear = $nowYear;
+        }
+
+        $fromYear = $untilYear - $yearsQty + 1;
+        if ($fromYear < 2000) {
+            $fromYear = 2000;
+        }
+
+        $startDate = sprintf('%04d-01-01', $fromYear);
+        $endDate   = sprintf('%04d-12-31', $untilYear);
+
+        $rows = $db->fetchAllAssociative(
+            "SELECT YEAR(o.encaisse_at) AS year_num,
+                    o.customer_id,
+                    COALESCE(c.last_name, '')  AS last_name,
+                    COALESCE(c.first_name, '') AS first_name,
+                    COALESCE(c.status, 'active') AS status,
+                    COUNT(*) AS orders_count,
+                    SUM(o.total_cents) AS total_cents
+               FROM ongleri.orders o
+          LEFT JOIN ongleri.customers c ON c.id = o.customer_id
+              WHERE o.encaisse_at IS NOT NULL
+                AND o.customer_id IS NOT NULL
+                AND o.encaisse_at >= :start
+                AND o.encaisse_at <= :end
+           GROUP BY YEAR(o.encaisse_at), o.customer_id",
+            ['start' => $startDate, 'end' => $endDate]
+        );
+
+        $years = [];
+        $customers = [];
+        $perYearTotals = [];
+
+        foreach ($rows as $row) {
+            $year = (int)($row['year_num'] ?? 0);
+            if ($year <= 0) {
+                continue;
+            }
+            if ($year < $fromYear || $year > $untilYear) {
+                continue;
+            }
+            $years[$year] = true;
+
+            $customerId = (int)($row['customer_id'] ?? 0);
+            if ($customerId <= 0) {
+                continue;
+            }
+
+            $amount = (int)($row['total_cents'] ?? 0);
+            $orderCount = (int)($row['orders_count'] ?? 0);
+            $firstName = trim((string)($row['first_name'] ?? ''));
+            $lastName  = trim((string)($row['last_name'] ?? ''));
+            $fullName  = trim(sprintf('%s %s', $lastName, $firstName));
+
+            if (!isset($customers[$customerId])) {
+                $customers[$customerId] = [
+                    'customer_id'  => $customerId,
+                    'name'         => $fullName !== '' ? $fullName : sprintf('Client #%d', $customerId),
+                    'first_name'   => $firstName,
+                    'last_name'    => $lastName,
+                    'status'       => (string)($row['status'] ?? 'active'),
+                    'year_totals'  => [],
+                    'order_counts' => [],
+                    'total_cents'  => 0,
+                    'total_orders' => 0,
+                ];
+            }
+
+            $key = (string)$year;
+            $customers[$customerId]['year_totals'][$key] = $amount;
+            $customers[$customerId]['order_counts'][$key] = $orderCount;
+            $customers[$customerId]['total_cents'] += $amount;
+            $customers[$customerId]['total_orders'] += $orderCount;
+
+            if (!isset($perYearTotals[$year])) {
+                $perYearTotals[$year] = ['total_cents' => 0, 'orders' => 0];
+            }
+            $perYearTotals[$year]['total_cents'] += $amount;
+            $perYearTotals[$year]['orders'] += $orderCount;
+        }
+
+        $yearsList = array_keys($years);
+        sort($yearsList, SORT_NUMERIC);
+
+        $customersList = array_values($customers);
+        usort($customersList, fn($a, $b) => $b['total_cents'] <=> $a['total_cents']);
+        if (count($customersList) > $limit) {
+            $customersList = array_slice($customersList, 0, $limit);
+        }
+
+        foreach ($customersList as &$cust) {
+            foreach ($yearsList as $year) {
+                $key = (string)$year;
+                if (!isset($cust['year_totals'][$key])) {
+                    $cust['year_totals'][$key] = 0;
+                }
+                if (!isset($cust['order_counts'][$key])) {
+                    $cust['order_counts'][$key] = 0;
+                }
+            }
+            ksort($cust['year_totals'], SORT_STRING);
+            ksort($cust['order_counts'], SORT_STRING);
+        }
+        unset($cust);
+
+        $perYearTotalsOut = [];
+        foreach ($yearsList as $year) {
+            $perYearTotalsOut[] = [
+                'year' => $year,
+                'total_cents' => (int)($perYearTotals[$year]['total_cents'] ?? 0),
+                'orders' => (int)($perYearTotals[$year]['orders'] ?? 0),
+            ];
+        }
+
+        return $this->json([
+            'ok' => true,
+            'from_year' => $fromYear,
+            'to_year' => $untilYear,
+            'years' => $yearsList,
+            'customers' => $customersList,
+            'per_year_totals' => $perYearTotalsOut,
+        ]);
+    }
 }

@@ -18,9 +18,10 @@ class DiscoveryQuestionnaireController extends AbstractController
     }
 
     #[Route('/ci/{ciKey}', name: 'discovery_questionnaire_runtime_show', methods: ['GET'], requirements: ['ciKey' => '[A-Za-z0-9_.:-]+'])]
-    public function show(string $ciKey): JsonResponse
+    public function show(string $ciKey, Request $request): JsonResponse
     {
-        $payload = $this->runtime->load($ciKey);
+        $questionnaireId = $request->query->getInt('questionnaire_id', 0) ?: null;
+        $payload = $this->runtime->load($ciKey, $questionnaireId);
         return $this->json($payload);
     }
 
@@ -39,7 +40,8 @@ class DiscoveryQuestionnaireController extends AbstractController
         }
 
         $status = (string) ($data['status'] ?? 'in_progress');
-        $payload = $this->runtime->save($ciKey, $answers, $status);
+        $questionnaireId = $request->query->getInt('questionnaire_id', 0) ?: null;
+        $payload = $this->runtime->save($ciKey, $answers, $status, $questionnaireId);
         return $this->json($payload);
     }
 }

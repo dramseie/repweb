@@ -12,6 +12,8 @@ use Symfony\Component\Routing\Annotation\Route;
 #[Route('/api/pos', name: 'api_pos_')]
 class PosCustomerApiController extends AbstractController
 {
+    private const STATUS_VALUES = ['active','inactive','banned','test'];
+
     public function __construct(private Connection $conn) {}
 
     /** Small helper: trim value, return NULL if blank */
@@ -19,6 +21,21 @@ class PosCustomerApiController extends AbstractController
     {
         $v = trim((string)($v ?? ''));
         return $v === '' ? null : $v;
+    }
+
+    /** Normalize + validate status. Returns [value|null, error|null] */
+    private function validateStatus(mixed $value, bool $defaultActive = true): array
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return [$defaultActive ? 'active' : null, null];
+        }
+
+        $status = strtolower(trim((string)$value));
+        if (!in_array($status, self::STATUS_VALUES, true)) {
+            return [null, sprintf('Statut invalide. Valeurs possibles: %s', implode(', ', self::STATUS_VALUES))];
+        }
+
+        return [$status, null];
     }
 
     #[Route('/customers', name: 'customers_search', methods: ['GET'])]
@@ -29,7 +46,7 @@ class PosCustomerApiController extends AbstractController
         // No query -> last updated
         if ($q === '') {
             $rows = $this->conn->fetchAllAssociative(
-                "SELECT id, first_name, last_name, phone, email
+                "SELECT id, first_name, last_name, phone, email, status
                    FROM ongleri.customers
                   ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
                   LIMIT 20"
@@ -43,7 +60,7 @@ class PosCustomerApiController extends AbstractController
 
         // ✅ Positional placeholders + DBAL types
         $sql = "
-            SELECT id, first_name, last_name, phone, email
+                        SELECT id, first_name, last_name, phone, email, status
               FROM ongleri.customers
              WHERE (? IS NOT NULL AND id = ?)
                 OR first_name LIKE ?
@@ -86,6 +103,11 @@ class PosCustomerApiController extends AbstractController
         $phone = $this->tnull($p['phone'] ?? null);
         $email = $this->tnull($p['email'] ?? null);
 
+        [$status, $statusErr] = $this->validateStatus($p['status'] ?? null, true);
+        if ($statusErr) {
+            return $this->json(['error' => $statusErr], 400);
+        }
+
         try {
             $this->conn->insert('ongleri.customers', [
                 'first_name'    => $fn,
@@ -95,9 +117,11 @@ class PosCustomerApiController extends AbstractController
                 'notes_public'  => $this->tnull($p['notes_public']  ?? null),
                 'notes_private' => $this->tnull($p['notes_private'] ?? null),
                 'gdpr_ok'       => !empty($p['gdpr_ok']) ? 1 : 0,
+                'status'        => $status,
+                'address'       => $this->tnull($p['address'] ?? null),
             ]);
             $id = (int)$this->conn->lastInsertId();
-            return $this->json(['ok' => true, 'id' => $id]);
+            return $this->json(['ok' => true, 'id' => $id, 'status' => $status]);
         } catch (UniqueConstraintViolationException $e) {
             return $this->json(['error' => 'Email déjà utilisé'], 409);
         } catch (\Throwable $e) {
@@ -110,7 +134,7 @@ class PosCustomerApiController extends AbstractController
     {
         // Customer
         $c = $this->conn->fetchAssociative(
-            "SELECT id, first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok, created_at, updated_at
+            "SELECT id, first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok, status, address, created_at, updated_at
                FROM ongleri.customers
               WHERE id = ?",
             [$id],
@@ -175,7 +199,7 @@ class PosCustomerApiController extends AbstractController
 
     /**
      * Partial update for inline edit (PATCH) or full replace (PUT).
-     * Accepts JSON fields: first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok.
+     * Accepts JSON fields: first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok, status.
      */
     #[Route('/customers/{id}', name: 'customers_update', methods: ['PATCH','PUT'])]
     public function update(int $id, Request $req): JsonResponse
@@ -192,10 +216,18 @@ class PosCustomerApiController extends AbstractController
 
         $data = json_decode($req->getContent(), true) ?? [];
 
+        if (array_key_exists('status', $data)) {
+            [$newStatus, $statusErr] = $this->validateStatus($data['status'], true);
+            if ($statusErr) {
+                return $this->json(['error' => $statusErr], 400);
+            }
+            $data['status'] = $newStatus ?? 'active';
+        }
+
         // Whitelist updatable fields
         $allowed = [
             'first_name', 'last_name', 'phone', 'email',
-            'notes_public', 'notes_private', 'gdpr_ok'
+            'notes_public', 'notes_private', 'gdpr_ok', 'status', 'address'
         ];
 
         $setParts = [];
@@ -205,12 +237,14 @@ class PosCustomerApiController extends AbstractController
         foreach ($allowed as $f) {
             if (array_key_exists($f, $data)) {
                 $val = $data[$f];
-                if (in_array($f, ['phone','email','notes_public','notes_private'], true)) {
+                if (in_array($f, ['phone','email','notes_public','notes_private','address'], true)) {
                     $val = $this->tnull($val);
                 }
                 if ($f === 'gdpr_ok') {
                     $val = !empty($val) ? 1 : 0;
                     $types[] = ParameterType::INTEGER;
+                } elseif ($f === 'status') {
+                    $types[] = ParameterType::STRING;
                 } elseif ($f === 'first_name' || $f === 'last_name') {
                     $val = trim((string)$val);
                     $types[] = ParameterType::STRING;
@@ -236,7 +270,7 @@ class PosCustomerApiController extends AbstractController
 
             // Return the fresh row
             $row = $this->conn->fetchAssociative(
-                "SELECT id, first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok, created_at, updated_at
+                "SELECT id, first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok, status, address, created_at, updated_at
                    FROM ongleri.customers
                   WHERE id = ?",
                 [$id],

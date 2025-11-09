@@ -12,6 +12,13 @@ const emptyAddr = {
 const HAGENTHAL_CENTER = [47.5385, 7.5140]; // FR-68
 const HAGENTHAL_ZOOM = 14;
 
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Actif' },
+  { value: 'inactive', label: 'Inactif' },
+  { value: 'banned', label: 'Banni' },
+  { value: 'test', label: 'Test' },
+];
+
 
 const fmtBlock = (a) => {
   if (!a) return '';
@@ -176,6 +183,7 @@ export default function CustomerDialog({
   const [email,     setEmail]     = useState('');
   const [notes,     setNotes]     = useState('');
   const [gdprOk,    setGdprOk]    = useState(false);
+  const [status,    setStatus]    = useState('active');
   const [address,   setAddress]   = useState(null);
   const [showPicker, setShowPicker] = useState(false);
 
@@ -187,6 +195,7 @@ export default function CustomerDialog({
     setEmail(customer?.email || '');
     setNotes(customer?.notes_public || '');
     setGdprOk(!!customer?.gdpr_ok);
+  setStatus(customer?.status || 'active');
 
     let addr = null;
     try { addr = customer?.address ? JSON.parse(customer.address) : null; } catch {}
@@ -208,6 +217,7 @@ export default function CustomerDialog({
       email: email?.trim(),
       notes_public: notes ?? '',
       gdpr_ok: gdprOk ? 1 : 0,
+      status,
       address: address ? JSON.stringify({
         ...address,
         formatted: fmtBlock(address),
@@ -256,6 +266,15 @@ export default function CustomerDialog({
                     <label className="form-label">Notes sur la cliente</label>
                     <textarea className="form-control" rows={2}
                               value={notes || ''} onChange={e=>setNotes(e.target.value)} />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Statut</label>
+                    <select className="form-select" value={status} onChange={e=>setStatus(e.target.value)}>
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Address block */}

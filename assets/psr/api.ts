@@ -2,10 +2,19 @@ export type ProjectRow = {
   id:string; name:string; description?:string|null;
   weatherTrend:1|2|3|4|5; ragOverall:0|1|2|3; progressPct:number; updatedAt:string;
 };
+export type TaskProgressEntry = {
+  id: number;
+  taskId: number;
+  createdAt: string;
+  progressPct: number;
+  note: string;
+};
+
 export type TaskNode = {
   id:string; projectId:string; parentId?:string|null; wbsCode?:string|null;
   name:string; rag:0|1|2|3; progressPct:number; startDate?:string|null; dueDate?:string|null; sortOrder:number;
   children?:TaskNode[];
+  progressLog?: TaskProgressEntry[];
 };
 export type ProjectDetailDTO = ProjectRow & { tasks: TaskNode[]; };
 
@@ -28,6 +37,8 @@ export const PsrApi = {
   createTask: (p:Partial<TaskNode>&{projectId:string}) => j<TaskNode>('/api/psr/tasks',{method:'POST',body:JSON.stringify(p)}),
   updateTask: (id:string,p:Partial<TaskNode>)=> j<TaskNode>(`/api/psr/tasks/${id}`,{method:'PUT',body:JSON.stringify(p)}),
   deleteTask: (id:string)=> j<{ok:boolean}>(`/api/psr/tasks/${id}`,{method:'DELETE'}),
+  addTaskProgressLog: (id:string, payload:{note:string; progressPct?:number}) =>
+    j<TaskProgressEntry>(`/api/psr/tasks/${id}/progress-log`, { method:'POST', body:JSON.stringify(payload) }),
   takeSnapshot: (payload:{label?:string;note?:string}) => j<{ok:true;label:string}>('/api/psr/snapshot',{method:'POST',body:JSON.stringify(payload)}),
   versions: () => j<VersionRow[]>('/api/psr/versions'),
   compare: (a:number,b:number) => j<CompareDTO>(`/api/psr/compare/${a}/${b}`),

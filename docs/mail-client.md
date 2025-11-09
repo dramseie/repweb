@@ -49,6 +49,8 @@ Frontend
 --------
 A minimal React skeleton exists at `assets/react/mig/MailApp.tsx`. It uses a simple textarea as placeholder for a WYSIWYG editor. You can integrate Trumbowyg (jQuery) or a React-native WYSIWYG editor (Quill, TipTap, etc.). For Trumbowyg you'll need to add the JS/CSS and initialize the editor inside a React component.
 
+The UI mounts at `/mig/mail` which renders `templates/mig/mail.html.twig`. The Encore entry `assets/react/mig/entry.tsx` looks for the container attribute `data-view="mail"` and swaps in the mail client automatically.
+
 Security & notes
 - Attachments stored as blobs—consider storing on disk or object storage for large volumes.
 - JSON tag searches: use JSON_EXTRACT for queries. Example: `SELECT * FROM repweb_mig.mig_mail WHERE JSON_EXTRACT(tags, '$.AppCI') = '"Glob-Prisma"'`.

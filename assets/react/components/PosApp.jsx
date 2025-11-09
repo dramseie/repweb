@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import PaymentDialog from './PaymentDialog';
 import OrderDialog from './OrderDialog';
 import TimerButton from './TimerButton';
+import ColorInspector from './ColorInspector.jsx';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -113,6 +114,18 @@ const REAL_COLOR_HEX = {
   orange: '#FFDEB4',
   blanc:  '#FFFFFF'
 };
+
+const CUSTOMER_STATUS_META = {
+  active:   { label: 'Actif', badge: 'success' },
+  inactive: { label: 'Inactif', badge: 'secondary' },
+  banned:   { label: 'Banni', badge: 'danger' },
+  test:     { label: 'Test', badge: 'warning' },
+};
+
+const CUSTOMER_STATUS_VALUES = Object.keys(CUSTOMER_STATUS_META);
+
+const customerStatusLabel = (status) => CUSTOMER_STATUS_META[status]?.label || (status ? status : '—');
+const customerStatusBadge = (status) => CUSTOMER_STATUS_META[status]?.badge || 'secondary';
 
 const useSortedReals = (reals) => {
   return useMemo(() => {
@@ -551,7 +564,9 @@ export default function PosApp() {
   const [customer, setCustomer] = useState(() => {
     try {
       const raw = localStorage.getItem('ongleri:selectedCustomer');
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed ? { ...parsed, status: parsed.status || 'active' } : null;
     } catch {
       return null;
     }
@@ -570,7 +585,12 @@ export default function PosApp() {
     const onStorage = (e) => {
       if (e.key === 'ongleri:selectedCustomer') {
         try {
-          setCustomer(e.newValue ? JSON.parse(e.newValue) : null);
+          if (!e.newValue) {
+            setCustomer(null);
+            return;
+          }
+          const parsed = JSON.parse(e.newValue);
+          setCustomer(parsed ? { ...parsed, status: parsed.status || 'active' } : null);
         } catch {}
       }
     };
@@ -623,6 +643,7 @@ export default function PosApp() {
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({
     first_name: '', last_name: '', phone: '', email: '', notes_public: '', gdpr_ok: true,
+    status: 'active',
     address: null
   });
   const [editErr, setEditErr] = useState(null);
@@ -717,7 +738,8 @@ export default function PosApp() {
         const r = await fetch('/api/pos/customers?q=' + encodeURIComponent(query), { signal: ctrl.signal });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
-        setCustResults(data.items || []);
+  const items = Array.isArray(data.items) ? data.items : [];
+  setCustResults(items.map(it => ({ ...it, status: it.status || 'active' })));
       } catch (e) {
         if (e.name !== 'AbortError') console.error(e);
       }
@@ -742,7 +764,8 @@ export default function PosApp() {
         r = await fetch('/api/pos/customers?q=');
         data = await r.json();
       }
-      setAllCustomers(Array.isArray(data?.items) ? data.items : []);
+  const items = Array.isArray(data?.items) ? data.items : [];
+  setAllCustomers(items.map(it => ({ ...it, status: it.status || 'active' })));
     } catch (e) {
       setAllErr(e.message || 'Erreur chargement clients');
     } finally {
@@ -760,6 +783,16 @@ export default function PosApp() {
         if (Object.prototype.hasOwnProperty.call(d, 'active_appointment_id')) {
           setActiveAppointmentId(d.active_appointment_id || null);
         }
+        if (customer?.id === d.customer.id) {
+          setCustomer(prev => prev ? {
+            ...prev,
+            first_name: d.customer.first_name,
+            last_name: d.customer.last_name,
+            phone: d.customer.phone,
+            email: d.customer.email,
+            status: d.customer.status || prev.status || 'active'
+          } : prev);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -774,7 +807,15 @@ export default function PosApp() {
     });
     const d = await r.json();
     if (d.ok) {
-      const picked = { id: d.id, first_name: payload.first_name, last_name: payload.last_name, phone: payload.phone, email: payload.email };
+      const status = d.status || payload.status || 'active';
+      const picked = {
+        id: d.id,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        phone: payload.phone,
+        email: payload.email,
+        status
+      };
       setCustomer(picked);
       setCustTab('search'); setCustResults([]); setCustQuery('');
       await loadCustomerDetail(d.id);
@@ -846,7 +887,7 @@ export default function PosApp() {
   }
 
   const selectCustomer = async (c) => {
-    setCustomer(c);
+    setCustomer({ ...c, status: c.status || 'active' });
     clearRdvSelectionAndForm(); // also reset RDV form
     await loadCustomerDetail(c.id);
   };
@@ -1101,6 +1142,7 @@ export default function PosApp() {
         email: c.email || '',
         notes_public: c.notes_public || '',
         gdpr_ok: !!c.gdpr_ok,
+        status: c.status || 'active',
         address: parsedAddr
       });
       setEditOpen(true);
@@ -1125,6 +1167,7 @@ export default function PosApp() {
       email: (editForm.email || '').trim() || null,
       notes_public: (editForm.notes_public || '').trim() || null,
       gdpr_ok: !!editForm.gdpr_ok,
+      status: editForm.status || 'active',
       address: editForm.address
         ? JSON.stringify({ ...editForm.address, formatted: fmtAddrBlock(editForm.address), updated_at: nowIso() })
         : null
@@ -1147,7 +1190,8 @@ export default function PosApp() {
         first_name: updated.first_name,
         last_name: updated.last_name,
         phone: updated.phone,
-        email: updated.email
+        email: updated.email,
+        status: updated.status || 'active'
       });
       await loadCustomerDetail(editId);
     }
@@ -1158,7 +1202,8 @@ export default function PosApp() {
         first_name: updated.first_name,
         last_name: updated.last_name,
         phone: updated.phone,
-        email: updated.email
+        email: updated.email,
+        status: updated.status || 'active'
       } : x)
     );
     setAllCustomers(prev =>
@@ -1167,7 +1212,8 @@ export default function PosApp() {
         first_name: updated.first_name,
         last_name: updated.last_name,
         phone: updated.phone,
-        email: updated.email
+        email: updated.email,
+        status: updated.status || 'active'
       } : x)
     );
 
@@ -1377,7 +1423,12 @@ export default function PosApp() {
                             onClick={() => selectCustomer(c)}
                             title="Sélectionner ce client"
                           >
-                            {c.last_name} {c.first_name} — {c.phone || c.email || '—'}
+                            <div className="fw-semibold">{c.last_name} {c.first_name}</div>
+                            <div className="small text-muted">
+                              {c.phone || c.email || '—'}
+                              {' · '}
+                              {customerStatusLabel(c.status)}
+                            </div>
                           </button>
                           <button
                             className="btn btn-sm btn-outline-secondary ms-2"
@@ -1441,6 +1492,11 @@ export default function PosApp() {
                               <div className="text-muted small">
                                 {c.phone || '—'} · {c.email || '—'}
                               </div>
+                              <div className="small mt-1">
+                                <span className={`badge text-bg-${customerStatusBadge(c.status)}`}>
+                                  {customerStatusLabel(c.status)}
+                                </span>
+                              </div>
                             </button>
                             <button
                               className="btn btn-sm btn-outline-secondary ms-2"
@@ -1473,7 +1529,12 @@ export default function PosApp() {
                     <div className="fw-semibold">{customer.last_name} {customer.first_name}</div>
                     <div className="small text-muted">{customer.phone || customer.email || '—'}</div>
                   </div>
-                  <span className="badge text-bg-light">#{customer.id}</span>
+                  <div className="d-flex flex-column align-items-end gap-1">
+                    <span className={`badge text-bg-${customerStatusBadge(customer.status)}`}>
+                      {customerStatusLabel(customer.status)}
+                    </span>
+                    <span className="badge text-bg-light">#{customer.id}</span>
+                  </div>
                 </div>
 
                 {/* Nouveau / Modifier RDV */}
@@ -1660,6 +1721,11 @@ export default function PosApp() {
                     </div>
                   </div>
                 )}
+
+                <div className="mt-4">
+                  <h6 className="fw-semibold mb-2">Assistant couleur</h6>
+                  <ColorInspector ideasEndpoint="/api/ai/color-ideas" />
+                </div>
               </>
             )}
           </div>
@@ -1708,6 +1774,15 @@ export default function PosApp() {
                 <div className="col-6">
                   <label className="form-label small">Email</label>
                   <input type="email" className="form-control" value={editForm.email} onChange={e=>EF('email', e.target.value)} />
+                </div>
+
+                <div className="col-6">
+                  <label className="form-label small">Statut</label>
+                  <select className="form-select" value={editForm.status} onChange={e=>EF('status', e.target.value)}>
+                    {CUSTOMER_STATUS_VALUES.map((val) => (
+                      <option key={val} value={val}>{customerStatusLabel(val)}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Adresse */}
@@ -1780,7 +1855,8 @@ function CreateCustomerForm({ onCreated }) {
   const [f, setF] = useState({
     first_name: '', last_name: '',
     phone: '', email: '',
-    notes_public: '', gdpr_ok: true
+    notes_public: '', gdpr_ok: true,
+    status: 'active'
   });
   const [err, setErr] = useState(null);
   const S = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -1796,9 +1872,10 @@ function CreateCustomerForm({ onCreated }) {
         phone: f.phone.trim() || null,
         email: f.email.trim() || null,
         notes_public: f.notes_public.trim() || null,
-        gdpr_ok: !!f.gdpr_ok
+        gdpr_ok: !!f.gdpr_ok,
+        status: f.status || 'active'
       });
-      setF({ first_name:'', last_name:'', phone:'', email:'', notes_public:'', gdpr_ok:true });
+      setF({ first_name:'', last_name:'', phone:'', email:'', notes_public:'', gdpr_ok:true, status:'active' });
     } catch (e2) {
       setErr(e2.message || 'Erreur');
     }
@@ -1823,6 +1900,14 @@ function CreateCustomerForm({ onCreated }) {
         <div className="col-6">
           <label className="form-label small">Email</label>
           <input type="email" className="form-control" value={f.email} onChange={e=>S('email', e.target.value)} />
+        </div>
+        <div className="col-6">
+          <label className="form-label small">Statut</label>
+          <select className="form-select" value={f.status} onChange={e=>S('status', e.target.value)}>
+            {CUSTOMER_STATUS_VALUES.map((val) => (
+              <option key={val} value={val}>{customerStatusLabel(val)}</option>
+            ))}
+          </select>
         </div>
         <div className="col-12">
           <label className="form-label small">Notes (visibles)</label>

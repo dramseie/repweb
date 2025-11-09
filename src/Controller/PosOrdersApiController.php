@@ -107,7 +107,7 @@ class PosOrdersApiController extends AbstractController
         $customer = null;
         if (!empty($o['customer_id'])) {
             $customer = $this->conn->fetchAssociative(
-                "SELECT id, first_name, last_name, phone, email, notes_public
+                "SELECT id, first_name, last_name, phone, email, notes_public, status
                    FROM ongleri.customers
                   WHERE id = ?",
                 [(int)$o['customer_id']]

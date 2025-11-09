@@ -1,0 +1,38 @@
+{# templates/qw/editor.html.twig #}
+{% extends 'base.html.twig' %}
+
+{% block title %}Questionnaire Editor{% endblock %}
+
+{% block body %}
+  <style>
+    .qw-editor-shell{display:flex;gap:24px;min-height:calc(100vh - 140px);padding:24px;background:linear-gradient(180deg,#f9fafb 0%,#f3f4f6 100%);border-radius:18px;}
+    .qw-editor-sidebar{flex:0 0 340px;width:340px;display:flex;flex-direction:column;gap:18px;}
+    .qw-editor-panel{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:18px;box-shadow:0 12px 24px rgba(15,23,42,0.06);}
+    .qw-editor-title{font-size:20px;font-weight:600;margin:0 0 12px;color:#111827;}
+    .qw-editor-search{display:flex;gap:8px;margin-bottom:12px;}
+    .qw-editor-search input{flex:1 1 auto;border:1px solid #d1d5db;border-radius:10px;padding:8px 12px;font-size:13px;}
+    .qw-editor-list{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow:auto;padding-right:4px;}
+    .qw-editor-item{border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:500;color:#1f2937;background:#f9fafb;cursor:pointer;transition:all .18s ease;}
+    .qw-editor-item:hover{border-color:#6366f1;background:#eef2ff;color:#4338ca;box-shadow:0 6px 14px rgba(99,102,241,0.16);}
+    .qw-editor-item.is-active{border-color:#4338ca;background:linear-gradient(180deg,#eef2ff 0%,#fff 100%);color:#111827;box-shadow:0 10px 20px rgba(67,56,202,0.18);}
+    .qw-editor-main{flex:1 1 auto;min-width:0;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px;box-shadow:0 16px 32px rgba(15,23,42,0.08);}
+    .qw-editor-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:360px;text-align:center;color:#6b7280;gap:12px;}
+    .qw-editor-versions{display:flex;flex-direction:column;gap:8px;max-height:180px;overflow:auto;padding-right:4px;}
+    .qw-editor-version{border:1px solid #d1d5db;border-radius:10px;padding:8px 10px;font-size:12px;background:#f8fafc;cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:all .16s ease;}
+    .qw-editor-version:hover{border-color:#4338ca;background:#eef2ff;color:#111827;}
+    .qw-editor-version.is-active{border-color:#4338ca;background:linear-gradient(180deg,#eef2ff 0%,#fff 100%);box-shadow:0 6px 18px rgba(67,56,202,0.2);}
+    .qw-editor-meta{display:flex;gap:8px;font-size:11px;color:#6b7280;}
+    .qw-editor-actions{display:flex;gap:8px;margin-top:10px;}
+    .qw-editor-actions button{flex:1 1 auto;border:1px solid #4f46e5;background:#4338ca;color:#fff;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s ease;}
+    .qw-editor-actions button:hover{background:#3730a3;}
+    .qw-editor-actions button.secondary{border-color:#d1d5db;background:#fff;color:#1f2937;}
+    .qw-editor-actions button.secondary:hover{border-color:#4338ca;color:#4338ca;}
+  </style>
+
+  <div class="container mx-auto">
+    <div id="qw-root" data-page="editor" data-tenant="{{ tenant_id }}"></div>
+  </div>
+
+  {{ encore_entry_link_tags('qw-entry') }}
+  {{ encore_entry_script_tags('qw-entry') }}
+{% endblock %}

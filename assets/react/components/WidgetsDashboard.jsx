@@ -47,7 +47,7 @@ function Toolbar({ editing, onToggleEdit, onAdd, onSave, onReset }) {
 
 function WidgetChrome({ title, editing, onRemove, children }) {
   return (
-    <div className="card h-100 shadow-sm">
+    <div className="card h-100 shadow-sm d-flex flex-column">
       <div className="card-header py-2 d-flex align-items-center justify-content-between">
         <strong className="small text-uppercase">{title}</strong>
         {editing && (
@@ -62,7 +62,12 @@ function WidgetChrome({ title, editing, onRemove, children }) {
           </button>
         )}
       </div>
-      <div className="card-body p-2" style={{ overflow: 'auto' }}>{children}</div>
+      <div
+        className="card-body p-2 d-flex flex-column"
+        style={{ overflow: 'auto', flex: 1 }}
+      >
+        {children}
+      </div>
     </div>
   );
 }

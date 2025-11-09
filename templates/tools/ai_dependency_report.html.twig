@@ -1,0 +1,173 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}AI Dependency Report{% endblock %}
+
+{% block stylesheets %}
+  {{ parent() }}
+  <style>
+    .ai-report-wrapper { max-width: 880px; margin: 2rem auto; }
+    .ai-report-result { white-space: pre-wrap; font-family: var(--bs-font-monospace, monospace); }
+  </style>
+{% endblock %}
+
+{% block body %}
+  <div class="ai-report-wrapper">
+    <h1 class="h3">AI Dependency Report</h1>
+    <p class="text-muted">Enter a question about the NiFi CMDB (e.g. <em>“List AppCI entries containing PRISMA with dependencies”</em>). Results come from the read-only NiFi database.</p>
+
+    <div class="mb-3">
+      <label for="ai-question" class="form-label">Question</label>
+      <textarea id="ai-question" class="form-control" rows="4" placeholder="Describe the dependency insight you need"></textarea>
+    </div>
+
+    <div class="d-flex gap-2 mb-4">
+      <button id="ai-submit" class="btn btn-primary">Ask</button>
+      <button id="ai-reset" class="btn btn-outline-secondary">Clear</button>
+      <div id="ai-status" class="align-self-center small text-muted"></div>
+    </div>
+
+    <div id="ai-error" class="alert alert-danger d-none"></div>
+
+    <div id="ai-output" class="d-none">
+      <h2 class="h5">Analysis</h2>
+      <dl class="row">
+        <dt class="col-sm-3">Reasoning</dt>
+        <dd class="col-sm-9" id="ai-reasoning"></dd>
+        <dt class="col-sm-3">Summary</dt>
+        <dd class="col-sm-9" id="ai-summary"></dd>
+        <dt class="col-sm-3">Follow-up</dt>
+        <dd class="col-sm-9" id="ai-followup"></dd>
+      </dl>
+
+      <h2 class="h5">SQL</h2>
+      <pre class="ai-report-result" id="ai-sql"></pre>
+
+      <h2 class="h5">Rows (<span id="ai-row-count">0</span>)</h2>
+      <div class="alert alert-info d-none" id="ai-empty">No rows matched the filters.</div>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped" id="ai-table"></table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const btn = document.getElementById('ai-submit');
+      const reset = document.getElementById('ai-reset');
+      const questionEl = document.getElementById('ai-question');
+      const statusEl = document.getElementById('ai-status');
+      const errorEl = document.getElementById('ai-error');
+      const outputEl = document.getElementById('ai-output');
+  const reasoningEl = document.getElementById('ai-reasoning');
+  const summaryEl = document.getElementById('ai-summary');
+  const followUpEl = document.getElementById('ai-followup');
+      const sqlEl = document.getElementById('ai-sql');
+      const tableEl = document.getElementById('ai-table');
+      const rowCountEl = document.getElementById('ai-row-count');
+  const emptyEl = document.getElementById('ai-empty');
+
+      async function run() {
+        const question = questionEl.value.trim();
+        if (!question) {
+          errorEl.textContent = 'Please enter a question.';
+          errorEl.classList.remove('d-none');
+          return;
+        }
+
+        btn.disabled = true;
+        reset.disabled = true;
+        errorEl.classList.add('d-none');
+        outputEl.classList.add('d-none');
+        statusEl.textContent = 'Running…';
+
+        try {
+          const resp = await fetch('{{ path('api_ai_dependency_report') }}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ question }),
+          });
+
+          const data = await resp.json();
+          if (!resp.ok || data.error) {
+            throw new Error(data.error || 'Request failed');
+          }
+
+          reasoningEl.textContent = data.analysis?.reasoning ?? '(none)';
+          summaryEl.textContent = data.analysis?.summary ?? '';
+          followUpEl.textContent = data.analysis?.suggestedFollowUp ?? '—';
+          sqlEl.textContent = data.sql ?? '';
+          rowCountEl.textContent = data.rowCount ?? 0;
+
+          const columns = Array.isArray(data.columns) ? data.columns : [];
+          const rows = Array.isArray(data.rows) ? data.rows : [];
+
+          tableEl.innerHTML = '';
+          emptyEl.classList.add('d-none');
+          if (columns.length > 0) {
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            columns.forEach((column) => {
+              const th = document.createElement('th');
+              th.scope = 'col';
+              th.textContent = column;
+              headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            tableEl.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            rows.forEach((row) => {
+              const tr = document.createElement('tr');
+              columns.forEach((column) => {
+                const td = document.createElement('td');
+                const value = row[column];
+                td.textContent = value === null || typeof value === 'undefined' ? '' : String(value);
+                tr.appendChild(td);
+              });
+              tbody.appendChild(tr);
+            });
+            tableEl.appendChild(tbody);
+          } else {
+            emptyEl.classList.remove('d-none');
+          }
+
+          outputEl.classList.remove('d-none');
+          statusEl.textContent = "Done.";
+        } catch (err) {
+          console.error(err);
+          errorEl.textContent = err.message || 'Unexpected error.';
+          errorEl.classList.remove('d-none');
+          statusEl.textContent = '';
+        } finally {
+          btn.disabled = false;
+          reset.disabled = false;
+        }
+      }
+
+      btn?.addEventListener('click', run);
+      questionEl?.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'Enter') {
+          e.preventDefault();
+          run();
+        }
+      });
+
+      reset?.addEventListener('click', () => {
+        questionEl.value = '';
+        errorEl.classList.add('d-none');
+        outputEl.classList.add('d-none');
+        tableEl.innerHTML = '';
+        rowCountEl.textContent = '0';
+        reasoningEl.textContent = '';
+        summaryEl.textContent = '';
+        followUpEl.textContent = '';
+        sqlEl.textContent = '';
+        statusEl.textContent = '';
+        emptyEl.classList.add('d-none');
+        questionEl.focus();
+      });
+    })();
+  </script>
+{% endblock %}

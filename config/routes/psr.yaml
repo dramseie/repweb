@@ -34,10 +34,20 @@ psr_task_crud:
   controller: App\Controller\Psr\TaskController::create
   methods: [POST]
 
-psr_task_item:
+psr_task_update:
   path: /api/psr/tasks/{id}
-  controller: App\Controller\Psr\TaskController::updateOrDelete
-  methods: [PUT, PATCH, DELETE]
+  controller: App\Controller\Psr\TaskController::update
+  methods: [PUT, PATCH]
+
+psr_task_delete:
+  path: /api/psr/tasks/{id}
+  controller: App\Controller\Psr\TaskController::delete
+  methods: [DELETE]
+
+psr_task_progress_log_add:
+  path: /api/psr/tasks/{id}/progress-log
+  controller: App\Controller\Psr\TaskController::appendProgressLog
+  methods: [POST]
 
 psr_snapshot_take:
   path: /api/psr/snapshot

@@ -1,13 +1,19 @@
 doctrine:
   dbal:
-    url: '%env(resolve:DATABASE_URL)%'
-    server_version: 'mariadb-10.5'
-    charset: utf8mb4
-    default_table_options:
-      charset: utf8mb4
-      collate: utf8mb4_unicode_ci
-    profiling_collect_backtrace: '%kernel.debug%'
-    use_savepoints: true
+    default_connection: default
+    connections:
+      default:
+        url: '%env(resolve:DATABASE_URL)%'
+        server_version: 'mariadb-10.5'
+        charset: utf8mb4
+        default_table_options:
+          charset: utf8mb4
+          collate: utf8mb4_unicode_ci
+        profiling_collect_backtrace: '%kernel.debug%'
+      nifi:
+        url: '%env(resolve:NIFI_DATABASE_URL)%'
+        server_version: 'mariadb-10.11'
+        charset: utf8mb4
 
   orm:
     auto_generate_proxy_classes: true
