@@ -2689,7 +2689,7 @@ const SmartsheetPivotPage = () => {
                   className="card-header country-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative"
                   style={{ height: 180 }}
                 >
-                <strong>
+                <strong style={{ position: 'relative', zIndex: 2 }}>
                   <a
                     href="#exec-overview"
                     className="text-decoration-none text-reset"
@@ -2715,7 +2715,7 @@ const SmartsheetPivotPage = () => {
                       </div>
                       <div
                         className="d-none d-lg-flex position-absolute justify-content-center"
-                        style={{ left: 0, right: 0, top: '50%', transform: 'translateY(-50%)' }}
+                        style={{ left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
                       >
                         <div className="d-flex flex-column gap-2" style={{ maxWidth: 520 }}>
                           {progress.tasks.map(renderProgressRow)}
