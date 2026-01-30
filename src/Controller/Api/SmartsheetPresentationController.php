@@ -11,6 +11,9 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Routing\Annotation\Route;
+use OpenSpout\Writer\XLSX\Writer as XlsxWriter;
+use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\Style;
 
 #[Route('/api/smartsheet/presentation', name: 'api_smartsheet_presentation_')]
 class SmartsheetPresentationController extends AbstractController
@@ -380,6 +383,237 @@ class SmartsheetPresentationController extends AbstractController
         $response = new BinaryFileResponse($tmpHtml);
         $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $filename);
         $response->headers->set('Content-Type', 'text/html; charset=utf-8');
+        $response->headers->set('Cache-Control', 'no-store');
+        $response->deleteFileAfterSend(true);
+
+        return $response;
+    }
+
+    #[Route('/export-xlsx', name: 'presentation_export_xlsx', methods: ['POST'])]
+    public function exportPresentationXlsx(\Symfony\Component\HttpFoundation\Request $request): BinaryFileResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true) ?? [];
+        $countries = $this->normalizeCountryFilter($payload['countries'] ?? null);
+
+        $assessments = $this->plannedDataForTask(self::DEFAULT_TASK_NAME, $countries);
+        $installations = $this->plannedDataForTask('Installation Execution', $countries);
+        $postDeployment = $this->postDeploymentData($countries);
+        $issueLog = $this->issueLogData($countries);
+        $overview = $this->programmeOverviewData();
+        $timeline = $this->timelineData($countries);
+        $plannedWeekRows = $this->plannedWeekData($countries);
+
+        $trendOverrides = $this->decodeOverrides($this->getLatestContent('trend_overrides'));
+        $overviewOverrides = $this->decodeOverrides($this->getLatestContent('overview_overrides'));
+
+        $overviewItems = $this->filterItemsByCountries($overview['items'] ?? [], $countries, 'country');
+
+        $overviewRows = [];
+        foreach ($overviewItems as $row) {
+            $country = (string) ($row['country'] ?? '');
+            $override = $overviewOverrides[$country] ?? [];
+            $ragValue = ($override['rag'] ?? null) !== null && $override['rag'] !== '' ? $override['rag'] : ($row['rag'] ?? '');
+            $commentValue = ($override['comment'] ?? null) !== null && $override['comment'] !== '' ? $override['comment'] : ($row['comment'] ?? '');
+            $overviewRows[] = [
+                $country,
+                $row['stores'] ?? '',
+                $row['assessed'] ?? '',
+                $row['ongoingInstallations'] ?? '',
+                $row['storesInstalled'] ?? '',
+                $row['storeSignoff'] ?? '',
+                $ragValue,
+                $commentValue,
+            ];
+        }
+
+        $plannedWeekExportRows = [];
+        foreach ($plannedWeekRows as $row) {
+            $country = $this->resolveRowField($row, ['country', 'Country']) ?? '—';
+            $siteName = $this->cleanSiteName($this->resolveRowField($row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) ?? '');
+            $siteId = $this->resolveRowField($row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) ?? '';
+            $taskName = $this->resolveRowField($row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) ?? '—';
+            $startDate = $this->formatDate($this->resolveRowField($row, ['start_date', 'startDate', 'Start_Date', 'StartDate']));
+            $endDate = $this->formatDate($this->resolveRowField($row, ['end_date', 'endDate', 'End_Date', 'EndDate']));
+            $status = $this->resolveRowField($row, ['status', 'Status']) ?? '';
+            $comment = $this->resolveRowField($row, ['comment', 'Comment']) ?? '';
+
+            $plannedWeekExportRows[] = [
+                $country,
+                $siteName !== '' ? $siteName : '—',
+                $siteId,
+                $taskName,
+                $startDate ?? '—',
+                $endDate ?? '—',
+                $status !== '' ? $status : '—',
+                $comment !== '' ? $comment : '—',
+            ];
+        }
+
+        $timelineRows = [];
+        foreach (($timeline['items'] ?? []) as $row) {
+            $timelineRows[] = [
+                $row['country'] ?? '',
+                $row['startDate'] ?? '',
+                $row['installEndDate'] ?? '',
+                $row['endDate'] ?? '',
+            ];
+        }
+
+        $trendGroups = [
+            'green' => [],
+            'amber' => [],
+            'red' => [],
+        ];
+        foreach ($overviewItems as $row) {
+            $country = (string) ($row['country'] ?? '');
+            $override = $trendOverrides[$country] ?? [];
+            $ragValue = ($override['rag'] ?? null) !== null && $override['rag'] !== '' ? $override['rag'] : ($row['rag'] ?? '');
+            $commentValue = ($override['comment'] ?? null) !== null && $override['comment'] !== '' ? $override['comment'] : ($row['comment'] ?? '');
+            $rag = $this->normalizeRagValue($ragValue);
+            if ($rag !== '' && isset($trendGroups[$rag])) {
+                $trendGroups[$rag][] = [
+                    $country,
+                    $row['stores'] ?? '',
+                    $row['assessed'] ?? '',
+                    $row['ongoingInstallations'] ?? '',
+                    $row['storesInstalled'] ?? '',
+                    $commentValue,
+                ];
+            }
+        }
+
+        $generalIssuesRows = [];
+        foreach (($issueLog['items'] ?? []) as $block) {
+            $country = $block['country'] ?? '';
+            foreach (($block['issues'] ?? []) as $issue) {
+                $generalIssuesRows[] = [
+                    $country,
+                    $issue['storeName'] ?? '',
+                    $issue['storeId'] ?? '',
+                    $issue['description'] ?? '',
+                    $issue['priority'] ?? '',
+                    $issue['responsibleParty'] ?? '',
+                    $issue['actionRequired'] ?? '',
+                    $issue['resolveDate'] ?? '',
+                ];
+            }
+        }
+
+        $allPlannedRows = [];
+        $appendPlannedRows = static function (string $section, array $meta, array $items) use (&$allPlannedRows): void {
+            $currentLabel = $meta['currentMonth'] ?? 'Current month';
+            $nextLabel = $meta['nextMonth'] ?? 'Next month';
+            foreach ($items as $block) {
+                $country = $block['country'] ?? '';
+                foreach ([
+                    'current' => $currentLabel,
+                    'next' => $nextLabel,
+                ] as $bucket => $label) {
+                    foreach (($block[$bucket] ?? []) as $entry) {
+                        $allPlannedRows[] = [
+                            $country,
+                            $section,
+                            $label,
+                            $entry['siteName'] ?? '',
+                            $entry['siteId'] ?? '',
+                            $entry['startDate'] ?? '',
+                            $entry['endDate'] ?? '',
+                            $entry['confidence'] ?? '',
+                            $entry['status'] ?? '',
+                        ];
+                    }
+                }
+            }
+        };
+        $appendPlannedRows('Planned Assessments', $assessments['meta'] ?? [], $assessments['items'] ?? []);
+        $appendPlannedRows('Planned Installations', $installations['meta'] ?? [], $installations['items'] ?? []);
+        $appendPlannedRows('Post-Deployment & Sign-off', $postDeployment['meta'] ?? [], $postDeployment['items'] ?? []);
+
+        $allIssueRows = [];
+        foreach (($issueLog['items'] ?? []) as $block) {
+            $country = $block['country'] ?? '';
+            foreach (($block['issues'] ?? []) as $issue) {
+                $allIssueRows[] = [
+                    $country,
+                    $issue['storeName'] ?? '',
+                    $issue['storeId'] ?? '',
+                    $issue['description'] ?? '',
+                    $issue['priority'] ?? '',
+                    $issue['responsibleParty'] ?? '',
+                    $issue['actionRequired'] ?? '',
+                    $issue['resolveDate'] ?? '',
+                ];
+            }
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'rep_xlsx_');
+        $tmpWithExt = $tmp . '.xlsx';
+        @rename($tmp, $tmpWithExt);
+
+        $writer = new XlsxWriter();
+        $writer->openToFile($tmpWithExt);
+        $headerStyle = (new Style())->setFontBold();
+        $sheetIndex = 0;
+
+        $addSheet = static function (XlsxWriter $writer, Style $headerStyle, int &$sheetIndex, string $name, array $headers, array $rows): void {
+            if ($sheetIndex === 0) {
+                $writer->getCurrentSheet()->setName($name);
+            } else {
+                $writer->addNewSheetAndMakeItCurrent();
+                $writer->getCurrentSheet()->setName($name);
+            }
+            $sheetIndex += 1;
+            $writer->addRow(Row::fromValues($headers, $headerStyle));
+            foreach ($rows as $row) {
+                $writer->addRow(Row::fromValues($row));
+            }
+        };
+
+        try {
+            $addSheet($writer, $headerStyle, $sheetIndex, 'Programme Overview',
+                ['Country', 'Stores', 'Assessed', 'Ongoing Installations', 'Installed', 'Sign-off', 'RAG', 'Comment'],
+                $overviewRows
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'Status Planned',
+                ['Country', 'Site Name', 'Site ID', 'Activity', 'Start', 'End', 'Status', 'Comment'],
+                $plannedWeekExportRows
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'Timeline',
+                ['Country', 'Start Date', 'Install End Date', 'End Date'],
+                $timelineRows
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'Trend Green',
+                ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
+                $trendGroups['green']
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'Trend Amber',
+                ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
+                $trendGroups['amber']
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'Trend Red',
+                ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
+                $trendGroups['red']
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'General Issues',
+                ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
+                $generalIssuesRows
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'All Planned',
+                ['Country', 'Section', 'Month', 'Site Name', 'Site ID', 'Start', 'End', 'Confidence', 'Status'],
+                $allPlannedRows
+            );
+            $addSheet($writer, $headerStyle, $sheetIndex, 'All Issues',
+                ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
+                $allIssueRows
+            );
+        } finally {
+            $writer->close();
+        }
+
+        $filename = sprintf('presentation-%s.xlsx', (new DateTimeImmutable('now'))->format('Ymd_His'));
+        $response = new BinaryFileResponse($tmpWithExt);
+        $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $filename);
+        $response->headers->set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         $response->headers->set('Cache-Control', 'no-store');
         $response->deleteFileAfterSend(true);
 
