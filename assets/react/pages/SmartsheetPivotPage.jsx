@@ -288,6 +288,13 @@ const SmartsheetPivotPage = () => {
   const [trendError, setTrendError] = useState(null);
   const [trendLoaded, setTrendLoaded] = useState(false);
 
+  const [overviewOverrides, setOverviewOverrides] = useState({});
+  const [overviewDrafts, setOverviewDrafts] = useState({});
+  const [overviewOverridesLoading, setOverviewOverridesLoading] = useState(false);
+  const [overviewOverridesSaving, setOverviewOverridesSaving] = useState(false);
+  const [overviewOverridesError, setOverviewOverridesError] = useState(null);
+  const [overviewOverridesLoaded, setOverviewOverridesLoaded] = useState(false);
+
   const [statusData, setStatusData] = useState({ categories: [], items: [] });
   const [statusError, setStatusError] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -480,6 +487,28 @@ const SmartsheetPivotPage = () => {
       setTrendLoading(false);
     }
   }, [trendLoaded, trendLoading]);
+
+  const fetchOverviewOverrides = useCallback(async () => {
+    if (overviewOverridesLoaded || overviewOverridesLoading) return;
+    setOverviewOverridesLoading(true);
+    setOverviewOverridesError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/content?section=overview_overrides');
+      if (!response.ok) {
+        throw new Error(`Failed to load overview overrides (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const rawContent = payload?.content || '';
+      const parsed = rawContent ? JSON.parse(rawContent) : {};
+      setOverviewOverrides(parsed && typeof parsed === 'object' ? parsed : {});
+      setOverviewOverridesLoaded(true);
+    } catch (error) {
+      setOverviewOverridesError(error.message || 'Unable to load overview overrides.');
+      setOverviewOverridesLoaded(true);
+    } finally {
+      setOverviewOverridesLoading(false);
+    }
+  }, [overviewOverridesLoaded, overviewOverridesLoading]);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -1145,13 +1174,15 @@ const SmartsheetPivotPage = () => {
   const savePresentationEdits = async () => {
     const edits = Object.values(presentationEdits);
     const trendDraftEntries = Object.entries(trendDrafts);
-    if (edits.length === 0 && trendDraftEntries.length === 0) {
+    const overviewDraftEntries = Object.entries(overviewDrafts);
+    if (edits.length === 0 && trendDraftEntries.length === 0 && overviewDraftEntries.length === 0) {
       setPresentationSaveError('No changes to save.');
       return;
     }
 
     setPresentationSaving(true);
     setTrendSaving(true);
+    setOverviewOverridesSaving(true);
     setPresentationSaveError(null);
 
     try {
@@ -1207,6 +1238,33 @@ const SmartsheetPivotPage = () => {
         setTrendDrafts({});
       }
 
+      if (overviewDraftEntries.length > 0) {
+        const nextOverrides = { ...overviewOverrides };
+        overviewDraftEntries.forEach(([country, draft]) => {
+          nextOverrides[country] = {
+            rag: draft?.rag ?? null,
+            comment: draft?.comment ?? '',
+          };
+        });
+
+        const response = await fetch('/api/smartsheet/presentation/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section: 'overview_overrides',
+            content: JSON.stringify(nextOverrides),
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.message || `HTTP ${response.status}`);
+        }
+
+        setOverviewOverrides(nextOverrides);
+        setOverviewDrafts({});
+      }
+
       setPresentationEditMode(false);
       if (edits.length > 0) {
         fetchPresentation();
@@ -1216,6 +1274,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setPresentationSaving(false);
       setTrendSaving(false);
+      setOverviewOverridesSaving(false);
     }
   };
 
@@ -1564,6 +1623,15 @@ const SmartsheetPivotPage = () => {
     });
   };
 
+  const getOverviewDraft = (country) => overviewDrafts[country] || { rag: '', comment: '' };
+
+  const updateOverviewDraft = (country, patch) => {
+    setOverviewDrafts((prev) => {
+      const current = prev[country] || {};
+      return { ...prev, [country]: { ...current, ...patch } };
+    });
+  };
+
   const trendItems = filteredOverviewItems.map((row) => {
     const override = trendOverrides?.[row.country] || {};
     return {
@@ -1600,8 +1668,9 @@ const SmartsheetPivotPage = () => {
     if (activeTab === 'presentation') {
       fetchHighlights();
       fetchTrendOverrides();
+      fetchOverviewOverrides();
     }
-  }, [activeTab, fetchHighlights, fetchTrendOverrides]);
+  }, [activeTab, fetchHighlights, fetchTrendOverrides, fetchOverviewOverrides]);
 
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
@@ -2149,6 +2218,14 @@ const SmartsheetPivotPage = () => {
                           {overviewError}
                         </div>
                       )}
+                      {overviewOverridesLoading && (
+                        <div className="text-muted small">Loading overview overrides...</div>
+                      )}
+                      {overviewOverridesError && (
+                        <div className="alert alert-warning py-2 mb-0" role="alert">
+                          {overviewOverridesError}
+                        </div>
+                      )}
                       {!overviewLoading && !overviewError && filteredOverviewItems.length === 0 && (
                         <div className="text-muted small">No overview data available.</div>
                       )}
@@ -2179,8 +2256,12 @@ const SmartsheetPivotPage = () => {
                             </thead>
                             <tbody>
                               {filteredOverviewItems.map((row) => {
-                                const rag = normalizeRag(row.rag);
-                                const ragLabel = rag ? rag.charAt(0).toUpperCase() + rag.slice(1) : '—';
+                                const override = overviewOverrides?.[row.country] || {};
+                                const draft = getOverviewDraft(row.country);
+                                const ragValue = draft.rag !== '' ? draft.rag : (override.rag ?? row.rag);
+                                const commentValue = draft.comment !== '' ? draft.comment : (override.comment ?? row.comment);
+                                const rag = normalizeRag(ragValue);
+                                const ragLabel = ragValue ? ragValue : '—';
                                 const ragClass = rag === 'green'
                                   ? 'success'
                                   : rag === 'amber'
@@ -2199,11 +2280,36 @@ const SmartsheetPivotPage = () => {
                                     <td>{formatDisplayValue(row.storesInstalled)}</td>
                                     <td>{formatDisplayValue(row.storeSignoff)}</td>
                                     <td>
-                                      <span className={`badge bg-${ragClass}`}>
-                                        {ragLabel}
-                                      </span>
+                                      {presentationEditMode ? (
+                                        <select
+                                          className="form-select form-select-sm"
+                                          value={ragValue || ''}
+                                          onChange={(event) => updateOverviewDraft(row.country, { rag: event.target.value })}
+                                        >
+                                          <option value="">—</option>
+                                          <option value="Green">Green</option>
+                                          <option value="Amber">Amber</option>
+                                          <option value="Red">Red</option>
+                                        </select>
+                                      ) : (
+                                        <span className={`badge bg-${ragClass}`}>
+                                          {formatDisplayValue(ragLabel)}
+                                        </span>
+                                      )}
                                     </td>
-                                    <td className="text-muted small">{formatDisplayValue(row.comment)}</td>
+                                    <td className="text-muted small">
+                                      {presentationEditMode ? (
+                                        <input
+                                          type="text"
+                                          className="form-control form-control-sm"
+                                          value={commentValue || ''}
+                                          onChange={(event) => updateOverviewDraft(row.country, { comment: event.target.value })}
+                                          placeholder="Add comment"
+                                        />
+                                      ) : (
+                                        formatDisplayValue(commentValue)
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })}
