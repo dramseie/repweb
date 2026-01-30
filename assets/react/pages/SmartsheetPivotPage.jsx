@@ -1904,7 +1904,7 @@ const SmartsheetPivotPage = () => {
                     const comment = getRowField(row, ['comment', 'Comment']) || '';
 
                     return (
-                      <tr key={`${country}-${siteId || siteName || index}`}>
+                      <tr key={`${country}-${siteId || siteName || 'row'}-${index}`}>
                         <td className="fw-semibold">
                           <CountryAnchor country={country} />
                         </td>
