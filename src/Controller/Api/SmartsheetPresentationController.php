@@ -144,7 +144,7 @@ class SmartsheetPresentationController extends AbstractController
 
         // Use direct date containment so ranges spanning year boundaries are matched correctly
         $sql = sprintf(
-            "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND CURDATE() BETWEEN DATE(Start_Date) AND DATE(End_Date)",
+            "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND (DATE(Start_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY) OR DATE(End_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY))",
             self::MASTER_TABLE
         );
 
@@ -1591,7 +1591,7 @@ class SmartsheetPresentationController extends AbstractController
     private function plannedWeekData(?array $countries = null): array
     {
         $sql = sprintf(
-            "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND CURDATE() BETWEEN DATE(Start_Date) AND DATE(End_Date)",
+            "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND (DATE(Start_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY) OR DATE(End_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY))",
             self::MASTER_TABLE
         );
 
