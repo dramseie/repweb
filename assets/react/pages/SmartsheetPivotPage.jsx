@@ -1511,7 +1511,15 @@ const SmartsheetPivotPage = () => {
     setSlideshowOpen(false);
   };
 
-  const slideshowItems = filteredPresentationItems;
+  const slideshowItems = [
+    ...execCardMeta.map((meta) => ({ type: 'exec', key: meta.key, title: meta.title, meta })),
+    ...filteredPresentationItems.map((countryBlock) => ({
+      type: 'country',
+      key: countryBlock.country,
+      title: countryBlock.country,
+      countryBlock,
+    })),
+  ];
   const slideshowItem = slideshowItems[slideshowIndex] || null;
 
   const findProgressForCountry = (country) => {
@@ -1675,6 +1683,546 @@ const SmartsheetPivotPage = () => {
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
     setPresentationCountryFilter(selected);
+  };
+
+  const execCardMeta = [
+    { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
+    { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
+    { key: '__exec_status', title: 'Status planned assessments and installations', body: 'Snapshot of planned assessments and installations status.' },
+    { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
+    { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
+    { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
+    { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
+    { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
+  ];
+
+  const renderExecCardBody = (meta) => {
+    if (meta.key === '__exec_highlights') {
+      return (
+        <div className="d-flex flex-column gap-3">
+          {highlightsLoading && (
+            <div className="text-muted small">Loading highlights...</div>
+          )}
+          {highlightsError && (
+            <div className="alert alert-warning py-2 mb-0" role="alert">
+              {highlightsError}
+            </div>
+          )}
+          {!highlightsLoading && !highlightsError && presentationEditMode ? (
+            <>
+              <TrumboField
+                value={highlightsContent}
+                onChange={(value) => setHighlightsContent(value || '')}
+                placeholder="Add key wins, risks, and milestones..."
+              />
+              <div className="d-flex justify-content-end">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={saveHighlights}
+                  disabled={highlightsSaving}
+                >
+                  {highlightsSaving ? 'Saving…' : 'Save highlights'}
+                </button>
+              </div>
+            </>
+          ) : null}
+          {!highlightsLoading && !highlightsError && !presentationEditMode && (
+            highlightsContent ? (
+              <div
+                className="presentation-highlight-content"
+                dangerouslySetInnerHTML={{ __html: highlightsContent }}
+              />
+            ) : (
+              <div className="text-muted small">No highlights yet.</div>
+            )
+          )}
+        </div>
+      );
+    }
+
+    if (meta.key === '__exec_overview') {
+      return (
+        <div className="d-flex flex-column gap-2">
+          {overviewLoading && (
+            <div className="text-muted small">Loading overview...</div>
+          )}
+          {overviewError && (
+            <div className="alert alert-warning py-2 mb-0" role="alert">
+              {overviewError}
+            </div>
+          )}
+          {overviewOverridesLoading && (
+            <div className="text-muted small">Loading overview overrides...</div>
+          )}
+          {overviewOverridesError && (
+            <div className="alert alert-warning py-2 mb-0" role="alert">
+              {overviewOverridesError}
+            </div>
+          )}
+          {!overviewLoading && !overviewError && filteredOverviewItems.length === 0 && (
+            <div className="text-muted small">No overview data available.</div>
+          )}
+          {!overviewLoading && !overviewError && filteredOverviewItems.length > 0 && (
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                <colgroup>
+                  <col style={{ width: '26%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '18%' }} />
+                </colgroup>
+                <thead className="table-light">
+                  <tr>
+                    <th>Country</th>
+                    <th>Stores</th>
+                    <th>Assessed</th>
+                    <th>Ongoing Installations</th>
+                    <th>Installed</th>
+                    <th>Sign-off</th>
+                    <th>RAG</th>
+                    <th>Comment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOverviewItems.map((row) => {
+                    const override = overviewOverrides?.[row.country] || {};
+                    const draft = getOverviewDraft(row.country);
+                    const ragValue = draft.rag !== '' ? draft.rag : (override.rag ?? row.rag);
+                    const commentValue = draft.comment !== '' ? draft.comment : (override.comment ?? row.comment);
+                    const rag = normalizeRag(ragValue);
+                    const ragLabel = ragValue ? ragValue : '—';
+                    const ragClass = rag === 'green'
+                      ? 'success'
+                      : rag === 'amber'
+                        ? 'warning text-dark'
+                        : rag === 'red'
+                          ? 'danger'
+                          : 'secondary';
+                    return (
+                      <tr key={row.country}>
+                        <td className="fw-semibold">
+                          <CountryAnchor country={row.country} />
+                        </td>
+                        <td>{formatDisplayValue(row.stores)}</td>
+                        <td>{formatDisplayValue(row.assessed)}</td>
+                        <td>{formatDisplayValue(row.ongoingInstallations)}</td>
+                        <td>{formatDisplayValue(row.storesInstalled)}</td>
+                        <td>{formatDisplayValue(row.storeSignoff)}</td>
+                        <td>
+                          {presentationEditMode ? (
+                            <select
+                              className="form-select form-select-sm"
+                              value={ragValue || ''}
+                              onChange={(event) => updateOverviewDraft(row.country, { rag: event.target.value })}
+                            >
+                              <option value="">—</option>
+                              <option value="Green">Green</option>
+                              <option value="Amber">Amber</option>
+                              <option value="Red">Red</option>
+                            </select>
+                          ) : (
+                            <span className={`badge bg-${ragClass}`}>
+                              {formatDisplayValue(ragLabel)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="text-muted small">
+                          {presentationEditMode ? (
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              value={commentValue || ''}
+                              onChange={(event) => updateOverviewDraft(row.country, { comment: event.target.value })}
+                              placeholder="Add comment"
+                            />
+                          ) : (
+                            formatDisplayValue(commentValue)
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (meta.key === '__exec_status') {
+      return (
+        <div className="d-flex flex-column gap-2">
+          {plannedWeekLoading && (
+            <div className="text-muted small">Loading status snapshot...</div>
+          )}
+          {plannedWeekError && (
+            <div className="alert alert-warning py-2 mb-0" role="alert">
+              {plannedWeekError}
+            </div>
+          )}
+          {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length === 0 && (
+            <div className="text-muted small">No planned assessments or installations found.</div>
+          )}
+          {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length > 0 && (
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                <colgroup>
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '24%' }} />
+                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '10%' }} />
+                </colgroup>
+                <thead className="table-light">
+                  <tr>
+                    <th>Country</th>
+                    <th>Site Name (Site ID)</th>
+                    <th>Activity</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {plannedWeekRows.map((row, index) => {
+                    const country = getRowField(row, ['country', 'Country']) || '—';
+                    const siteName = cleanSiteName(getRowField(row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '');
+                    const siteId = getRowField(row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) || '';
+                    const taskName = getRowField(row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) || '—';
+                    const startDate = getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']);
+                    const endDate = getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']);
+                    const status = getRowField(row, ['status', 'Status']) || '';
+                    const comment = getRowField(row, ['comment', 'Comment']) || '';
+
+                    return (
+                      <tr key={`${country}-${siteId || siteName || index}`}>
+                        <td className="fw-semibold">
+                          <CountryAnchor country={country} />
+                        </td>
+                        <td>
+                          {siteName || '—'}
+                          {siteId ? ` (${siteId})` : ''}
+                        </td>
+                        <td>{formatDisplayValue(taskName)}</td>
+                        <td>{formatDateDisplay(startDate)}</td>
+                        <td>{formatDateDisplay(endDate)}</td>
+                        <td>{formatDisplayValue(status)}</td>
+                        <td className="text-muted small">{formatDisplayValue(comment)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (meta.key === '__exec_timeline') {
+      return (
+        <div className="d-flex flex-column gap-3">
+          {!timelineItems.length && (
+            <div className="text-muted small">No timeline data available.</div>
+          )}
+          {timelineItems.length > 0 && !timelineDomain && (
+            <div className="text-muted small">Timeline dates are missing.</div>
+          )}
+          {timelineItems.length > 0 && timelineDomain && (
+            <>
+              <div className="timeline-year-header" style={{ position: 'relative', height: 36 }}>
+                {(() => {
+                  const years = [];
+                  const minYear = new Date(timelineDomain.min).getUTCFullYear();
+                  const maxYear = new Date(timelineDomain.max).getUTCFullYear();
+                  for (let y = minYear; y <= maxYear; y++) {
+                    const yearStart = Date.UTC(y, 0, 1);
+                    const left = ((yearStart - timelineDomain.min) / timelineDomain.span) * 100;
+                    years.push(
+                      <div
+                        key={y}
+                        style={{ position: 'absolute', left: `${left}%`, transform: 'translateX(-50%)', top: 8, fontSize: 16, fontWeight: 700, color: '#222' }}
+                      >
+                        {y}
+                      </div>
+                    );
+                  }
+                  return years;
+                })()}
+              </div>
+              <div className="d-flex flex-column gap-2" style={{ position: 'relative' }}>
+                {timelineDomain.now !== null && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${((timelineDomain.now - timelineDomain.min) / timelineDomain.span) * 100}%`,
+                      top: 0,
+                      bottom: 0,
+                      width: 2,
+                      background: '#1f3b64',
+                      boxShadow: '0 0 0 1px rgba(31,59,100,0.25)',
+                    }}
+                  />
+                )}
+                {timelineItems.map((item) => {
+                  const start = parseDateValue(item.startDate);
+                  const installEnd = parseDateValue(item.installEndDate || item.endDate);
+                  const end = parseDateValue(item.endDate);
+                  if (!start || !end || !timelineDomain) {
+                    return (
+                      <div key={item.country} className="d-flex align-items-center gap-2">
+                        <div className="text-truncate fw-semibold" style={{ width: 160 }}>
+                          <CountryAnchor country={item.country} />
+                        </div>
+                        <div className="flex-grow-1">
+                          <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
+                        </div>
+                        <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
+                          —
+                        </div>
+                      </div>
+                    );
+                  }
+                  const left = ((start.getTime() - timelineDomain.min) / timelineDomain.span) * 100;
+                  const installWidth = installEnd ? Math.max(0.5, ((installEnd.getTime() - start.getTime()) / timelineDomain.span) * 100) : 0;
+                  const totalWidth = Math.max(0.5, ((end.getTime() - start.getTime()) / timelineDomain.span) * 100);
+                  const restWidth = Math.max(0, totalWidth - installWidth);
+
+                  return (
+                    <div key={item.country} className="d-flex align-items-center gap-2">
+                      <div className="text-truncate fw-semibold" style={{ width: 160 }}>
+                        <CountryAnchor country={item.country} />
+                      </div>
+                      <div className="flex-grow-1" style={{ minWidth: 240 }}>
+                        <div style={{ position: 'relative', height: 22, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: `${left}%`,
+                              width: `${installWidth}%`,
+                              top: 1,
+                              bottom: 1,
+                              background: '#0f9d88',
+                              borderRadius: 6,
+                              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
+                            }}
+                          />
+                          {restWidth > 0 && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: `${left + installWidth}%`,
+                                width: `${restWidth}%`,
+                                top: 1,
+                                bottom: 1,
+                                background: '#7fd9c9',
+                                borderRadius: 6,
+                                boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
+                              }}
+                            />
+                          )}
+                          {installEnd && (
+                            <div
+                              className="small text-muted"
+                              style={{
+                                position: 'absolute',
+                                left: `${left + installWidth}%`,
+                                top: '50%',
+                                transform: 'translate(-50%, -50%)',
+                                fontSize: 11,
+                                whiteSpace: 'nowrap',
+                                color: '#3c5f56',
+                              }}
+                            >
+                              {formatShortDate(installEnd)}
+                            </div>
+                          )}
+                          <div
+                            className="small text-muted"
+                            style={{
+                              position: 'absolute',
+                              left: `${left + totalWidth}%`,
+                              top: '50%',
+                              transform: 'translate(-50%, -50%)',
+                              fontSize: 11,
+                              whiteSpace: 'nowrap',
+                              color: '#5b6670',
+                            }}
+                          >
+                            {formatShortDate(end)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    if (meta.key === '__trend_green' || meta.key === '__trend_amber' || meta.key === '__trend_red') {
+      return (
+        <div className="d-flex flex-column gap-2">
+          {trendLoading && (
+            <div className="text-muted small">Loading trend overrides...</div>
+          )}
+          {trendError && (
+            <div className="alert alert-warning py-2 mb-0" role="alert">
+              {trendError}
+            </div>
+          )}
+          {!trendLoading && !trendError && presentationEditMode && meta.key === '__trend_green' && (
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                <colgroup>
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '55%' }} />
+                </colgroup>
+                <thead className="table-light">
+                  <tr>
+                    <th>Country</th>
+                    <th>RAG</th>
+                    <th>Comment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trendItems.map((row) => {
+                    const draft = getTrendDraft(row.country);
+                    const ragValue = draft.rag !== '' ? draft.rag : (row.rag || '');
+                    const commentValue = draft.comment !== '' ? draft.comment : (row.comment || '');
+                    return (
+                      <tr key={row.country}>
+                        <td className="fw-semibold">
+                          <CountryAnchor country={row.country} />
+                        </td>
+                        <td>
+                          <select
+                            className="form-select form-select-sm"
+                            value={ragValue}
+                            onChange={(event) => updateTrendDraft(row.country, { rag: event.target.value })}
+                          >
+                            <option value="">—</option>
+                            <option value="Green">Green</option>
+                            <option value="Amber">Amber</option>
+                            <option value="Red">Red</option>
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            value={commentValue}
+                            onChange={(event) => updateTrendDraft(row.country, { comment: event.target.value })}
+                            placeholder="Add comment"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {!trendLoading && !trendError && presentationEditMode && meta.key !== '__trend_green' && (
+            <div className="text-muted small">Edit RAG & comments in Country Trend: Green.</div>
+          )}
+          {!trendLoading && !trendError && !presentationEditMode && (
+            (() => {
+              const group = meta.key === '__trend_green'
+                ? trendGroups.green
+                : meta.key === '__trend_amber'
+                  ? trendGroups.amber
+                  : trendGroups.red;
+              if (group.length === 0) {
+                return (
+                  <div className="text-muted small">
+                    {meta.key === '__trend_green'
+                      ? 'No green countries available.'
+                      : meta.key === '__trend_amber'
+                        ? 'No amber countries available.'
+                        : 'No red countries available.'}
+                  </div>
+                );
+              }
+              return (
+                <div className="d-flex flex-column flex-lg-row gap-3 align-items-stretch">
+                  <div className="table-responsive flex-grow-1">
+                    <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                      <colgroup>
+                        <col style={{ width: '24%' }} />
+                        <col style={{ width: '10%' }} />
+                        <col style={{ width: '14%' }} />
+                        <col style={{ width: '16%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '24%' }} />
+                      </colgroup>
+                      <thead className="table-light">
+                        <tr>
+                          <th>Country</th>
+                          <th>Total</th>
+                          <th>Assessments</th>
+                          <th>Ongoing Installation</th>
+                          <th>Stores Installed</th>
+                          <th>Comment</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.map((row) => (
+                          <tr key={row.country}>
+                            <td className="fw-semibold">
+                              <CountryAnchor country={row.country} />
+                            </td>
+                            <td>{formatDisplayValue(row.stores)}</td>
+                            <td>{formatDisplayValue(row.assessed)}</td>
+                            <td>{formatDisplayValue(row.ongoingInstallations)}</td>
+                            <td>{formatDisplayValue(row.storesInstalled)}</td>
+                            <td className="text-muted small">{formatDisplayValue(row.comment)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="trend-traffic-light" data-variant={meta.key}>
+                    <img
+                      src={meta.key === '__trend_green'
+                        ? '/images/green.png'
+                        : meta.key === '__trend_amber'
+                          ? '/images/yellow.png'
+                          : '/images/red.png'}
+                      alt={meta.key === '__trend_green'
+                        ? 'Green traffic light'
+                        : meta.key === '__trend_amber'
+                          ? 'Amber traffic light'
+                          : 'Red traffic light'}
+                      className="trend-traffic-light__image"
+                    />
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </div>
+      );
+    }
+
+    if (meta.key === '__issues') {
+      return renderGeneralIssuesTable(flattenedIssues);
+    }
+
+    return <div className="text-muted">{meta.body}</div>;
   };
 
   const exportPresentation = async () => {
@@ -2142,16 +2690,7 @@ const SmartsheetPivotPage = () => {
           )}
 
           <div className="d-flex flex-column gap-3">
-            {[
-              { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
-              { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
-              { key: '__exec_status', title: 'Status planned assessments and installations', body: 'Snapshot of planned assessments and installations status.' },
-              { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
-              { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
-              { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
-              { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
-              { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
-            ].map((meta) => (
+            {execCardMeta.map((meta) => (
               <div
                 key={meta.key}
                 className="card shadow-sm"
@@ -2168,516 +2707,7 @@ const SmartsheetPivotPage = () => {
                   </span>
                 </div>
                 <div className="card-body">
-                  {meta.key === '__exec_highlights' ? (
-                    <div className="d-flex flex-column gap-3">
-                      {highlightsLoading && (
-                        <div className="text-muted small">Loading highlights...</div>
-                      )}
-                      {highlightsError && (
-                        <div className="alert alert-warning py-2 mb-0" role="alert">
-                          {highlightsError}
-                        </div>
-                      )}
-                      {!highlightsLoading && !highlightsError && presentationEditMode ? (
-                        <>
-                          <TrumboField
-                            value={highlightsContent}
-                            onChange={(value) => setHighlightsContent(value || '')}
-                            placeholder="Add key wins, risks, and milestones..."
-                          />
-                          <div className="d-flex justify-content-end">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-primary"
-                              onClick={saveHighlights}
-                              disabled={highlightsSaving}
-                            >
-                              {highlightsSaving ? 'Saving…' : 'Save highlights'}
-                            </button>
-                          </div>
-                        </>
-                      ) : null}
-                      {!highlightsLoading && !highlightsError && !presentationEditMode && (
-                        highlightsContent ? (
-                          <div
-                            className="presentation-highlight-content"
-                            dangerouslySetInnerHTML={{ __html: highlightsContent }}
-                          />
-                        ) : (
-                          <div className="text-muted small">No highlights yet.</div>
-                        )
-                      )}
-                    </div>
-                  ) : meta.key === '__exec_overview' ? (
-                    <div className="d-flex flex-column gap-2">
-                      {overviewLoading && (
-                        <div className="text-muted small">Loading overview...</div>
-                      )}
-                      {overviewError && (
-                        <div className="alert alert-warning py-2 mb-0" role="alert">
-                          {overviewError}
-                        </div>
-                      )}
-                      {overviewOverridesLoading && (
-                        <div className="text-muted small">Loading overview overrides...</div>
-                      )}
-                      {overviewOverridesError && (
-                        <div className="alert alert-warning py-2 mb-0" role="alert">
-                          {overviewOverridesError}
-                        </div>
-                      )}
-                      {!overviewLoading && !overviewError && filteredOverviewItems.length === 0 && (
-                        <div className="text-muted small">No overview data available.</div>
-                      )}
-                      {!overviewLoading && !overviewError && filteredOverviewItems.length > 0 && (
-                        <div className="table-responsive">
-                          <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                            <colgroup>
-                              <col style={{ width: '26%' }} />
-                              <col style={{ width: '9%' }} />
-                              <col style={{ width: '9%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '9%' }} />
-                              <col style={{ width: '9%' }} />
-                              <col style={{ width: '8%' }} />
-                              <col style={{ width: '18%' }} />
-                            </colgroup>
-                            <thead className="table-light">
-                              <tr>
-                                <th>Country</th>
-                                <th>Stores</th>
-                                <th>Assessed</th>
-                                <th>Ongoing Installations</th>
-                                <th>Installed</th>
-                                <th>Sign-off</th>
-                                <th>RAG</th>
-                                <th>Comment</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filteredOverviewItems.map((row) => {
-                                const override = overviewOverrides?.[row.country] || {};
-                                const draft = getOverviewDraft(row.country);
-                                const ragValue = draft.rag !== '' ? draft.rag : (override.rag ?? row.rag);
-                                const commentValue = draft.comment !== '' ? draft.comment : (override.comment ?? row.comment);
-                                const rag = normalizeRag(ragValue);
-                                const ragLabel = ragValue ? ragValue : '—';
-                                const ragClass = rag === 'green'
-                                  ? 'success'
-                                  : rag === 'amber'
-                                    ? 'warning text-dark'
-                                    : rag === 'red'
-                                      ? 'danger'
-                                      : 'secondary';
-                                return (
-                                  <tr key={row.country}>
-                                    <td className="fw-semibold">
-                                      <CountryAnchor country={row.country} />
-                                    </td>
-                                    <td>{formatDisplayValue(row.stores)}</td>
-                                    <td>{formatDisplayValue(row.assessed)}</td>
-                                    <td>{formatDisplayValue(row.ongoingInstallations)}</td>
-                                    <td>{formatDisplayValue(row.storesInstalled)}</td>
-                                    <td>{formatDisplayValue(row.storeSignoff)}</td>
-                                    <td>
-                                      {presentationEditMode ? (
-                                        <select
-                                          className="form-select form-select-sm"
-                                          value={ragValue || ''}
-                                          onChange={(event) => updateOverviewDraft(row.country, { rag: event.target.value })}
-                                        >
-                                          <option value="">—</option>
-                                          <option value="Green">Green</option>
-                                          <option value="Amber">Amber</option>
-                                          <option value="Red">Red</option>
-                                        </select>
-                                      ) : (
-                                        <span className={`badge bg-${ragClass}`}>
-                                          {formatDisplayValue(ragLabel)}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="text-muted small">
-                                      {presentationEditMode ? (
-                                        <input
-                                          type="text"
-                                          className="form-control form-control-sm"
-                                          value={commentValue || ''}
-                                          onChange={(event) => updateOverviewDraft(row.country, { comment: event.target.value })}
-                                          placeholder="Add comment"
-                                        />
-                                      ) : (
-                                        formatDisplayValue(commentValue)
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  ) : meta.key === '__exec_status' ? (
-                    <div className="d-flex flex-column gap-2">
-                      {plannedWeekLoading && (
-                        <div className="text-muted small">Loading status snapshot...</div>
-                      )}
-                      {plannedWeekError && (
-                        <div className="alert alert-warning py-2 mb-0" role="alert">
-                          {plannedWeekError}
-                        </div>
-                      )}
-                      {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length === 0 && (
-                        <div className="text-muted small">No planned assessments or installations found.</div>
-                      )}
-                      {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length > 0 && (
-                        <div className="table-responsive">
-                          <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                            <colgroup>
-                              <col style={{ width: '18%' }} />
-                              <col style={{ width: '24%' }} />
-                              <col style={{ width: '16%' }} />
-                              <col style={{ width: '10%' }} />
-                              <col style={{ width: '10%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '10%' }} />
-                            </colgroup>
-                            <thead className="table-light">
-                              <tr>
-                                <th>Country</th>
-                                <th>Site Name (Site ID)</th>
-                                <th>Activity</th>
-                                <th>Start</th>
-                                <th>End</th>
-                                <th>Status</th>
-                                <th>Comment</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {plannedWeekRows.map((row, index) => {
-                                const country = getRowField(row, ['country', 'Country']) || '—';
-                                const siteName = cleanSiteName(getRowField(row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '');
-                                const siteId = getRowField(row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) || '';
-                                const taskName = getRowField(row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) || '—';
-                                const startDate = getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']);
-                                const endDate = getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']);
-                                const status = getRowField(row, ['status', 'Status']) || '';
-                                const comment = getRowField(row, ['comment', 'Comment']) || '';
-
-                                return (
-                                  <tr key={`${country}-${siteId || siteName || index}`}>
-                                    <td className="fw-semibold">
-                                      <CountryAnchor country={country} />
-                                    </td>
-                                    <td>
-                                      {siteName || '—'}
-                                      {siteId ? ` (${siteId})` : ''}
-                                    </td>
-                                    <td>{formatDisplayValue(taskName)}</td>
-                                    <td>{formatDateDisplay(startDate)}</td>
-                                    <td>{formatDateDisplay(endDate)}</td>
-                                    <td>{formatDisplayValue(status)}</td>
-                                    <td className="text-muted small">{formatDisplayValue(comment)}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  ) : meta.key === '__exec_timeline' ? (
-                    <div className="d-flex flex-column gap-3">
-                      {!timelineItems.length && (
-                        <div className="text-muted small">No timeline data available.</div>
-                      )}
-                      {timelineItems.length > 0 && !timelineDomain && (
-                        <div className="text-muted small">Timeline dates are missing.</div>
-                      )}
-                      {timelineItems.length > 0 && timelineDomain && (
-                        <>
-                          <div className="timeline-year-header" style={{ position: 'relative', height: 36 }}>
-                            {(() => {
-                              const years = [];
-                              const minYear = new Date(timelineDomain.min).getUTCFullYear();
-                              const maxYear = new Date(timelineDomain.max).getUTCFullYear();
-                              for (let y = minYear; y <= maxYear; y++) {
-                                const yearStart = Date.UTC(y, 0, 1);
-                                const left = ((yearStart - timelineDomain.min) / timelineDomain.span) * 100;
-                                years.push(
-                                  <div
-                                    key={y}
-                                    style={{ position: 'absolute', left: `${left}%`, transform: 'translateX(-50%)', top: 8, fontSize: 16, fontWeight: 700, color: '#222' }}
-                                  >
-                                    {y}
-                                  </div>
-                                );
-                              }
-                              return years;
-                            })()}
-                          </div>
-                          <div className="d-flex flex-column gap-2" style={{ position: 'relative' }}>
-                            {/* simplified timeline: no date labels or vertical grid lines; keep 'now' indicator */}
-                            {timelineDomain.now !== null && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: `${((timelineDomain.now - timelineDomain.min) / timelineDomain.span) * 100}%`,
-                                  top: 0,
-                                  bottom: 0,
-                                  width: 2,
-                                  background: '#1f3b64',
-                                  boxShadow: '0 0 0 1px rgba(31,59,100,0.25)',
-                                }}
-                              />
-                            )}
-                            {timelineItems.map((item) => {
-                              const start = parseDateValue(item.startDate);
-                              const installEnd = parseDateValue(item.installEndDate || item.endDate);
-                              const end = parseDateValue(item.endDate);
-                              if (!start || !end || !timelineDomain) {
-                                return (
-                                  <div key={item.country} className="d-flex align-items-center gap-2">
-                                    <div className="text-truncate fw-semibold" style={{ width: 160 }}>
-                                      <CountryAnchor country={item.country} />
-                                    </div>
-                                    <div className="flex-grow-1">
-                                      <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
-                                    </div>
-                                    <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
-                                      —
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              const left = ((start.getTime() - timelineDomain.min) / timelineDomain.span) * 100;
-                              const installWidth = installEnd ? Math.max(0.5, ((installEnd.getTime() - start.getTime()) / timelineDomain.span) * 100) : 0;
-                              const totalWidth = Math.max(0.5, ((end.getTime() - start.getTime()) / timelineDomain.span) * 100);
-                              const restWidth = Math.max(0, totalWidth - installWidth);
-                              const overview = overviewByCountry.get(item.country);
-                              const totalStores = overview?.stores ?? null;
-                              const installedStores = overview?.storesInstalled ?? null;
-
-                              return (
-                                <div key={item.country} className="d-flex align-items-center gap-2">
-                                  <div className="text-truncate fw-semibold" style={{ width: 160 }}>
-                                    <CountryAnchor country={item.country} />
-                                  </div>
-                                  <div className="flex-grow-1" style={{ minWidth: 240 }}>
-                                    <div style={{ position: 'relative', height: 22, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
-                                      <div
-                                        style={{
-                                          position: 'absolute',
-                                          left: `${left}%`,
-                                          width: `${installWidth}%`,
-                                          top: 1,
-                                          bottom: 1,
-                                          background: '#0f9d88',
-                                          borderRadius: 6,
-                                          boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
-                                        }}
-                                      />
-                                      {restWidth > 0 && (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            left: `${left + installWidth}%`,
-                                            width: `${restWidth}%`,
-                                            top: 1,
-                                            bottom: 1,
-                                            background: '#7fd9c9',
-                                            borderRadius: 6,
-                                            boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
-                                          }}
-                                        />
-                                      )}
-                                      {installEnd && (
-                                        <div
-                                          className="small text-muted"
-                                          style={{
-                                            position: 'absolute',
-                                            left: `${left + installWidth}%`,
-                                            top: '50%',
-                                            transform: 'translate(-50%, -50%)',
-                                            fontSize: 11,
-                                            whiteSpace: 'nowrap',
-                                            color: '#3c5f56',
-                                          }}
-                                        >
-                                          {formatShortDate(installEnd)}
-                                        </div>
-                                      )}
-                                      <div
-                                        className="small text-muted"
-                                        style={{
-                                          position: 'absolute',
-                                          left: `${left + totalWidth}%`,
-                                          top: '50%',
-                                          transform: 'translate(-50%, -50%)',
-                                          fontSize: 11,
-                                          whiteSpace: 'nowrap',
-                                          color: '#5b6670',
-                                        }}
-                                      >
-                                        {formatShortDate(end)}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ) : meta.key === '__trend_green' || meta.key === '__trend_amber' || meta.key === '__trend_red' ? (
-                    <div className="d-flex flex-column gap-2">
-                      {trendLoading && (
-                        <div className="text-muted small">Loading trend overrides...</div>
-                      )}
-                      {trendError && (
-                        <div className="alert alert-warning py-2 mb-0" role="alert">
-                          {trendError}
-                        </div>
-                      )}
-                      {!trendLoading && !trendError && presentationEditMode && meta.key === '__trend_green' && (
-                        <div className="table-responsive">
-                          <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                            <colgroup>
-                              <col style={{ width: '30%' }} />
-                              <col style={{ width: '15%' }} />
-                              <col style={{ width: '55%' }} />
-                            </colgroup>
-                            <thead className="table-light">
-                              <tr>
-                                <th>Country</th>
-                                <th>RAG</th>
-                                <th>Comment</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {trendItems.map((row) => {
-                                const draft = getTrendDraft(row.country);
-                                const ragValue = draft.rag !== '' ? draft.rag : (row.rag || '');
-                                const commentValue = draft.comment !== '' ? draft.comment : (row.comment || '');
-                                return (
-                                  <tr key={row.country}>
-                                    <td className="fw-semibold">
-                                      <CountryAnchor country={row.country} />
-                                    </td>
-                                    <td>
-                                      <select
-                                        className="form-select form-select-sm"
-                                        value={ragValue}
-                                        onChange={(event) => updateTrendDraft(row.country, { rag: event.target.value })}
-                                      >
-                                        <option value="">—</option>
-                                        <option value="Green">Green</option>
-                                        <option value="Amber">Amber</option>
-                                        <option value="Red">Red</option>
-                                      </select>
-                                    </td>
-                                    <td>
-                                      <input
-                                        type="text"
-                                        className="form-control form-control-sm"
-                                        value={commentValue}
-                                        onChange={(event) => updateTrendDraft(row.country, { comment: event.target.value })}
-                                        placeholder="Add comment"
-                                      />
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      {!trendLoading && !trendError && presentationEditMode && meta.key !== '__trend_green' && (
-                        <div className="text-muted small">Edit RAG & comments in Country Trend: Green.</div>
-                      )}
-                      {!trendLoading && !trendError && !presentationEditMode && (
-                        (() => {
-                          const group = meta.key === '__trend_green'
-                            ? trendGroups.green
-                            : meta.key === '__trend_amber'
-                              ? trendGroups.amber
-                              : trendGroups.red;
-                          if (group.length === 0) {
-                            return (
-                              <div className="text-muted small">
-                                {meta.key === '__trend_green'
-                                  ? 'No green countries available.'
-                                  : meta.key === '__trend_amber'
-                                    ? 'No amber countries available.'
-                                    : 'No red countries available.'}
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="d-flex flex-column flex-lg-row gap-3 align-items-stretch">
-                              <div className="table-responsive flex-grow-1">
-                                <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                                  <colgroup>
-                                    <col style={{ width: '24%' }} />
-                                    <col style={{ width: '10%' }} />
-                                    <col style={{ width: '14%' }} />
-                                    <col style={{ width: '16%' }} />
-                                    <col style={{ width: '12%' }} />
-                                    <col style={{ width: '24%' }} />
-                                  </colgroup>
-                                  <thead className="table-light">
-                                    <tr>
-                                      <th>Country</th>
-                                      <th>Total</th>
-                                      <th>Assessments</th>
-                                      <th>Ongoing Installation</th>
-                                      <th>Stores Installed</th>
-                                      <th>Comment</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {group.map((row) => (
-                                      <tr key={row.country}>
-                                        <td className="fw-semibold">
-                                          <CountryAnchor country={row.country} />
-                                        </td>
-                                        <td>{formatDisplayValue(row.stores)}</td>
-                                        <td>{formatDisplayValue(row.assessed)}</td>
-                                        <td>{formatDisplayValue(row.ongoingInstallations)}</td>
-                                        <td>{formatDisplayValue(row.storesInstalled)}</td>
-                                        <td className="text-muted small">{formatDisplayValue(row.comment)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                              <div className="trend-traffic-light" data-variant={meta.key}>
-                                <img
-                                  src={meta.key === '__trend_green'
-                                    ? '/images/green.png'
-                                    : meta.key === '__trend_amber'
-                                      ? '/images/yellow.png'
-                                      : '/images/red.png'}
-                                  alt={meta.key === '__trend_green'
-                                    ? 'Green traffic light'
-                                    : meta.key === '__trend_amber'
-                                      ? 'Amber traffic light'
-                                      : 'Red traffic light'}
-                                  className="trend-traffic-light__image"
-                                />
-                              </div>
-                            </div>
-                          );
-                        })()
-                      )}
-                    </div>
-                  ) : meta.key === '__issues' ? (
-                    renderGeneralIssuesTable(flattenedIssues)
-                  ) : (
-                    <div className="text-muted">{meta.body}</div>
-                  )}
+                  {renderExecCardBody(meta)}
                 </div>
               </div>
             ))}
@@ -2914,12 +2944,12 @@ const SmartsheetPivotPage = () => {
         >
           <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 p-3 text-white">
             <div className="fw-semibold">
-              {slideshowItem?.country || 'Country'}
-              {slideshowItem ? renderCountryMedals(slideshowItem.country) : null}
+              {slideshowItem?.title || 'Card'}
+              {slideshowItem?.type === 'country' ? renderCountryMedals(slideshowItem.countryBlock?.country) : null}
             </div>
             {(() => {
-              if (!slideshowItem) return null;
-              const progress = findProgressForCountry(slideshowItem.country);
+              if (!slideshowItem || slideshowItem.type !== 'country') return null;
+              const progress = findProgressForCountry(slideshowItem.countryBlock?.country);
               if (!progress || !Array.isArray(progress.tasks) || progress.tasks.length === 0) {
                 return null;
               }
@@ -2942,7 +2972,9 @@ const SmartsheetPivotPage = () => {
               <div className="card shadow-sm">
                 <div className="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative">
                   <strong>
-                    <CountryAnchor country={slideshowItem.country} />
+                    {slideshowItem.type === 'country'
+                      ? <CountryAnchor country={slideshowItem.countryBlock?.country} />
+                      : slideshowItem.title}
                   </strong>
                   <span
                     className="text-muted small"
@@ -2950,77 +2982,76 @@ const SmartsheetPivotPage = () => {
                   >
                     {presentationDateLabel}
                   </span>
-                  {presentationMeta && (
-                    <span className="text-muted small">
-                      {presentationDateLabel}
-                    </span>
-                  )}
                 </div>
                 <div className="card-body">
-                  <div className="d-flex flex-column gap-4">
-                    <div>
-                      <div className="fw-semibold mb-2">Planned Assessments</div>
-                      <div className="row g-3">
-                        <div className="col-12 col-lg-6">
-                          <div className="text-uppercase text-muted small mb-2">
-                            {assessmentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                  {slideshowItem.type === 'exec' ? (
+                    renderExecCardBody(slideshowItem.meta)
+                  ) : (
+                    <div className="d-flex flex-column gap-4">
+                      <div>
+                        <div className="fw-semibold mb-2">Planned Assessments</div>
+                        <div className="row g-3">
+                          <div className="col-12 col-lg-6">
+                            <div className="text-uppercase text-muted small mb-2">
+                              {assessmentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                            </div>
+                            {renderAssessmentTable(slideshowItem.countryBlock?.assessments?.current || [], 'assessments-current', slideshowItem.countryBlock?.country)}
                           </div>
-                          {renderAssessmentTable(slideshowItem.assessments?.current || [], 'assessments-current', slideshowItem.country)}
-                        </div>
-                        <div className="col-12 col-lg-6">
-                          <div className="text-uppercase text-muted small mb-2">
-                            {assessmentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                          <div className="col-12 col-lg-6">
+                            <div className="text-uppercase text-muted small mb-2">
+                              {assessmentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                            </div>
+                            {renderAssessmentTable(slideshowItem.countryBlock?.assessments?.next || [], 'assessments-next', slideshowItem.countryBlock?.country)}
                           </div>
-                          {renderAssessmentTable(slideshowItem.assessments?.next || [], 'assessments-next', slideshowItem.country)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="fw-semibold mb-2">Planned Installations</div>
-                      <div className="row g-3">
-                        <div className="col-12 col-lg-6">
-                          <div className="text-uppercase text-muted small mb-2">
-                            {installationMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
-                          </div>
-                          {renderAssessmentTable(slideshowItem.installations?.current || [], 'installations-current', slideshowItem.country)}
-                        </div>
-                        <div className="col-12 col-lg-6">
-                          <div className="text-uppercase text-muted small mb-2">
-                            {installationMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
-                          </div>
-                          {renderAssessmentTable(slideshowItem.installations?.next || [], 'installations-next', slideshowItem.country)}
                         </div>
                       </div>
-                    </div>
 
-                    <div>
-                      <div className="fw-semibold mb-2">Post-Deployment &amp; Sign-off</div>
-                      <div className="row g-3">
-                        <div className="col-12 col-lg-6">
-                          <div className="text-uppercase text-muted small mb-2">
-                            {postDeploymentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                      <div>
+                        <div className="fw-semibold mb-2">Planned Installations</div>
+                        <div className="row g-3">
+                          <div className="col-12 col-lg-6">
+                            <div className="text-uppercase text-muted small mb-2">
+                              {installationMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                            </div>
+                            {renderAssessmentTable(slideshowItem.countryBlock?.installations?.current || [], 'installations-current', slideshowItem.countryBlock?.country)}
                           </div>
-                          {renderAssessmentTable(slideshowItem.postDeployment?.current || [], 'postdeployment-current', slideshowItem.country)}
-                        </div>
-                        <div className="col-12 col-lg-6">
-                          <div className="text-uppercase text-muted small mb-2">
-                            {postDeploymentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                          <div className="col-12 col-lg-6">
+                            <div className="text-uppercase text-muted small mb-2">
+                              {installationMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                            </div>
+                            {renderAssessmentTable(slideshowItem.countryBlock?.installations?.next || [], 'installations-next', slideshowItem.countryBlock?.country)}
                           </div>
-                          {renderAssessmentTable(slideshowItem.postDeployment?.next || [], 'postdeployment-next', slideshowItem.country)}
                         </div>
                       </div>
-                    </div>
 
-                    <div>
-                      <div className="fw-semibold mb-2">Issue Log</div>
-                      {renderIssueTable(slideshowItem.issues?.issues || [], slideshowItem.country)}
+                      <div>
+                        <div className="fw-semibold mb-2">Post-Deployment &amp; Sign-off</div>
+                        <div className="row g-3">
+                          <div className="col-12 col-lg-6">
+                            <div className="text-uppercase text-muted small mb-2">
+                              {postDeploymentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                            </div>
+                            {renderAssessmentTable(slideshowItem.countryBlock?.postDeployment?.current || [], 'postdeployment-current', slideshowItem.countryBlock?.country)}
+                          </div>
+                          <div className="col-12 col-lg-6">
+                            <div className="text-uppercase text-muted small mb-2">
+                              {postDeploymentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                            </div>
+                            {renderAssessmentTable(slideshowItem.countryBlock?.postDeployment?.next || [], 'postdeployment-next', slideshowItem.countryBlock?.country)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="fw-semibold mb-2">Issue Log</div>
+                        {renderIssueTable(slideshowItem.countryBlock?.issues?.issues || [], slideshowItem.countryBlock?.country)}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             ) : (
-              <div className="text-white">No country data available.</div>
+              <div className="text-white">No card data available.</div>
             )}
           </div>
           <div className="d-flex justify-content-between align-items-center p-3 bg-dark text-white">
@@ -3033,7 +3064,7 @@ const SmartsheetPivotPage = () => {
               Previous
             </button>
             <div className="d-flex align-items-center gap-2">
-              <span className="small">Country</span>
+              <span className="small">Card</span>
               <select
                 className="form-select form-select-sm"
                 style={{ minWidth: 200 }}
@@ -3041,7 +3072,7 @@ const SmartsheetPivotPage = () => {
                 onChange={(event) => setSlideshowIndex(Number(event.target.value))}
               >
                 {slideshowItems.map((item, index) => (
-                  <option key={item.country} value={index}>{item.country}</option>
+                  <option key={`${item.type}-${item.key}`} value={index}>{item.title}</option>
                 ))}
               </select>
             </div>
