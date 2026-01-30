@@ -1520,6 +1520,15 @@ const SmartsheetPivotPage = () => {
     return '';
   };
 
+  const getTrendDraft = (country) => trendDrafts[country] || { rag: '', comment: '' };
+
+  const updateTrendDraft = (country, patch) => {
+    setTrendDrafts((prev) => {
+      const current = prev[country] || {};
+      return { ...prev, [country]: { ...current, ...patch } };
+    });
+  };
+
   const trendItems = filteredOverviewItems.map((row) => {
     const override = trendOverrides?.[row.country] || {};
     return {
@@ -2372,40 +2381,134 @@ const SmartsheetPivotPage = () => {
                         </>
                       )}
                     </div>
-                  ) : meta.key === '__trend_amber' ? (
+                  ) : meta.key === '__trend_green' || meta.key === '__trend_amber' || meta.key === '__trend_red' ? (
                     <div className="d-flex flex-column gap-2">
-                      {trendGroups.amber.length === 0 ? (
-                        <div className="text-muted small">No amber countries available.</div>
-                      ) : (
-                        <ul className="list-group list-group-flush">
-                          {trendGroups.amber.map((row) => (
-                            <li key={row.country} className="list-group-item px-0">
-                              <div className="d-flex justify-content-between">
-                                <span className="fw-semibold">{row.country}</span>
-                                <span className="badge bg-warning text-dark">Amber</span>
-                              </div>
-                              <div className="text-muted small">{row.comment || 'No comment provided.'}</div>
-                            </li>
-                          ))}
-                        </ul>
+                      {trendLoading && (
+                        <div className="text-muted small">Loading trend overrides...</div>
                       )}
-                    </div>
-                  ) : meta.key === '__trend_red' ? (
-                    <div className="d-flex flex-column gap-2">
-                      {trendGroups.red.length === 0 ? (
-                        <div className="text-muted small">No red countries available.</div>
-                      ) : (
-                        <ul className="list-group list-group-flush">
-                          {trendGroups.red.map((row) => (
-                            <li key={row.country} className="list-group-item px-0">
-                              <div className="d-flex justify-content-between">
-                                <span className="fw-semibold">{row.country}</span>
-                                <span className="badge bg-danger">Red</span>
+                      {trendError && (
+                        <div className="alert alert-warning py-2 mb-0" role="alert">
+                          {trendError}
+                        </div>
+                      )}
+                      {!trendLoading && !trendError && presentationEditMode && (
+                        <div className="table-responsive">
+                          <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                            <colgroup>
+                              <col style={{ width: '30%' }} />
+                              <col style={{ width: '15%' }} />
+                              <col style={{ width: '55%' }} />
+                            </colgroup>
+                            <thead className="table-light">
+                              <tr>
+                                <th>Country</th>
+                                <th>RAG</th>
+                                <th>Comment</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {trendItems.map((row) => {
+                                const draft = getTrendDraft(row.country);
+                                const ragValue = draft.rag !== '' ? draft.rag : (row.rag || '');
+                                const commentValue = draft.comment !== '' ? draft.comment : (row.comment || '');
+                                return (
+                                  <tr key={row.country}>
+                                    <td className="fw-semibold">
+                                      <CountryFlag country={row.country} />
+                                      {row.country}
+                                    </td>
+                                    <td>
+                                      <select
+                                        className="form-select form-select-sm"
+                                        value={ragValue}
+                                        onChange={(event) => updateTrendDraft(row.country, { rag: event.target.value })}
+                                      >
+                                        <option value="">—</option>
+                                        <option value="Green">Green</option>
+                                        <option value="Amber">Amber</option>
+                                        <option value="Red">Red</option>
+                                      </select>
+                                    </td>
+                                    <td>
+                                      <input
+                                        type="text"
+                                        className="form-control form-control-sm"
+                                        value={commentValue}
+                                        onChange={(event) => updateTrendDraft(row.country, { comment: event.target.value })}
+                                        placeholder="Add comment"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {!trendLoading && !trendError && !presentationEditMode && (
+                        (() => {
+                          const group = meta.key === '__trend_green'
+                            ? trendGroups.green
+                            : meta.key === '__trend_amber'
+                              ? trendGroups.amber
+                              : trendGroups.red;
+                          if (group.length === 0) {
+                            return (
+                              <div className="text-muted small">
+                                {meta.key === '__trend_green'
+                                  ? 'No green countries available.'
+                                  : meta.key === '__trend_amber'
+                                    ? 'No amber countries available.'
+                                    : 'No red countries available.'}
                               </div>
-                              <div className="text-muted small">{row.comment || 'No comment provided.'}</div>
-                            </li>
-                          ))}
-                        </ul>
+                            );
+                          }
+                          return (
+                            <div className="table-responsive">
+                              <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                                <colgroup>
+                                  <col style={{ width: '30%' }} />
+                                  <col style={{ width: '15%' }} />
+                                  <col style={{ width: '55%' }} />
+                                </colgroup>
+                                <thead className="table-light">
+                                  <tr>
+                                    <th>Country</th>
+                                    <th>RAG</th>
+                                    <th>Comment</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.map((row) => {
+                                    const rag = normalizeRag(row.rag);
+                                    const ragLabel = rag ? rag.charAt(0).toUpperCase() + rag.slice(1) : '—';
+                                    const ragClass = rag === 'green'
+                                      ? 'success'
+                                      : rag === 'amber'
+                                        ? 'warning text-dark'
+                                        : rag === 'red'
+                                          ? 'danger'
+                                          : 'secondary';
+                                    return (
+                                      <tr key={row.country}>
+                                        <td className="fw-semibold">
+                                          <CountryFlag country={row.country} />
+                                          {row.country}
+                                        </td>
+                                        <td>
+                                          <span className={`badge bg-${ragClass}`}>
+                                            {ragLabel}
+                                          </span>
+                                        </td>
+                                        <td className="text-muted small">{formatDisplayValue(row.comment)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })()
                       )}
                     </div>
                   ) : meta.key === '__issues' ? (
