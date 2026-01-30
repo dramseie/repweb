@@ -2214,9 +2214,6 @@ const SmartsheetPivotPage = () => {
                                     <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
                                       —
                                     </div>
-                                    <div className="small text-muted" style={{ minWidth: 150, textAlign: 'right' }}>
-                                      —
-                                    </div>
                                   </div>
                                 );
                               }
@@ -2262,13 +2259,21 @@ const SmartsheetPivotPage = () => {
                                           }}
                                         />
                                       )}
+                                      <div
+                                        className="small text-muted"
+                                        style={{
+                                          position: 'absolute',
+                                          left: `${left + totalWidth}%`,
+                                          top: '50%',
+                                          transform: 'translate(-50%, -50%)',
+                                          fontSize: 11,
+                                          whiteSpace: 'nowrap',
+                                          color: '#5b6670',
+                                        }}
+                                      >
+                                        {formatShortDate(end)}
+                                      </div>
                                     </div>
-                                  </div>
-                                  <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
-                                    {formatShortDate(start)}
-                                  </div>
-                                  <div className="small text-muted" style={{ minWidth: 150, textAlign: 'right' }}>
-                                    {formatShortDate(end)}
                                   </div>
                                 </div>
                               );
