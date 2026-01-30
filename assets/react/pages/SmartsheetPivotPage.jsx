@@ -2259,6 +2259,22 @@ const SmartsheetPivotPage = () => {
                                           }}
                                         />
                                       )}
+                                      {installEnd && (
+                                        <div
+                                          className="small text-muted"
+                                          style={{
+                                            position: 'absolute',
+                                            left: `${left + installWidth}%`,
+                                            top: '50%',
+                                            transform: 'translate(-50%, -50%)',
+                                            fontSize: 11,
+                                            whiteSpace: 'nowrap',
+                                            color: '#3c5f56',
+                                          }}
+                                        >
+                                          {formatShortDate(installEnd)}
+                                        </div>
+                                      )}
                                       <div
                                         className="small text-muted"
                                         style={{
