@@ -156,6 +156,14 @@ const countryFlagCode = (country) => {
   return COUNTRY_FLAG_MAP[country.trim()] || '';
 };
 
+const countryAnchorId = (country) => {
+  if (!country) return '';
+  return `country-${String(country)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')}`;
+};
+
 const CountryFlag = ({ country }) => {
   const code = countryFlagCode(country);
   if (!code) {
@@ -163,6 +171,26 @@ const CountryFlag = ({ country }) => {
   }
   const src = `https://flagcdn.com/24x18/${code.toLowerCase()}.png`;
   return <img src={src} alt="" width={24} height={18} style={{ marginRight: 8, verticalAlign: 'text-bottom' }} />;
+};
+
+const CountryAnchor = ({ country, className = '' }) => {
+  if (!country) return null;
+  const anchor = countryAnchorId(country);
+  const classes = ['text-decoration-none', 'text-reset', className].filter(Boolean).join(' ');
+  if (!anchor) {
+    return (
+      <span className={classes}>
+        <CountryFlag country={country} />
+        {country}
+      </span>
+    );
+  }
+  return (
+    <a href={`#${anchor}`} className={classes}>
+      <CountryFlag country={country} />
+      {country}
+    </a>
+  );
 };
 
 const confidenceVariant = (value) => {
@@ -2045,7 +2073,7 @@ const SmartsheetPivotPage = () => {
               { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
               { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
             ].map((meta) => (
-              <div key={meta.key} className="card shadow-sm">
+              <div key={meta.key} className="card shadow-sm" id={meta.key === '__exec_overview' ? 'exec-overview' : undefined}>
                 <div className="card-header fw-semibold position-relative">
                   {meta.title}
                   <span
@@ -2148,8 +2176,7 @@ const SmartsheetPivotPage = () => {
                                 return (
                                   <tr key={row.country}>
                                     <td className="fw-semibold">
-                                      <CountryFlag country={row.country} />
-                                      {row.country}
+                                      <CountryAnchor country={row.country} />
                                     </td>
                                     <td>{formatDisplayValue(row.stores)}</td>
                                     <td>{formatDisplayValue(row.assessed)}</td>
@@ -2220,8 +2247,7 @@ const SmartsheetPivotPage = () => {
                                 return (
                                   <tr key={`${country}-${siteId || siteName || index}`}>
                                     <td className="fw-semibold">
-                                      <CountryFlag country={country} />
-                                      {country}
+                                      <CountryAnchor country={country} />
                                     </td>
                                     <td>
                                       {siteName || '—'}
@@ -2293,8 +2319,7 @@ const SmartsheetPivotPage = () => {
                                 return (
                                   <div key={item.country} className="d-flex align-items-center gap-2">
                                     <div className="text-truncate fw-semibold" style={{ width: 160 }}>
-                                      <CountryFlag country={item.country} />
-                                      {item.country}
+                                      <CountryAnchor country={item.country} />
                                     </div>
                                     <div className="flex-grow-1">
                                       <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
@@ -2316,8 +2341,7 @@ const SmartsheetPivotPage = () => {
                               return (
                                 <div key={item.country} className="d-flex align-items-center gap-2">
                                   <div className="text-truncate fw-semibold" style={{ width: 160 }}>
-                                    <CountryFlag country={item.country} />
-                                    {item.country}
+                                    <CountryAnchor country={item.country} />
                                   </div>
                                   <div className="flex-grow-1" style={{ minWidth: 240 }}>
                                     <div style={{ position: 'relative', height: 22, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
@@ -2419,8 +2443,7 @@ const SmartsheetPivotPage = () => {
                                 return (
                                   <tr key={row.country}>
                                     <td className="fw-semibold">
-                                      <CountryFlag country={row.country} />
-                                      {row.country}
+                                      <CountryAnchor country={row.country} />
                                     </td>
                                     <td>
                                       <select
@@ -2497,8 +2520,7 @@ const SmartsheetPivotPage = () => {
                                     {group.map((row) => (
                                       <tr key={row.country}>
                                         <td className="fw-semibold">
-                                          <CountryFlag country={row.country} />
-                                          {row.country}
+                                          <CountryAnchor country={row.country} />
                                         </td>
                                         <td>{formatDisplayValue(row.stores)}</td>
                                         <td>{formatDisplayValue(row.assessed)}</td>
@@ -2541,14 +2563,16 @@ const SmartsheetPivotPage = () => {
           </div>
 
           {filteredPresentationItems.map((countryBlock) => (
-              <div key={countryBlock.country} className="card shadow-sm">
+              <div key={countryBlock.country} className="card shadow-sm" id={countryAnchorId(countryBlock.country)}>
                 <div
                   className="card-header country-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative"
                   style={{ height: 180 }}
                 >
                 <strong>
-                  <CountryFlag country={countryBlock.country} />
-                  {countryBlock.country}
+                  <a href="#exec-overview" className="text-decoration-none text-reset">
+                    <CountryFlag country={countryBlock.country} />
+                    {countryBlock.country}
+                  </a>
                   {renderCountryMedals(countryBlock.country)}
                 </strong>
                 {(() => {
@@ -2790,8 +2814,7 @@ const SmartsheetPivotPage = () => {
               <div className="card shadow-sm">
                 <div className="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative">
                   <strong>
-                    <CountryFlag country={slideshowItem.country} />
-                    {slideshowItem.country}
+                    <CountryAnchor country={slideshowItem.country} />
                   </strong>
                   <span
                     className="text-muted small"
