@@ -52,6 +52,46 @@ class SmartsheetPresentationController extends AbstractController
     private const COMMENT_CANDIDATES = ['Comment', 'Comments', 'Notes', 'Note'];
     private const RAG_CANDIDATES = ['Status (RAG)', 'Status_RAG', 'RAG', 'Rag', 'rag'];
     private const SHEET_NAME_CANDIDATES = ['sheet_name', 'Sheet_Name', 'Sheet Name', 'Sheet'];
+    private const COUNTRY_FLAG_MAP = [
+        'Australia' => 'AU',
+        'Austria' => 'AT',
+        'Belgium' => 'BE',
+        'Bulgaria' => 'BG',
+        'Canada' => 'CA',
+        'Croatia' => 'HR',
+        'Cyprus' => 'CY',
+        'Czechia' => 'CZ',
+        'Czech Republic' => 'CZ',
+        'Denmark' => 'DK',
+        'Estonia' => 'EE',
+        'Finland' => 'FI',
+        'France' => 'FR',
+        'Germany' => 'DE',
+        'Greece' => 'GR',
+        'Hungary' => 'HU',
+        'Iceland' => 'IS',
+        'India' => 'IN',
+        'Ireland' => 'IE',
+        'Italy' => 'IT',
+        'Latvia' => 'LV',
+        'Lithuania' => 'LT',
+        'Luxembourg' => 'LU',
+        'Malta' => 'MT',
+        'Netherlands' => 'NL',
+        'Norway' => 'NO',
+        'Poland' => 'PL',
+        'Portugal' => 'PT',
+        'Romania' => 'RO',
+        'Slovakia' => 'SK',
+        'Slovenia' => 'SI',
+        'Spain' => 'ES',
+        'Sweden' => 'SE',
+        'Switzerland' => 'CH',
+        'United Kingdom' => 'GB',
+        'UK' => 'GB',
+        'United States' => 'US',
+        'USA' => 'US',
+    ];
 
     public function __construct(
         private readonly Connection $connection,
@@ -280,6 +320,63 @@ class SmartsheetPresentationController extends AbstractController
         $response = new BinaryFileResponse($tmpPptx);
         $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $filename);
         $response->headers->set('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        $response->headers->set('Cache-Control', 'no-store');
+        $response->deleteFileAfterSend(true);
+
+        return $response;
+    }
+
+    #[Route('/export-html', name: 'presentation_export_html', methods: ['POST'])]
+    public function exportPresentationHtml(\Symfony\Component\HttpFoundation\Request $request): BinaryFileResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true) ?? [];
+        $countries = $this->normalizeCountryFilter($payload['countries'] ?? null);
+
+        $assessments = $this->plannedDataForTask(self::DEFAULT_TASK_NAME, $countries);
+        $installations = $this->plannedDataForTask('Installation Execution', $countries);
+        $postDeployment = $this->postDeploymentData($countries);
+        $issueLog = $this->issueLogData($countries);
+        $overview = $this->programmeOverviewData();
+        $timeline = $this->timelineData($countries);
+        $progress = $this->progressData($countries);
+        $plannedWeekRows = $this->plannedWeekData($countries);
+
+        $highlightsContent = $this->getLatestContent('highlights');
+        $trendOverrides = $this->decodeOverrides($this->getLatestContent('trend_overrides'));
+        $overviewOverrides = $this->decodeOverrides($this->getLatestContent('overview_overrides'));
+
+        $overviewItems = $this->filterItemsByCountries($overview['items'] ?? [], $countries, 'country');
+
+        $assets = [
+            'logo' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/logo.png'),
+            'traffic_green' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/green.png'),
+            'traffic_amber' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/yellow.png'),
+            'traffic_red' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/red.png'),
+        ];
+
+        $html = $this->buildOfflinePresentationHtml([
+            'generatedAt' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+            'countries' => $countries,
+            'plannedAssessments' => $assessments,
+            'plannedInstallations' => $installations,
+            'postDeployment' => $postDeployment,
+            'issueLog' => $issueLog,
+            'overviewItems' => $overviewItems,
+            'timeline' => $timeline,
+            'progress' => $progress,
+            'plannedWeekRows' => $plannedWeekRows,
+            'highlights' => $highlightsContent,
+            'trendOverrides' => $trendOverrides,
+            'overviewOverrides' => $overviewOverrides,
+        ], $assets);
+
+        $tmpHtml = tempnam(sys_get_temp_dir(), 'rep_html_') . '.html';
+        file_put_contents($tmpHtml, $html);
+
+        $filename = sprintf('presentation-%s.html', (new DateTimeImmutable('now'))->format('Ymd_His'));
+        $response = new BinaryFileResponse($tmpHtml);
+        $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $filename);
+        $response->headers->set('Content-Type', 'text/html; charset=utf-8');
         $response->headers->set('Cache-Control', 'no-store');
         $response->deleteFileAfterSend(true);
 
@@ -1483,6 +1580,624 @@ class SmartsheetPresentationController extends AbstractController
         $string = trim((string) $value);
 
         return $string === '' ? null : $string;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function plannedWeekData(?array $countries = null): array
+    {
+        $sql = sprintf(
+            "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND CURDATE() BETWEEN DATE(Start_Date) AND DATE(End_Date)",
+            self::MASTER_TABLE
+        );
+
+        $params = [
+            'assessment' => 'Assessment',
+            'installPattern' => '%installation execution%',
+        ];
+
+        $rows = $this->connection->fetchAllAssociative($sql, $params);
+        if ($countries === null || $countries === []) {
+            return $rows;
+        }
+
+        $countrySet = array_flip(array_map(static fn (string $c): string => mb_strtolower(trim($c)), $countries));
+
+        return array_values(array_filter($rows, static function (array $row) use ($countrySet): bool {
+            $country = '';
+            foreach (self::COUNTRY_CANDIDATES as $candidate) {
+                foreach ($row as $key => $value) {
+                    if (strcasecmp($key, $candidate) === 0) {
+                        $country = trim((string) $value);
+                        break 2;
+                    }
+                }
+            }
+            if ($country === '') {
+                return false;
+            }
+            return isset($countrySet[mb_strtolower($country)]);
+        }));
+    }
+
+    private function getLatestContent(string $section): string
+    {
+        $row = $this->connection->fetchAssociative(
+            sprintf('SELECT content FROM %s WHERE section = :section ORDER BY created_at DESC LIMIT 1', self::CONTENT_TABLE),
+            ['section' => $section]
+        );
+
+        return (string) ($row['content'] ?? '');
+    }
+
+    /**
+     * @return array<string, array{rag?: string|null, comment?: string|null}>
+     */
+    private function decodeOverrides(string $content): array
+    {
+        if ($content === '') {
+            return [];
+        }
+        try {
+            $decoded = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterItemsByCountries(array $items, ?array $countries, string $key): array
+    {
+        if ($countries === null || $countries === []) {
+            return $items;
+        }
+        $set = array_flip(array_map(static fn (string $c): string => mb_strtolower(trim($c)), $countries));
+
+        return array_values(array_filter($items, static function (array $item) use ($set, $key): bool {
+            $country = isset($item[$key]) ? trim((string) $item[$key]) : '';
+            if ($country === '') {
+                return false;
+            }
+            return isset($set[mb_strtolower($country)]);
+        }));
+    }
+
+    private function imageToDataUri(string $path): ?string
+    {
+        if (!is_file($path)) {
+            return null;
+        }
+        $data = file_get_contents($path);
+        if ($data === false) {
+            return null;
+        }
+        $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
+        $mime = match ($ext) {
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'svg' => 'image/svg+xml',
+            default => 'application/octet-stream',
+        };
+
+        return sprintf('data:%s;base64,%s', $mime, base64_encode($data));
+    }
+
+    private function buildCountryFlag(string $country): string
+    {
+        $code = self::COUNTRY_FLAG_MAP[$country] ?? '';
+        if ($code === '') {
+            return '';
+        }
+        return sprintf('<img class="flag" alt="" src="https://flagcdn.com/24x18/%s.png" width="24" height="18" />', strtolower($code));
+    }
+
+    private function normalizeRagValue(?string $value): string
+    {
+        $text = mb_strtolower(trim((string) $value));
+        if ($text === '') {
+            return '';
+        }
+        if (str_contains($text, 'green')) {
+            return 'green';
+        }
+        if (str_contains($text, 'amber') || str_contains($text, 'yellow')) {
+            return 'amber';
+        }
+        if (str_contains($text, 'red')) {
+            return 'red';
+        }
+        return '';
+    }
+
+    private function buildOfflinePresentationHtml(array $data, array $assets): string
+    {
+        $generatedAt = htmlspecialchars((string) ($data['generatedAt'] ?? ''), ENT_QUOTES);
+        $presentationDate = htmlspecialchars((new DateTimeImmutable('now'))->format('Y-m-d'), ENT_QUOTES);
+
+        $assessments = $data['plannedAssessments'] ?? [];
+        $installations = $data['plannedInstallations'] ?? [];
+        $postDeployment = $data['postDeployment'] ?? [];
+        $issueLog = $data['issueLog'] ?? [];
+        $overviewItems = $data['overviewItems'] ?? [];
+        $timeline = $data['timeline'] ?? [];
+        $progress = $data['progress'] ?? [];
+        $plannedWeekRows = $data['plannedWeekRows'] ?? [];
+
+        $highlights = (string) ($data['highlights'] ?? '');
+        $trendOverrides = $data['trendOverrides'] ?? [];
+        $overviewOverrides = $data['overviewOverrides'] ?? [];
+
+        $trafficLights = [
+            'green' => $assets['traffic_green'] ?? null,
+            'amber' => $assets['traffic_amber'] ?? null,
+            'red' => $assets['traffic_red'] ?? null,
+        ];
+
+        $overviewMap = [];
+        foreach ($overviewItems as $row) {
+            if (!empty($row['country'])) {
+                $overviewMap[$row['country']] = $row;
+            }
+        }
+
+        $progressMap = [];
+        foreach (($progress['items'] ?? []) as $row) {
+            if (!empty($row['country'])) {
+                $progressMap[$row['country']] = $row;
+            }
+        }
+
+        $timelineMap = [];
+        foreach (($timeline['items'] ?? []) as $row) {
+            if (!empty($row['country'])) {
+                $timelineMap[$row['country']] = $row;
+            }
+        }
+
+        $issueMap = [];
+        foreach (($issueLog['items'] ?? []) as $row) {
+            if (!empty($row['country'])) {
+                $issueMap[$row['country']] = $row;
+            }
+        }
+
+        $assessmentMap = [];
+        foreach (($assessments['items'] ?? []) as $row) {
+            if (!empty($row['country'])) {
+                $assessmentMap[$row['country']] = $row;
+            }
+        }
+
+        $installationMap = [];
+        foreach (($installations['items'] ?? []) as $row) {
+            if (!empty($row['country'])) {
+                $installationMap[$row['country']] = $row;
+            }
+        }
+
+        $postDeploymentMap = [];
+        foreach (($postDeployment['items'] ?? []) as $row) {
+            if (!empty($row['country'])) {
+                $postDeploymentMap[$row['country']] = $row;
+            }
+        }
+
+        $countryList = $data['countries'] ?? [];
+        if ($countryList === null || $countryList === []) {
+            $countryList = array_unique(array_merge(
+                array_keys($assessmentMap),
+                array_keys($installationMap),
+                array_keys($postDeploymentMap),
+                array_keys($issueMap)
+            ));
+        }
+        sort($countryList, SORT_STRING | SORT_FLAG_CASE);
+
+        $html = [];
+        $html[] = '<!doctype html>';
+        $html[] = '<html lang="en">';
+        $html[] = '<head>';
+        $html[] = '<meta charset="utf-8" />';
+        $html[] = '<meta name="viewport" content="width=device-width, initial-scale=1" />';
+        $html[] = '<title>Presentation Export</title>';
+        $html[] = '<style>';
+        $html[] = 'body{font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:#f4f6f9;color:#1b1f24;}';
+        $html[] = '.page{max-width:1200px;margin:0 auto;padding:32px;}';
+        $html[] = '.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}';
+        $html[] = '.card{background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.08);margin-bottom:24px;padding:20px;}';
+        $html[] = '.card h2{margin:0 0 12px;font-size:20px;}';
+        $html[] = '.muted{color:#6c7a89;font-size:13px;}';
+        $html[] = '.table{width:100%;border-collapse:collapse;font-size:13px;}';
+        $html[] = '.table th,.table td{border:1px solid #e5e7eb;padding:6px 8px;vertical-align:top;}';
+        $html[] = '.table th{background:#f5f7fb;text-align:left;}';
+        $html[] = '.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;color:#fff;}';
+        $html[] = '.pill.green{background:#198754;}';
+        $html[] = '.pill.amber{background:#ffc107;color:#111;}';
+        $html[] = '.pill.red{background:#dc3545;}';
+        $html[] = '.flag{margin-right:6px;vertical-align:text-bottom;}';
+        $html[] = '.section-title{font-weight:700;margin:18px 0 10px;font-size:15px;}';
+        $html[] = '.grid{display:grid;gap:16px;}';
+        $html[] = '.grid-2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}';
+        $html[] = '.progress-row{margin-bottom:10px;}';
+        $html[] = '.progress-bar{height:8px;border-radius:999px;background:#eef1f4;overflow:hidden;}';
+        $html[] = '.progress-bar span{display:block;height:100%;float:left;}';
+        $html[] = '.bg-success{background:#198754;}';
+        $html[] = '.bg-warning{background:#ffc107;}';
+        $html[] = '.bg-secondary{background:#6c757d;}';
+        $html[] = '.timeline-row{display:flex;align-items:center;gap:12px;margin-bottom:10px;}';
+        $html[] = '.timeline-bar{flex:1;height:14px;border-radius:6px;background:#eef1f4;position:relative;}';
+        $html[] = '.timeline-bar .segment{position:absolute;top:1px;bottom:1px;border-radius:6px;}';
+        $html[] = '.traffic-light{width:110px;align-self:center;}';
+        $html[] = '@media print{body{background:#fff;} .card{box-shadow:none;border:1px solid #e5e7eb;}}';
+        $html[] = '</style>';
+        $html[] = '</head>';
+        $html[] = '<body>';
+        $html[] = '<div class="page">';
+        $html[] = '<div class="header">';
+        $html[] = '<div><h1 style="margin:0;font-size:26px;">Presentation</h1><div class="muted">Generated ' . $generatedAt . '</div></div>';
+        if (!empty($assets['logo'])) {
+            $html[] = '<img src="' . $assets['logo'] . '" alt="" style="height:48px;" />';
+        }
+        $html[] = '</div>';
+
+        $html[] = '<div class="card">';
+        $html[] = '<h2>Highlights</h2>';
+        if ($highlights !== '') {
+            $html[] = '<div>' . $highlights . '</div>';
+        } else {
+            $html[] = '<div class="muted">No highlights yet.</div>';
+        }
+        $html[] = '</div>';
+
+        $html[] = '<div class="card">';
+        $html[] = '<h2>Programme Overview Per Country</h2>';
+        if ($overviewItems === []) {
+            $html[] = '<div class="muted">No overview data available.</div>';
+        } else {
+            $html[] = '<table class="table">';
+            $html[] = '<thead><tr><th>Country</th><th>Stores</th><th>Assessed</th><th>Ongoing Installations</th><th>Installed</th><th>Sign-off</th><th>RAG</th><th>Comment</th></tr></thead><tbody>';
+            foreach ($overviewItems as $row) {
+                $country = (string) ($row['country'] ?? '');
+                $override = $overviewOverrides[$country] ?? [];
+                $ragValue = ($override['rag'] ?? null) !== null && $override['rag'] !== '' ? $override['rag'] : ($row['rag'] ?? '');
+                $commentValue = ($override['comment'] ?? null) !== null && $override['comment'] !== '' ? $override['comment'] : ($row['comment'] ?? '');
+                $ragClass = $this->normalizeRagValue($ragValue);
+                $ragLabel = $ragValue !== '' ? htmlspecialchars((string) $ragValue, ENT_QUOTES) : '—';
+                $html[] = '<tr>';
+                $html[] = '<td>' . $this->buildCountryFlag($country) . htmlspecialchars($country, ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['stores'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['assessed'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['ongoingInstallations'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['storesInstalled'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['storeSignoff'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . ($ragClass ? '<span class="pill ' . $ragClass . '">' . $ragLabel . '</span>' : $ragLabel) . '</td>';
+                $html[] = '<td class="muted">' . htmlspecialchars((string) $commentValue, ENT_QUOTES) . '</td>';
+                $html[] = '</tr>';
+            }
+            $html[] = '</tbody></table>';
+        }
+        $html[] = '</div>';
+
+        $html[] = '<div class="card">';
+        $html[] = '<h2>Status planned assessments and installations</h2>';
+        if ($plannedWeekRows === []) {
+            $html[] = '<div class="muted">No planned assessments or installations found.</div>';
+        } else {
+            $html[] = '<table class="table">';
+            $html[] = '<thead><tr><th>Country</th><th>Site Name (Site ID)</th><th>Activity</th><th>Start</th><th>End</th><th>Status</th><th>Comment</th></tr></thead><tbody>';
+            foreach ($plannedWeekRows as $index => $row) {
+                $country = $this->resolveRowField($row, ['country', 'Country']) ?? '—';
+                $siteName = $this->cleanSiteName($this->resolveRowField($row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) ?? '');
+                $siteId = $this->resolveRowField($row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) ?? '';
+                $taskName = $this->resolveRowField($row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) ?? '—';
+                $startDate = $this->formatDate($this->resolveRowField($row, ['start_date', 'startDate', 'Start_Date', 'StartDate']));
+                $endDate = $this->formatDate($this->resolveRowField($row, ['end_date', 'endDate', 'End_Date', 'EndDate']));
+                $status = $this->resolveRowField($row, ['status', 'Status']) ?? '';
+                $comment = $this->resolveRowField($row, ['comment', 'Comment']) ?? '';
+
+                $html[] = '<tr>';
+                $html[] = '<td>' . $this->buildCountryFlag((string) $country) . htmlspecialchars((string) $country, ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($siteName !== '' ? $siteName : '—'), ENT_QUOTES) . ($siteId ? ' (' . htmlspecialchars((string) $siteId, ENT_QUOTES) . ')' : '') . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) $taskName, ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($startDate ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($endDate ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($status !== '' ? $status : '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td class="muted">' . htmlspecialchars((string) ($comment !== '' ? $comment : '—'), ENT_QUOTES) . '</td>';
+                $html[] = '</tr>';
+            }
+            $html[] = '</tbody></table>';
+        }
+        $html[] = '</div>';
+
+        $html[] = '<div class="card">';
+        $html[] = '<h2>Timeline</h2>';
+        $timelineItems = $timeline['items'] ?? [];
+        if ($timelineItems === []) {
+            $html[] = '<div class="muted">No timeline data available.</div>';
+        } else {
+            $domain = $this->timelineDomain($timelineItems);
+            if ($domain === null) {
+                $html[] = '<div class="muted">Timeline dates are missing.</div>';
+            } else {
+                foreach ($timelineItems as $item) {
+                    $country = (string) ($item['country'] ?? '');
+                    $start = $this->parseDate($item['startDate'] ?? null);
+                    $installEnd = $this->parseDate($item['installEndDate'] ?? $item['endDate'] ?? null);
+                    $end = $this->parseDate($item['endDate'] ?? null);
+                    if (!$start || !$end) {
+                        continue;
+                    }
+                    $left = (($start->getTimestamp() * 1000 - $domain['min']) / $domain['span']) * 100;
+                    $installWidth = $installEnd ? max(0.5, (($installEnd->getTimestamp() * 1000 - $start->getTimestamp() * 1000) / $domain['span']) * 100) : 0;
+                    $totalWidth = max(0.5, (($end->getTimestamp() * 1000 - $start->getTimestamp() * 1000) / $domain['span']) * 100);
+                    $restWidth = max(0, $totalWidth - $installWidth);
+
+                    $html[] = '<div class="timeline-row">';
+                    $html[] = '<div style="width:180px;" class="muted">' . $this->buildCountryFlag($country) . htmlspecialchars($country, ENT_QUOTES) . '</div>';
+                    $html[] = '<div class="timeline-bar">';
+                    $html[] = '<span class="segment" style="left:' . $left . '%;width:' . $installWidth . '%;background:#0f9d88;"></span>';
+                    if ($restWidth > 0) {
+                        $html[] = '<span class="segment" style="left:' . ($left + $installWidth) . '%;width:' . $restWidth . '%;background:#7fd9c9;"></span>';
+                    }
+                    $html[] = '</div>';
+                    $html[] = '<div class="muted" style="min-width:140px;text-align:right;">' . htmlspecialchars($this->formatDate($end) ?? '—', ENT_QUOTES) . '</div>';
+                    $html[] = '</div>';
+                }
+            }
+        }
+        $html[] = '</div>';
+
+        $html[] = '<div class="card">';
+        $html[] = '<h2>Country Trend</h2>';
+
+        $trendGroups = [
+            'green' => [],
+            'amber' => [],
+            'red' => [],
+        ];
+        foreach ($overviewItems as $row) {
+            $country = (string) ($row['country'] ?? '');
+            $override = $trendOverrides[$country] ?? [];
+            $ragValue = ($override['rag'] ?? null) !== null && $override['rag'] !== '' ? $override['rag'] : ($row['rag'] ?? '');
+            $commentValue = ($override['comment'] ?? null) !== null && $override['comment'] !== '' ? $override['comment'] : ($row['comment'] ?? '');
+            $rag = $this->normalizeRagValue($ragValue);
+            if ($rag !== '' && isset($trendGroups[$rag])) {
+                $trendGroups[$rag][] = [
+                    'country' => $country,
+                    'stores' => $row['stores'] ?? null,
+                    'assessed' => $row['assessed'] ?? null,
+                    'ongoingInstallations' => $row['ongoingInstallations'] ?? null,
+                    'storesInstalled' => $row['storesInstalled'] ?? null,
+                    'comment' => $commentValue,
+                ];
+            }
+        }
+
+        foreach (['green' => 'Green', 'amber' => 'Amber', 'red' => 'Red'] as $ragKey => $ragLabel) {
+            $rows = $trendGroups[$ragKey];
+            $html[] = '<div class="section-title">' . $ragLabel . '</div>';
+            if ($rows === []) {
+                $html[] = '<div class="muted">No ' . strtolower($ragLabel) . ' countries available.</div>';
+                continue;
+            }
+            $html[] = '<div class="grid grid-2">';
+            $html[] = '<div>';
+            $html[] = '<table class="table">';
+            $html[] = '<thead><tr><th>Country</th><th>Total</th><th>Assessments</th><th>Ongoing Installation</th><th>Stores Installed</th><th>Comment</th></tr></thead><tbody>';
+            foreach ($rows as $row) {
+                $country = (string) ($row['country'] ?? '');
+                $html[] = '<tr>';
+                $html[] = '<td>' . $this->buildCountryFlag($country) . htmlspecialchars($country, ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['stores'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['assessed'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['ongoingInstallations'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($row['storesInstalled'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td class="muted">' . htmlspecialchars((string) ($row['comment'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '</tr>';
+            }
+            $html[] = '</tbody></table>';
+            $html[] = '</div>';
+            $html[] = '<div style="display:flex;justify-content:center;align-items:center;">';
+            if (!empty($trafficLights[$ragKey])) {
+                $html[] = '<img class="traffic-light" src="' . $trafficLights[$ragKey] . '" alt="" />';
+            }
+            $html[] = '</div>';
+            $html[] = '</div>';
+        }
+        $html[] = '</div>';
+
+        $html[] = '<div class="card">';
+        $html[] = '<h2>General Issues</h2>';
+        $issues = [];
+        foreach ($issueMap as $country => $block) {
+            foreach (($block['issues'] ?? []) as $issue) {
+                $issues[] = array_merge($issue, ['country' => $country]);
+            }
+        }
+        if ($issues === []) {
+            $html[] = '<div class="muted">No issues logged.</div>';
+        } else {
+            $html[] = '<table class="table">';
+            $html[] = '<thead><tr><th>Country</th><th>Site Name</th><th>Site ID</th><th>Description</th><th>Priority</th><th>Responsible Party</th><th>Action</th><th>Resolve Date</th></tr></thead><tbody>';
+            foreach ($issues as $issue) {
+                $country = (string) ($issue['country'] ?? '');
+                $html[] = '<tr>';
+                $html[] = '<td>' . $this->buildCountryFlag($country) . htmlspecialchars($country, ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($issue['storeName'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($issue['storeId'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($issue['description'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($issue['priority'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($issue['responsibleParty'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($issue['actionRequired'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '<td>' . htmlspecialchars((string) ($issue['resolveDate'] ?? '—'), ENT_QUOTES) . '</td>';
+                $html[] = '</tr>';
+            }
+            $html[] = '</tbody></table>';
+        }
+        $html[] = '</div>';
+
+        foreach ($countryList as $country) {
+            $countryLabel = htmlspecialchars((string) $country, ENT_QUOTES);
+            $html[] = '<div class="card">';
+            $html[] = '<h2>' . $this->buildCountryFlag((string) $country) . $countryLabel . ' <span class="muted" style="font-size:12px;">' . $presentationDate . '</span></h2>';
+
+            $progressRow = $progressMap[$country]['tasks'] ?? [];
+            if ($progressRow !== []) {
+                $html[] = '<div class="grid grid-2" style="margin-bottom:16px;">';
+                foreach ($progressRow as $task) {
+                    $label = htmlspecialchars((string) ($task['label'] ?? ''), ENT_QUOTES);
+                    $total = (int) ($task['total'] ?? 0);
+                    $donePct = (int) ($task['donePct'] ?? 0);
+                    $inProgressPct = (int) ($task['inProgressPct'] ?? 0);
+                    $notStartedPct = (int) ($task['notStartedPct'] ?? 0);
+                    $html[] = '<div class="progress-row">';
+                    $html[] = '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span><strong>' . $label . '</strong></span><span class="muted">' . ($total > 0 ? 'Done ' . $donePct . '% · In progress ' . $inProgressPct . '% · Not started ' . $notStartedPct . '%' : 'No stores') . '</span></div>';
+                    $html[] = '<div class="progress-bar">';
+                    $html[] = '<span class="bg-success" style="width:' . $donePct . '%"></span>';
+                    $html[] = '<span class="bg-warning" style="width:' . $inProgressPct . '%"></span>';
+                    $html[] = '<span class="bg-secondary" style="width:' . $notStartedPct . '%"></span>';
+                    $html[] = '</div>';
+                    $html[] = '</div>';
+                }
+                $html[] = '</div>';
+            }
+
+            $html[] = $this->renderPlanSection('Planned Assessments', $assessments['meta'] ?? [], $assessmentMap[$country]['current'] ?? [], $assessmentMap[$country]['next'] ?? []);
+            $html[] = $this->renderPlanSection('Planned Installations', $installations['meta'] ?? [], $installationMap[$country]['current'] ?? [], $installationMap[$country]['next'] ?? []);
+            $html[] = $this->renderPlanSection('Post-Deployment & Sign-off', $postDeployment['meta'] ?? [], $postDeploymentMap[$country]['current'] ?? [], $postDeploymentMap[$country]['next'] ?? []);
+
+            $issues = $issueMap[$country]['issues'] ?? [];
+            $html[] = '<div class="section-title">Issue Log</div>';
+            if ($issues === []) {
+                $html[] = '<div class="muted">No issues logged.</div>';
+            } else {
+                $html[] = '<table class="table">';
+                $html[] = '<thead><tr><th>Site Name</th><th>Site ID</th><th>Description</th><th>Priority</th><th>Responsible Party</th><th>Action</th><th>Resolve Date</th></tr></thead><tbody>';
+                foreach ($issues as $issue) {
+                    $html[] = '<tr>';
+                    $html[] = '<td>' . htmlspecialchars((string) ($issue['storeName'] ?? '—'), ENT_QUOTES) . '</td>';
+                    $html[] = '<td>' . htmlspecialchars((string) ($issue['storeId'] ?? '—'), ENT_QUOTES) . '</td>';
+                    $html[] = '<td>' . htmlspecialchars((string) ($issue['description'] ?? '—'), ENT_QUOTES) . '</td>';
+                    $html[] = '<td>' . htmlspecialchars((string) ($issue['priority'] ?? '—'), ENT_QUOTES) . '</td>';
+                    $html[] = '<td>' . htmlspecialchars((string) ($issue['responsibleParty'] ?? '—'), ENT_QUOTES) . '</td>';
+                    $html[] = '<td>' . htmlspecialchars((string) ($issue['actionRequired'] ?? '—'), ENT_QUOTES) . '</td>';
+                    $html[] = '<td>' . htmlspecialchars((string) ($issue['resolveDate'] ?? '—'), ENT_QUOTES) . '</td>';
+                    $html[] = '</tr>';
+                }
+                $html[] = '</tbody></table>';
+            }
+
+            $html[] = '</div>';
+        }
+
+        $html[] = '</div></body></html>';
+
+        return implode("\n", $html);
+    }
+
+    private function renderPlanSection(string $title, array $meta, array $currentRows, array $nextRows): string
+    {
+        $currentLabel = htmlspecialchars((string) ($meta['currentMonth'] ?? 'Current month'), ENT_QUOTES);
+        $nextLabel = htmlspecialchars((string) ($meta['nextMonth'] ?? 'Next month'), ENT_QUOTES);
+
+        $html = [];
+        $html[] = '<div class="section-title">' . htmlspecialchars($title, ENT_QUOTES) . '</div>';
+        $html[] = '<div class="grid grid-2">';
+        $html[] = $this->renderPlanTable($currentLabel, $currentRows);
+        $html[] = $this->renderPlanTable($nextLabel, $nextRows);
+        $html[] = '</div>';
+
+        return implode("\n", $html);
+    }
+
+    private function renderPlanTable(string $label, array $rows): string
+    {
+        $html = [];
+        $html[] = '<div>';
+        $html[] = '<div class="muted" style="text-transform:uppercase;font-weight:600;margin-bottom:6px;">' . $label . '</div>';
+        if ($rows === []) {
+            $html[] = '<div class="muted">No entries.</div>';
+            $html[] = '</div>';
+            return implode("\n", $html);
+        }
+        $html[] = '<table class="table">';
+        $html[] = '<thead><tr><th>Site Name</th><th>Start</th><th>End</th><th>Confidence</th><th>Status</th></tr></thead><tbody>';
+        foreach ($rows as $row) {
+            $siteName = (string) ($row['siteName'] ?? '—');
+            $siteId = (string) ($row['siteId'] ?? '');
+            $html[] = '<tr>';
+            $html[] = '<td>' . htmlspecialchars($siteName, ENT_QUOTES) . ($siteId !== '' ? ' (' . htmlspecialchars($siteId, ENT_QUOTES) . ')' : '') . '</td>';
+            $html[] = '<td>' . htmlspecialchars((string) ($row['startDate'] ?? '—'), ENT_QUOTES) . '</td>';
+            $html[] = '<td>' . htmlspecialchars((string) ($row['endDate'] ?? '—'), ENT_QUOTES) . '</td>';
+            $confidence = (string) ($row['confidence'] ?? '');
+            $status = (string) ($row['status'] ?? '');
+            $html[] = '<td>' . ($confidence !== '' ? htmlspecialchars($confidence, ENT_QUOTES) : '—') . '</td>';
+            $html[] = '<td>' . ($status !== '' ? htmlspecialchars($status, ENT_QUOTES) : '—') . '</td>';
+            $html[] = '</tr>';
+        }
+        $html[] = '</tbody></table>';
+        $html[] = '</div>';
+
+        return implode("\n", $html);
+    }
+
+    private function resolveRowField(array $row, array $keys): mixed
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $row) && $row[$key] !== null && $row[$key] !== '') {
+                return $row[$key];
+            }
+            foreach ($row as $rowKey => $value) {
+                if (strcasecmp((string) $rowKey, (string) $key) === 0 && $value !== null && $value !== '') {
+                    return $value;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function cleanSiteName(string $value): string
+    {
+        return trim(preg_replace('/^IKEAStore\s*-\s*/i', '', $value));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array{min: float, max: float, span: float}|null
+     */
+    private function timelineDomain(array $items): ?array
+    {
+        $min = null;
+        $max = null;
+        foreach ($items as $item) {
+            $start = $this->parseDate($item['startDate'] ?? null);
+            $end = $this->parseDate($item['endDate'] ?? null);
+            if (!$start || !$end) {
+                continue;
+            }
+            $startMs = $start->getTimestamp() * 1000;
+            $endMs = $end->getTimestamp() * 1000;
+            $min = $min === null ? $startMs : min($min, $startMs);
+            $max = $max === null ? $endMs : max($max, $endMs);
+        }
+        if ($min === null || $max === null) {
+            return null;
+        }
+        if ($min === $max) {
+            $max = $min + 86400000;
+        }
+        return [
+            'min' => (float) $min,
+            'max' => (float) $max,
+            'span' => (float) ($max - $min),
+        ];
     }
 
     private function normalizeSiteName(mixed $value): ?string

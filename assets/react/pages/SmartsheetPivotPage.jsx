@@ -266,6 +266,7 @@ const SmartsheetPivotPage = () => {
   const [presentationLoaded, setPresentationLoaded] = useState(false);
   const [presentationCountryFilter, setPresentationCountryFilter] = useState([]);
   const [presentationExporting, setPresentationExporting] = useState(false);
+  const [presentationHtmlExporting, setPresentationHtmlExporting] = useState(false);
   const [presentationEditMode, setPresentationEditMode] = useState(false);
   const [presentationEdits, setPresentationEdits] = useState({});
   const [presentationSaving, setPresentationSaving] = useState(false);
@@ -2254,6 +2255,35 @@ const SmartsheetPivotPage = () => {
     }
   };
 
+  const exportPresentationHtml = async () => {
+    setPresentationHtmlExporting(true);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/export-html', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countries: presentationCountryFilter }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || 'presentation-export.html';
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.message || 'Failed to export offline HTML.');
+    } finally {
+      setPresentationHtmlExporting(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'status' && !statusLoaded && !statusLoading) {
       fetchStatus();
@@ -2667,6 +2697,14 @@ const SmartsheetPivotPage = () => {
                 disabled={presentationExporting}
               >
                 {presentationExporting ? 'Exporting…' : 'Export PPTX'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm"
+                onClick={exportPresentationHtml}
+                disabled={presentationHtmlExporting}
+              >
+                {presentationHtmlExporting ? 'Exporting…' : 'Export Offline HTML'}
               </button>
             </div>
           </div>
