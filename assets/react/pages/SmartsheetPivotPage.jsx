@@ -316,6 +316,7 @@ const SmartsheetPivotPage = () => {
   const tableRef = useRef(null);
   const analyseDatatableRef = useRef(null);
   const analyseTableRef = useRef(null);
+  const execOverviewRef = useRef(null);
 
   const destroyTable = useCallback(() => {
     if (datatableRef.current) {
@@ -327,6 +328,15 @@ const SmartsheetPivotPage = () => {
       if (tbody) {
         tbody.innerHTML = '';
       }
+    }
+  }, []);
+
+  const scrollToExecOverview = useCallback(() => {
+    const target = execOverviewRef.current || document.getElementById('exec-overview');
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, []);
 
@@ -2073,7 +2083,12 @@ const SmartsheetPivotPage = () => {
               { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
               { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
             ].map((meta) => (
-              <div key={meta.key} className="card shadow-sm" id={meta.key === '__exec_overview' ? 'exec-overview' : undefined}>
+              <div
+                key={meta.key}
+                className="card shadow-sm"
+                id={meta.key === '__exec_overview' ? 'exec-overview' : undefined}
+                ref={meta.key === '__exec_overview' ? execOverviewRef : undefined}
+              >
                 <div className="card-header fw-semibold position-relative">
                   {meta.title}
                   <span
@@ -2569,7 +2584,14 @@ const SmartsheetPivotPage = () => {
                   style={{ height: 180 }}
                 >
                 <strong>
-                  <a href="#exec-overview" className="text-decoration-none text-reset">
+                  <a
+                    href="#exec-overview"
+                    className="text-decoration-none text-reset"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      scrollToExecOverview();
+                    }}
+                  >
                     <CountryFlag country={countryBlock.country} />
                     {countryBlock.country}
                   </a>
