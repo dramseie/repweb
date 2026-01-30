@@ -1502,6 +1502,17 @@ const SmartsheetPivotPage = () => {
     );
   };
 
+  const execCardMeta = [
+    { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
+    { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
+    { key: '__exec_status', title: 'Status planned assessments and installations', body: 'Snapshot of planned assessments and installations status.' },
+    { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
+    { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
+    { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
+    { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
+    { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
+  ];
+
   const openSlideshow = () => {
     setSlideshowIndex(0);
     setSlideshowOpen(true);
@@ -1684,17 +1695,6 @@ const SmartsheetPivotPage = () => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
     setPresentationCountryFilter(selected);
   };
-
-  const execCardMeta = [
-    { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
-    { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
-    { key: '__exec_status', title: 'Status planned assessments and installations', body: 'Snapshot of planned assessments and installations status.' },
-    { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
-    { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
-    { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
-    { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
-    { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
-  ];
 
   const renderExecCardBody = (meta) => {
     if (meta.key === '__exec_highlights') {
