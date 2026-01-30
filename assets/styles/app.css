@@ -402,10 +402,10 @@
 /* Country header sizing: ensure the card header is tall enough on large screens
    to contain the centered progress blocks (Assessment / Installation / Store Signoff). */
 @media (min-width: 992px) {
-  .country-header {
-    min-height: 240px; /* increased to fit progress blocks */
-    padding-top: 1.1rem;
-    padding-bottom: 1.1rem;
+  .card-header.country-header {
+    min-height: 280px; /* increased to fit progress blocks */
+    padding-top: 1.4rem;
+    padding-bottom: 1.4rem;
   }
 }
 
