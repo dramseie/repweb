@@ -3,9 +3,12 @@
 namespace App\Controller;
 
 use Doctrine\DBAL\Connection;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 
 #[Route('/api/pos', name: 'api_pos_')]
@@ -13,13 +16,11 @@ class PosOrdersApiController extends AbstractController
 {
     public function __construct(private Connection $conn) {}
 
-    // =========================
-    // GET /api/pos/orders/{id} — full details (order + items + customer + appointment)
-    // =========================
-    #[Route('/orders/{id<\d+>}', name: 'orders_read', methods: ['GET'])]
-    public function read(int $id): JsonResponse
+    /**
+     * Load order aggregate (order + items + custom items + customer + appointment).
+     */
+    private function fetchOrderAggregate(int $id): ?array
     {
-        // Try with custom_items_json; fall back if column does not exist
         try {
             $o = $this->conn->fetchAssociative(
                 "SELECT o.id,
@@ -40,8 +41,10 @@ class PosOrdersApiController extends AbstractController
                         o.replacement_appointment_id,
                         o.payment_method,
                         o.payments_json,
-                        o.custom_items_json
+                        o.custom_items_json,
+                        pin.id AS invoice_seq
                    FROM ongleri.orders o
+              LEFT JOIN ongleri.pos_invoice_number pin ON pin.order_id = o.id
                   WHERE o.id = ?",
                 [$id]
             );
@@ -65,8 +68,10 @@ class PosOrdersApiController extends AbstractController
                         o.revoked_reason,
                         o.replacement_appointment_id,
                         o.payment_method,
-                        o.payments_json
+                        o.payments_json,
+                        pin.id AS invoice_seq
                    FROM ongleri.orders o
+              LEFT JOIN ongleri.pos_invoice_number pin ON pin.order_id = o.id
                   WHERE o.id = ?",
                 [$id]
             );
@@ -74,10 +79,9 @@ class PosOrdersApiController extends AbstractController
         }
 
         if (!$o) {
-            return $this->json(['ok' => false, 'error' => 'Order not found'], 404);
+            return null;
         }
 
-        // Items
         $items = $this->conn->fetchAllAssociative(
             "SELECT oi.id,
                     oi.item_id,
@@ -92,7 +96,6 @@ class PosOrdersApiController extends AbstractController
             [$id]
         );
 
-        // Optional parsed custom items (Divers)
         $customItems = null;
         if ($hasCustomJson && array_key_exists('custom_items_json', $o) && $o['custom_items_json'] !== null) {
             try {
@@ -103,18 +106,16 @@ class PosOrdersApiController extends AbstractController
             }
         }
 
-        // Customer (optional) — WITHOUT private notes
         $customer = null;
         if (!empty($o['customer_id'])) {
             $customer = $this->conn->fetchAssociative(
-                "SELECT id, first_name, last_name, phone, email, notes_public, status
+                "SELECT id, first_name, last_name, phone, email, notes_public, status, address
                    FROM ongleri.customers
                   WHERE id = ?",
                 [(int)$o['customer_id']]
             );
         }
 
-        // Appointment (optional) — WITHOUT private notes
         $appointment = null;
         if (!empty($o['appointment_id'])) {
             $appointment = $this->conn->fetchAssociative(
@@ -126,13 +127,161 @@ class PosOrdersApiController extends AbstractController
             );
         }
 
-        return $this->json([
-            'ok'            => true,
-            'order'         => $o,
-            'items'         => $items,
-            'custom_items'  => $customItems,     // 👈 for Divers display in UI
-            'customer'      => $customer,
-            'appointment'   => $appointment,
+        return [
+            'order'        => $o,
+            'items'        => $items,
+            'custom_items' => $customItems,
+            'customer'     => $customer,
+            'appointment'  => $appointment,
+        ];
+    }
+
+    private function ensureInvoiceSequence(int $orderId): ?int
+    {
+        try {
+            return $this->conn->transactional(function (Connection $conn) use ($orderId) {
+                $existing = $conn->fetchOne(
+                    'SELECT id FROM ongleri.pos_invoice_number WHERE order_id = ? FOR UPDATE',
+                    [$orderId]
+                );
+                if ($existing) {
+                    return (int) $existing;
+                }
+
+                try {
+                    $conn->insert('ongleri.pos_invoice_number', [
+                        'order_id' => $orderId,
+                    ]);
+                } catch (\Throwable $e) {
+                    $existing = $conn->fetchOne(
+                        'SELECT id FROM ongleri.pos_invoice_number WHERE order_id = ?',
+                        [$orderId]
+                    );
+                    if ($existing) {
+                        return (int) $existing;
+                    }
+                    throw $e;
+                }
+
+                $lastId = $conn->lastInsertId();
+                return $lastId !== false ? (int) $lastId : null;
+            });
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    // =========================
+    // GET /api/pos/orders/{id} — full details (order + items + customer + appointment)
+    // =========================
+    #[Route('/orders/{id<\d+>}', name: 'orders_read', methods: ['GET'])]
+    public function read(int $id): JsonResponse
+    {
+        $aggregate = $this->fetchOrderAggregate($id);
+        if (!$aggregate) {
+            return $this->json(['ok' => false, 'error' => 'Order not found'], 404);
+        }
+        return $this->json(['ok' => true] + $aggregate);
+    }
+
+    #[Route('/orders/{id<\d+>}/invoice.pdf', name: 'orders_invoice_pdf', methods: ['GET'])]
+    public function invoicePdf(int $id): Response
+    {
+        $aggregate = $this->fetchOrderAggregate($id);
+        if (!$aggregate) {
+            return $this->json(['error' => 'Order not found'], 404);
+        }
+
+        $order = $aggregate['order'];
+        $items = $aggregate['items'] ?? [];
+        $customItems = $aggregate['custom_items'] ?? [];
+        $customer = $aggregate['customer'];
+
+        $customerAddress = null;
+        if ($customer && array_key_exists('address', $customer) && $customer['address'] !== null) {
+            $rawAddr = (string)$customer['address'];
+            $decoded = json_decode($rawAddr, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $customerAddress = $decoded;
+            } elseif (trim($rawAddr) !== '') {
+                $customerAddress = ['formatted' => $rawAddr];
+            }
+        }
+
+        $invoiceSeq = isset($order['invoice_seq']) ? (int)$order['invoice_seq'] : null;
+        $customerStatus = strtolower((string)($customer['status'] ?? ''));
+        $shouldAssignInvoice = $customerStatus !== 'test' && $invoiceSeq === null;
+
+        if ($shouldAssignInvoice && isset($order['id'])) {
+            $generated = $this->ensureInvoiceSequence((int)$order['id']);
+            if ($generated !== null) {
+                $invoiceSeq = $generated;
+                $order['invoice_seq'] = $generated;
+            }
+        }
+
+        $invoiceNumber = $invoiceSeq !== null
+            ? sprintf('FAC-%06d', $invoiceSeq)
+            : sprintf('FAC-%06d', (int)($order['id'] ?? 0));
+
+        // Normalize line items for template consumption
+        $lineItems = [];
+        foreach ($items as $line) {
+            $lineItems[] = [
+                'label'       => $line['name_snapshot'] ?? 'Article',
+                'quantity'    => (int)($line['qty'] ?? 1),
+                'unit_cents'  => (int)($line['unit_price_cents'] ?? 0),
+                'tax_rate'    => (float)($line['tax_rate'] ?? 0),
+                'total_cents' => (int)($line['line_total_cents'] ?? 0),
+            ];
+        }
+        if (is_array($customItems)) {
+            foreach ($customItems as $line) {
+                $lineItems[] = [
+                    'label'       => $line['label'] ?? 'Service',
+                    'quantity'    => (int)($line['qty'] ?? 1),
+                    'unit_cents'  => (int)($line['unit_cents'] ?? 0),
+                    'tax_rate'    => (float)($line['tax_rate'] ?? 0),
+                    'total_cents' => (int)($line['line_cents'] ?? 0),
+                ];
+            }
+        }
+
+        $encaisseAt = $order['encaisse_at'] ?? null;
+        $createdAt = $order['created_at'] ?? null;
+        $invoiceDate = $encaisseAt ?: $createdAt ?: (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $html = $this->renderView('pos/invoice.html.twig', [
+            'company' => [
+                'name'    => "L'ongle RI by Ramseier Isabelle",
+                'address' => "7 rue de BETTLACH\n68220 HAGENTHAL-LE-BAS",
+                'siret'   => '94882417200019',
+                'phone'   => '06.10.43.00.98',
+                'website' => 'longleriaramseier.com',
+            ],
+            'order' => $order,
+            'customer' => $customer,
+            'customerAddress' => $customerAddress,
+            'lineItems' => $lineItems,
+            'invoiceNumber' => $invoiceNumber,
+            'invoiceDate' => $invoiceDate,
+        ]);
+
+        $options = new Options();
+        $options->set('isRemoteEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        $pdfOutput = $dompdf->output();
+
+        return new Response($pdfOutput, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => sprintf('attachment; filename="%s.pdf"', $invoiceNumber),
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
         ]);
     }
 
@@ -438,7 +587,8 @@ class PosOrdersApiController extends AbstractController
             $pm = $data['payment_method'];
             if (is_string($pm)) {
                 $pm = strtolower(trim($pm));
-                if (!in_array($pm, ['cash','card','other'], true)) {
+                $allowed = ['cash','card','twint','cheque','voucher','transfer','loyalty','other'];
+                if (!in_array($pm, $allowed, true)) {
                     $pm = null; // normalize invalid -> null
                 }
             } else {

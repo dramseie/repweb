@@ -1,0 +1,319 @@
+.gallery-app {
+  width: 100%;
+}
+
+.gallery-dropzone {
+  border: 2px dashed rgba(13, 110, 253, 0.4);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+.gallery-dropzone.is-active {
+  border-color: rgba(25, 135, 84, 0.8);
+  background-color: rgba(25, 135, 84, 0.1);
+}
+
+.border-dashed {
+  border-style: dashed !important;
+}
+
+.gallery-grid {
+  min-height: 240px;
+}
+
+.gallery-item {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gallery-share-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.gallery-share-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.gallery-share-header-text {
+  flex: 1 1 280px;
+}
+
+.gallery-share-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gallery-share-presentation-btn {
+  padding: 0.75rem 1.75rem;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 16px 30px rgba(79, 70, 229, 0.25);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gallery-share-presentation-btn:hover,
+.gallery-share-presentation-btn:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px rgba(79, 70, 229, 0.35);
+}
+
+.gallery-share-presentation-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.3);
+}
+
+.gallery-item-share {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: visible;
+}
+
+.gallery-item-share-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gallery-item-share-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #212529;
+  margin: 0;
+}
+
+.gallery-item-share-caption {
+  margin: 0;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+.gallery-item-share-media {
+  display: block;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(33, 37, 41, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gallery-item-share-media:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(33, 37, 41, 0.12);
+}
+
+.gallery-item-share-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.gallery-slideshow-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 5vw, 64px);
+  background: radial-gradient(circle at top, rgba(99, 102, 241, 0.15), rgba(15, 23, 42, 0.94));
+  color: #ffffff;
+  backdrop-filter: blur(8px);
+  animation: gallery-slideshow-overlay-fade 0.25s ease;
+}
+
+.gallery-slideshow-frame {
+  position: relative;
+  width: min(1200px, 92vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gallery-slideshow-image-wrapper {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(12px, 3vw, 32px);
+  border-radius: 28px;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(17, 24, 39, 0.55));
+  box-shadow: 0 32px 60px rgba(15, 23, 42, 0.45);
+}
+
+.gallery-slideshow-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 20px;
+  background: #0f172a;
+  animation: gallery-slideshow-image-fade 0.6s ease;
+}
+
+.gallery-slideshow-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: clamp(48px, 5vw, 64px);
+  height: clamp(48px, 5vw, 64px);
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.6);
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.gallery-slideshow-nav:hover,
+.gallery-slideshow-nav:focus {
+  background: rgba(99, 102, 241, 0.85);
+  transform: translateY(-50%) scale(1.05);
+}
+
+.gallery-slideshow-nav--prev {
+  left: clamp(16px, 4vw, 56px);
+}
+
+.gallery-slideshow-nav--next {
+  right: clamp(16px, 4vw, 56px);
+}
+
+.gallery-slideshow-close {
+  position: absolute;
+  top: clamp(16px, 4vw, 56px);
+  right: clamp(16px, 4vw, 56px);
+  width: clamp(40px, 4vw, 52px);
+  height: clamp(40px, 4vw, 52px);
+  border-radius: 50%;
+  border: none;
+  background: rgba(15, 23, 42, 0.6);
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.gallery-slideshow-close:hover,
+.gallery-slideshow-close:focus {
+  background: rgba(239, 68, 68, 0.85);
+  transform: scale(1.05);
+}
+
+.gallery-slideshow-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-end;
+  padding: 0 8px;
+}
+
+.gallery-slideshow-meta-text {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.gallery-slideshow-title {
+  margin: 0;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-weight: 600;
+}
+
+.gallery-slideshow-caption {
+  margin: 8px 0 0;
+  font-size: clamp(0.95rem, 2vw, 1.05rem);
+  opacity: 0.75;
+  max-width: 640px;
+}
+
+.gallery-slideshow-meta-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.gallery-slideshow-progress-count {
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.gallery-slideshow-progress-bar {
+  width: clamp(160px, 24vw, 220px);
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.gallery-slideshow-progress-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
+}
+
+@keyframes gallery-slideshow-image-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gallery-slideshow-overlay-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.gallery-item-image-wrapper {
+  position: relative;
+  flex: 1 1 auto;
+  background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.gallery-item-image-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gallery-app .alert.alert-secondary {
+  margin-bottom: 1.5rem;
+}
+
+.gallery-item .btn-group {
+  white-space: nowrap;
+}

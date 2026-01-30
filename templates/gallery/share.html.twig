@@ -1,0 +1,8 @@
+{% extends 'layouts/gallery_share_base.html.twig' %}
+
+{% block body %}
+  <div id="gallery-share-root"
+       data-api-share="{{ path('api_gallery_share', { token: share_token }) }}"
+       data-token="{{ share_token }}">
+  </div>
+{% endblock %}

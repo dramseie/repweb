@@ -150,6 +150,31 @@ public function saveColumnDef(int $repid, Request $req): JsonResponse
         ]);
     }
 
+    #[Route('/report-embed/{repid}', name: 'report_view_embed', methods: ['GET'])]
+    public function embed(int $repid): Response
+    {
+        $report = $this->fetchReport($repid);
+
+        $rawRepparam  = $report['repparam'] ?? '';
+        $repparamArr  = [];
+        if (is_string($rawRepparam) && $rawRepparam !== '') {
+            $tmp = json_decode($rawRepparam, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($tmp)) {
+                $repparamArr = $tmp;
+            }
+        }
+        $repparamJson = json_encode($repparamArr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return $this->render('dt/embed.html.twig', [
+            'repid'         => $repid,
+            'report'        => $report,
+            'reptitle'      => $report['reptitle'] ?? '',
+            'repdesc'       => $report['repdesc'] ?? '',
+            'repparam'      => $repparamArr,
+            'repparam_json' => $repparamJson,
+        ]);
+    }
+
     #[Route('/api/dt/{repid}/columns', name: 'dt_db_columns', methods: ['GET'])]
     public function columns(int $repid): JsonResponse
     {

@@ -4,6 +4,8 @@ namespace App\Controller;
 
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -82,6 +84,349 @@ class PosAccountingController extends AbstractController
             'other_cents' => $other,
             'orders_total_cents' => $ordersTotal,
         ];
+    }
+
+    private function ensureCategoryByCode(Connection $db, string $code, string $name, string $kind, string $mainKind): array
+    {
+        $row = $db->fetchAssociative(
+            "SELECT id, code, name, kind, main_kind
+             FROM ongleri.accounting_categories
+             WHERE code = :code OR name = :name
+             LIMIT 1",
+            ['code' => $code, 'name' => $name]
+        );
+
+        if ($row) {
+            $updates = [];
+            if ((string)($row['code'] ?? '') !== $code) {
+                $updates['code'] = $code;
+            }
+            if ((string)($row['name'] ?? '') !== $name) {
+                $updates['name'] = $name;
+            }
+            if ((string)($row['kind'] ?? '') !== $kind) {
+                $updates['kind'] = $kind;
+            }
+            $currentMain = strtolower((string)($row['main_kind'] ?? ''));
+            if ($currentMain !== strtolower($mainKind)) {
+                $updates['main_kind'] = $mainKind;
+            }
+
+            if (!empty($updates)) {
+                $db->update('ongleri.accounting_categories', $updates, ['id' => (int)$row['id']]);
+                $row = array_merge($row, $updates);
+            }
+
+            return [
+                'id' => (int)$row['id'],
+                'code' => (string)($row['code'] ?? $code),
+                'name' => (string)($row['name'] ?? $name),
+                'kind' => (string)($row['kind'] ?? $kind),
+                'main_kind' => (string)($row['main_kind'] ?? $mainKind),
+            ];
+        }
+
+        try {
+            $db->executeStatement(
+                "INSERT INTO ongleri.accounting_categories (code, name, kind, main_kind)
+                 VALUES (:code, :name, :kind, :main_kind)",
+                ['code' => $code, 'name' => $name, 'kind' => $kind, 'main_kind' => $mainKind]
+            );
+        } catch (UniqueConstraintViolationException $e) {
+            $row = $db->fetchAssociative(
+                "SELECT id, code, name, kind, main_kind
+                 FROM ongleri.accounting_categories
+                 WHERE code = :code OR name = :name
+                 LIMIT 1",
+                ['code' => $code, 'name' => $name]
+            );
+            if (!$row) {
+                throw $e;
+            }
+
+            return [
+                'id' => (int)$row['id'],
+                'code' => (string)($row['code'] ?? $code),
+                'name' => (string)($row['name'] ?? $name),
+                'kind' => (string)($row['kind'] ?? $kind),
+                'main_kind' => (string)($row['main_kind'] ?? $mainKind),
+            ];
+        }
+
+        $id = (int)$db->lastInsertId();
+
+        return [
+            'id' => $id,
+            'code' => $code,
+            'name' => $name,
+            'kind' => $kind,
+            'main_kind' => $mainKind,
+        ];
+    }
+
+    private function upsertAutoEntry(Connection $db, string $date, int $categoryId, string $label, int $amountCents, string $marker): void
+    {
+        $notes = trim($marker);
+        if ($notes === '') {
+            throw new \InvalidArgumentException('Auto entry marker is required.');
+        }
+
+        if ($amountCents === 0) {
+            $db->executeStatement(
+                "DELETE FROM ongleri.accounting_entries WHERE notes = :notes",
+                ['notes' => $notes]
+            );
+            return;
+        }
+
+        $existing = $db->fetchAssociative(
+            "SELECT id FROM ongleri.accounting_entries WHERE notes = :notes LIMIT 1",
+            ['notes' => $notes]
+        );
+
+        if ($existing) {
+            $db->executeStatement(
+                "UPDATE ongleri.accounting_entries
+                    SET date = :date,
+                        label = :label,
+                        amount_cents = :amount_cents,
+                        category_id = :category_id
+                  WHERE id = :id",
+                [
+                    'date' => $date,
+                    'label' => $label,
+                    'amount_cents' => $amountCents,
+                    'category_id' => $categoryId,
+                    'id' => (int)$existing['id'],
+                ]
+            );
+            return;
+        }
+
+        $db->executeStatement(
+            "INSERT INTO ongleri.accounting_entries (date, label, amount_cents, category_id, notes)
+             VALUES (:date, :label, :amount_cents, :category_id, :notes)",
+            [
+                'date' => $date,
+                'label' => $label,
+                'amount_cents' => $amountCents,
+                'category_id' => $categoryId,
+                'notes' => $notes,
+            ]
+        );
+    }
+
+    private function collectCustomerOrderSummary(Connection $db, string $start, string $end): array
+    {
+        $rows = $db->fetchAllAssociative(
+            "SELECT o.id,
+                    o.encaisse_at,
+                    o.total_cents,
+                    o.tip_cents,
+                    o.payments_json,
+                    o.customer_id,
+                    o.note,
+                    o.payment_method,
+                    c.first_name,
+                    c.last_name,
+                    COALESCE(c.status, 'active') AS customer_status
+               FROM ongleri.orders o
+          LEFT JOIN ongleri.customers c ON c.id = o.customer_id
+              WHERE o.encaisse_at IS NOT NULL
+                AND o.encaisse_at >= :start
+                AND o.encaisse_at < DATE_ADD(:end, INTERVAL 1 DAY)
+                AND o.customer_id IS NOT NULL
+           ORDER BY o.encaisse_at ASC, o.id ASC",
+            ['start' => $start, 'end' => $end]
+        );
+
+        $incomes = [];
+        $incomeTotal = 0;
+        $tipTotal = 0;
+        $reductionTotal = 0;
+
+        foreach ($rows as $row) {
+            $total = (int)($row['total_cents'] ?? 0);
+            $incomeTotal += $total;
+
+            $firstName = (string)($row['first_name'] ?? '');
+            $lastName  = (string)($row['last_name'] ?? '');
+            $fullName  = trim(sprintf('%s %s', $lastName, $firstName));
+
+            $tip = max(0, (int)($row['tip_cents'] ?? 0));
+            $tipTotal += $tip;
+
+            $reducCents = 0;
+            if (!empty($row['payments_json']) && is_string($row['payments_json'])) {
+                $decoded = json_decode($row['payments_json'], true);
+                if (is_array($decoded)) {
+                    foreach ($decoded as $entry) {
+                        if (!is_array($entry)) {
+                            continue;
+                        }
+                        $method = strtolower((string)($entry['method'] ?? ''));
+                        if ($method !== 'reduction') {
+                            continue;
+                        }
+                        $raw = (int)($entry['amount_cents'] ?? 0);
+                        $reducCents += $raw < 0 ? -$raw : $raw;
+                    }
+                }
+            }
+            $reductionTotal += $reducCents;
+
+            $incomes[] = [
+                'order_id'       => (int)$row['id'],
+                'encaisse_at'    => $row['encaisse_at'],
+                'total_cents'    => $total,
+                'payment_method' => $row['payment_method'],
+                'note'           => $row['note'],
+                'tip_cents'      => $tip,
+                'reduction_cents'=> $reducCents,
+                'customer'       => [
+                    'id'         => $row['customer_id'] !== null ? (int)$row['customer_id'] : null,
+                    'first_name' => $firstName,
+                    'last_name'  => $lastName,
+                    'full_name'  => $fullName !== '' ? $fullName : null,
+                    'status'     => (string)($row['customer_status'] ?? 'active'),
+                ],
+            ];
+        }
+
+        return [
+            'incomes' => $incomes,
+            'income_total_cents' => $incomeTotal,
+            'tip_total_cents' => $tipTotal,
+            'reduction_total_cents' => $reductionTotal,
+        ];
+    }
+
+    private function syncMonthlyOrderEntries(Connection $db, string $ym, string $start, string $end, ?array $summary = null): array
+    {
+        $data = $summary ?? $this->collectCustomerOrderSummary($db, $start, $end);
+
+        $category = $this->ensureCategoryByCode($db, 'RECETTE_CLIENT', 'Recette Client', 'bank', 'income');
+        $dateForEntries = $end;
+
+        $this->upsertAutoEntry(
+            $db,
+            $dateForEntries,
+            $category['id'],
+            sprintf('Recettes clients %s', $ym),
+            (int)($data['income_total_cents'] ?? 0),
+            "[AUTO_RECETTE_CLIENT:$ym]"
+        );
+
+        $this->upsertAutoEntry(
+            $db,
+            $dateForEntries,
+            $category['id'],
+            sprintf('Pourboires %s', $ym),
+            (int)($data['tip_total_cents'] ?? 0),
+            "[AUTO_POURBOIRES:$ym]"
+        );
+
+        $reductions = (int)($data['reduction_total_cents'] ?? 0);
+        $this->upsertAutoEntry(
+            $db,
+            $dateForEntries,
+            $category['id'],
+            sprintf('Réductions clients %s', $ym),
+            $reductions > 0 ? -$reductions : 0,
+            "[AUTO_REDUCTIONS:$ym]"
+        );
+
+        return $data;
+    }
+
+    private function splitRecetteClientCategory(array &$byId, int $categoryId): void
+    {
+        if (!isset($byId[$categoryId])) {
+            return;
+        }
+
+        $original = $byId[$categoryId];
+        $lines = $original['lines'] ?? [];
+        if (empty($lines)) {
+            return;
+        }
+
+        $kind = (string)($original['kind'] ?? 'bank');
+        $mainKind = (string)($original['main_kind'] ?? 'income');
+
+        $groups = [
+            'Recette Client' => ['debit' => 0, 'credit' => 0, 'lines' => []],
+            'Pourboires' => ['debit' => 0, 'credit' => 0, 'lines' => []],
+            'Réductions' => ['debit' => 0, 'credit' => 0, 'lines' => []],
+        ];
+
+        foreach ($lines as $line) {
+            $label = (string)($line['label'] ?? '');
+            $target = 'Recette Client';
+
+            if (str_starts_with($label, 'Pourboires ')) {
+                $target = 'Pourboires';
+            } elseif (str_starts_with($label, 'Réductions clients ')) {
+                $target = 'Réductions';
+            } elseif (str_starts_with($label, 'Recettes clients ')) {
+                $target = 'Recette Client';
+            }
+
+            $groups[$target]['lines'][] = $line;
+
+            $amt = (int)($line['amount_cents'] ?? 0);
+            if ($amt < 0) {
+                $groups[$target]['debit'] += -$amt;
+            } elseif ($amt > 0) {
+                $groups[$target]['credit'] += $amt;
+            }
+        }
+
+        $virtualCats = [];
+        foreach ($groups as $name => $data) {
+            $debit = (int)$data['debit'];
+            $credit = (int)$data['credit'];
+            if ($debit === 0 && $credit === 0) {
+                continue;
+            }
+
+            $virtualCats[] = [
+                'id' => 0, // placeholder to be replaced
+                'name' => $name,
+                'kind' => $kind,
+                'main_kind' => $mainKind,
+                'debit_cents' => $debit,
+                'credit_cents' => $credit,
+                'lines' => $data['lines'],
+            ];
+        }
+
+        if (empty($virtualCats)) {
+            return;
+        }
+
+        $virtualId = -1000;
+        foreach ($virtualCats as &$virtual) {
+            while (isset($byId[$virtualId]) || $virtualId === $categoryId) {
+                $virtualId--;
+            }
+            $virtual['id'] = $virtualId;
+            $virtualId--;
+        }
+        unset($virtual);
+
+        $newById = [];
+        foreach ($byId as $id => $cat) {
+            if ($id === $categoryId) {
+                foreach ($virtualCats as $virtual) {
+                    $newById[$virtual['id']] = $virtual;
+                }
+                continue;
+            }
+            $newById[$id] = $cat;
+        }
+
+        $byId = $newById;
     }
 
     /**
@@ -575,19 +920,215 @@ class PosAccountingController extends AbstractController
     public function categories(Connection $db): JsonResponse
     {
         $rows = $db->fetchAllAssociative("
-            SELECT id, code, name, kind
+            SELECT id, code, name, kind, main_kind
             FROM ongleri.accounting_categories
-            ORDER BY kind, name
+            ORDER BY main_kind, name
         ");
 
-        $items = array_map(fn($r) => [
-            'id'   => (int)$r['id'],
-            'code' => (string)$r['code'],
-            'name' => (string)$r['name'],
-            'kind' => (string)$r['kind'], // 'bank' | 'expense'
-        ], $rows ?? []);
+        $items = array_map(function ($r) {
+            $mainKind = strtolower((string)($r['main_kind'] ?? ''));
+            if ($mainKind === '') {
+                $mainKind = 'asset';
+            }
+
+            return [
+                'id' => (int)$r['id'],
+                'code' => (string)$r['code'],
+                'name' => (string)$r['name'],
+                'kind' => (string)$r['kind'],
+                'main_kind' => $mainKind,
+            ];
+        }, $rows ?? []);
 
         return $this->json($items);
+    }
+
+    #[Route('/api/accounting/categories', name: 'api_accounting_categories_create', methods: ['POST'])]
+    public function createCategory(Request $req, Connection $db): JsonResponse
+    {
+        $payload = json_decode($req->getContent() ?: '{}', true);
+        if (!is_array($payload)) {
+            return $this->json(['error' => 'Corps JSON invalide.'], 400);
+        }
+
+        $code = trim((string)($payload['code'] ?? ''));
+        $name = trim((string)($payload['name'] ?? ''));
+        $kind = strtolower(trim((string)($payload['kind'] ?? '')));
+        $mainKind = strtolower(trim((string)($payload['main_kind'] ?? '')));
+
+        if ($code === '' || $name === '') {
+            return $this->json(['error' => 'Code et nom sont requis.'], 400);
+        }
+        if (strlen($code) > 64) {
+            return $this->json(['error' => 'Code trop long (64 max).'], 400);
+        }
+        if (strlen($name) > 128) {
+            return $this->json(['error' => 'Nom trop long (128 max).'], 400);
+        }
+        if (!in_array($kind, ['bank', 'expense'], true)) {
+            return $this->json(['error' => 'Type invalide (bank ou expense).'], 400);
+        }
+
+        if ($mainKind === '') {
+            $mainKind = $kind === 'expense' ? 'expense' : 'asset';
+        }
+        if (!in_array($mainKind, ['asset', 'liability', 'income', 'expense'], true)) {
+            return $this->json(['error' => 'Catégorie principale invalide.'], 400);
+        }
+
+        try {
+            $db->executeStatement(
+                "INSERT INTO ongleri.accounting_categories (code, name, kind, main_kind)
+                 VALUES (:code, :name, :kind, :main_kind)",
+                ['code' => $code, 'name' => $name, 'kind' => $kind, 'main_kind' => $mainKind]
+            );
+        } catch (UniqueConstraintViolationException $e) {
+            return $this->json(['error' => 'Ce code est déjà utilisé.'], 409);
+        }
+
+        $id = (int)$db->lastInsertId();
+
+        return $this->json([
+            'ok' => true,
+            'item' => [
+                'id'   => $id,
+                'code' => $code,
+                'name' => $name,
+                'kind' => $kind,
+                'main_kind' => $mainKind,
+            ],
+        ], 201);
+    }
+
+    #[Route('/api/accounting/categories/{id<\d+>}', name: 'api_accounting_categories_update', methods: ['PATCH'])]
+    public function updateCategory(int $id, Request $req, Connection $db): JsonResponse
+    {
+        if ($id <= 0) {
+            return $this->json(['error' => 'Identifiant invalide.'], 400);
+        }
+
+        $exists = $db->fetchAssociative(
+            "SELECT id, code, name, kind, main_kind FROM ongleri.accounting_categories WHERE id = :id",
+            ['id' => $id]
+        );
+        if (!$exists) {
+            return $this->json(['error' => 'Catégorie introuvable.'], 404);
+        }
+
+        $payload = json_decode($req->getContent() ?: '{}', true);
+        if (!is_array($payload)) {
+            return $this->json(['error' => 'Corps JSON invalide.'], 400);
+        }
+
+        $updates = [];
+
+        if (array_key_exists('code', $payload)) {
+            $code = trim((string)$payload['code']);
+            if ($code === '') {
+                return $this->json(['error' => 'Code requis.'], 400);
+            }
+            if (strlen($code) > 64) {
+                return $this->json(['error' => 'Code trop long (64 max).'], 400);
+            }
+            $updates['code'] = $code;
+        }
+
+        if (array_key_exists('name', $payload)) {
+            $name = trim((string)$payload['name']);
+            if ($name === '') {
+                return $this->json(['error' => 'Nom requis.'], 400);
+            }
+            if (strlen($name) > 128) {
+                return $this->json(['error' => 'Nom trop long (128 max).'], 400);
+            }
+            $updates['name'] = $name;
+        }
+
+        if (array_key_exists('kind', $payload)) {
+            $kind = strtolower(trim((string)$payload['kind'] ?? ''));
+            if (!in_array($kind, ['bank', 'expense'], true)) {
+                return $this->json(['error' => 'Type invalide (bank ou expense).'], 400);
+            }
+            $updates['kind'] = $kind;
+        }
+
+        if (array_key_exists('main_kind', $payload)) {
+            $mainKind = strtolower(trim((string)$payload['main_kind'] ?? ''));
+            $effectiveKind = $updates['kind'] ?? $exists['kind'];
+            if ($mainKind === '') {
+                $mainKind = $effectiveKind === 'expense' ? 'expense' : 'asset';
+            }
+            if (!in_array($mainKind, ['asset', 'liability', 'income', 'expense'], true)) {
+                return $this->json(['error' => 'Catégorie principale invalide.'], 400);
+            }
+            $updates['main_kind'] = $mainKind;
+        }
+
+        if (!$updates) {
+            return $this->json([
+                'ok' => true,
+                'item' => [
+                    'id'   => (int)$exists['id'],
+                    'code' => (string)$exists['code'],
+                    'name' => (string)$exists['name'],
+                    'kind' => (string)$exists['kind'],
+                ],
+            ]);
+        }
+
+        try {
+            $db->update('ongleri.accounting_categories', $updates, ['id' => $id]);
+        } catch (UniqueConstraintViolationException $e) {
+            return $this->json(['error' => 'Ce code est déjà utilisé.'], 409);
+        }
+
+        $row = $db->fetchAssociative(
+            "SELECT id, code, name, kind, main_kind FROM ongleri.accounting_categories WHERE id = :id",
+            ['id' => $id]
+        );
+
+        $mainKind = strtolower((string)($row['main_kind'] ?? ''));
+        if ($mainKind === '') {
+            $mainKind = 'asset';
+        }
+
+        return $this->json([
+            'ok' => true,
+            'item' => [
+                'id' => (int)$row['id'],
+                'code' => (string)$row['code'],
+                'name' => (string)$row['name'],
+                'kind' => (string)$row['kind'],
+                'main_kind' => $mainKind,
+            ],
+        ]);
+    }
+
+    #[Route('/api/accounting/categories/{id<\d+>}', name: 'api_accounting_categories_delete', methods: ['DELETE'])]
+    public function deleteCategory(int $id, Connection $db): JsonResponse
+    {
+        if ($id <= 0) {
+            return $this->json(['error' => 'Identifiant invalide.'], 400);
+        }
+
+        $exists = $db->fetchOne(
+            "SELECT id FROM ongleri.accounting_categories WHERE id = :id",
+            ['id' => $id]
+        );
+        if (!$exists) {
+            return $this->json(['error' => 'Catégorie introuvable.'], 404);
+        }
+
+        try {
+            $deleted = $db->executeStatement(
+                "DELETE FROM ongleri.accounting_categories WHERE id = :id",
+                ['id' => $id]
+            );
+        } catch (ForeignKeyConstraintViolationException $e) {
+            return $this->json(['error' => 'Impossible de supprimer cette catégorie car elle est utilisée.'], 409);
+        }
+
+        return $this->json(['ok' => true, 'deleted' => (int)$deleted]);
     }
 
     /** List entries for a given month
@@ -823,18 +1364,26 @@ class PosAccountingController extends AbstractController
         $start = sprintf('%04d-%02d-01', $Y, $M);
         $end   = (new \DateTimeImmutable("$start 00:00:00"))->modify('last day of this month')->format('Y-m-d');
 
+        $this->syncMonthlyOrderEntries($db, $ym, $start, $end);
+
         // Load all categories
         $cats = $db->fetchAllAssociative("
-            SELECT id, name, kind
+            SELECT id, name, kind, main_kind
             FROM ongleri.accounting_categories
-            ORDER BY kind, name
+            ORDER BY main_kind, name
         ");
         $byId = [];
         foreach ($cats as $c) {
+            $mainKind = strtolower((string)($c['main_kind'] ?? ''));
+            if ($mainKind === '') {
+                $mainKind = 'asset';
+            }
+
             $byId[(int)$c['id']] = [
                 'id' => (int)$c['id'],
                 'name' => (string)$c['name'],
                 'kind' => (string)$c['kind'],
+                'main_kind' => $mainKind,
                 'debit_cents' => 0,
                 'credit_cents' => 0,
                 'lines' => [],
@@ -875,6 +1424,62 @@ class PosAccountingController extends AbstractController
             ];
         }
 
+        // Carry forward balances for Actif/Passif categories only.
+        $carryRows = $db->fetchAllAssociative(
+            "SELECT category_id, COALESCE(SUM(amount_cents), 0) AS balance
+               FROM ongleri.accounting_entries
+              WHERE date < :start
+           GROUP BY category_id",
+            ['start' => $start]
+        );
+
+        $carryLabel = sprintf('Solde antérieur au %s', $start);
+        $carryDate = (new \DateTimeImmutable($start))->format('Y-m-d');
+        $virtualId = -5000;
+
+        foreach ($carryRows as $carry) {
+            $cid = (int)($carry['category_id'] ?? 0);
+            if (!isset($byId[$cid])) {
+                continue;
+            }
+
+            $mainKind = strtolower((string)($byId[$cid]['main_kind'] ?? ''));
+            if (!in_array($mainKind, ['asset', 'liability'], true)) {
+                continue; // produce carry only for Actif/Passif
+            }
+
+            $amt = (int)($carry['balance'] ?? 0);
+            if ($amt === 0) {
+                continue;
+            }
+
+            if ($amt < 0) {
+                $byId[$cid]['debit_cents'] += -$amt;
+                $totDebit += -$amt;
+            } else {
+                $byId[$cid]['credit_cents'] += $amt;
+                $totCredit += $amt;
+            }
+
+            $side = $amt < 0 ? 'debit' : 'credit';
+            array_unshift($byId[$cid]['lines'], [
+                'id' => $virtualId,
+                'date' => $carryDate,
+                'label' => $carryLabel,
+                'amount_cents' => $amt,
+                'side' => $side,
+            ]);
+
+            $virtualId--;
+        }
+
+        foreach ($byId as $catId => $catData) {
+            if (strcasecmp((string)($catData['name'] ?? ''), 'Recette Client') === 0) {
+                $this->splitRecetteClientCategory($byId, (int)$catId);
+                break;
+            }
+        }
+
         return $this->json([
             'ym' => $ym,
             'categories' => array_values($byId),
@@ -898,51 +1503,11 @@ class PosAccountingController extends AbstractController
         $start = sprintf('%04d-%02d-01', $Y, $M);
         $end   = (new \DateTimeImmutable("$start 00:00:00"))->modify('last day of this month')->format('Y-m-d');
 
-        // Orders with an associated customer (income side)
-        $orderRows = $db->fetchAllAssociative(
-            "SELECT o.id,
-                    o.encaisse_at,
-                    o.total_cents,
-                    o.customer_id,
-                    o.note,
-                    o.payment_method,
-                    c.first_name,
-                    c.last_name,
-                    COALESCE(c.status, 'active') AS customer_status
-               FROM ongleri.orders o
-          LEFT JOIN ongleri.customers c ON c.id = o.customer_id
-              WHERE o.encaisse_at IS NOT NULL
-                AND o.encaisse_at >= :start
-                AND o.encaisse_at < DATE_ADD(:end, INTERVAL 1 DAY)
-                AND o.customer_id IS NOT NULL
-           ORDER BY o.encaisse_at ASC, o.id ASC",
-            ['start' => $start, 'end' => $end]
-        );
-
-        $incomes = [];
-        $incomeTotal = 0;
-        foreach ($orderRows as $row) {
-            $total = (int)($row['total_cents'] ?? 0);
-            $incomeTotal += $total;
-            $firstName = (string)($row['first_name'] ?? '');
-            $lastName  = (string)($row['last_name'] ?? '');
-            $fullName  = trim(sprintf('%s %s', $lastName, $firstName));
-
-            $incomes[] = [
-                'order_id'       => (int)$row['id'],
-                'encaisse_at'    => $row['encaisse_at'],
-                'total_cents'    => $total,
-                'payment_method' => $row['payment_method'],
-                'note'           => $row['note'],
-                'customer'       => [
-                    'id'         => $row['customer_id'] !== null ? (int)$row['customer_id'] : null,
-                    'first_name' => $firstName,
-                    'last_name'  => $lastName,
-                    'full_name'  => $fullName !== '' ? $fullName : null,
-                    'status'     => (string)($row['customer_status'] ?? 'active'),
-                ],
-            ];
-        }
+        $orderSummary = $this->syncMonthlyOrderEntries($db, $ym, $start, $end);
+        $incomes = $orderSummary['incomes'] ?? [];
+        $incomeTotal = (int)($orderSummary['income_total_cents'] ?? 0);
+        $tipTotal = (int)($orderSummary['tip_total_cents'] ?? 0);
+        $reductionTotal = (int)($orderSummary['reduction_total_cents'] ?? 0);
 
         // Expense entries for the month (categories flagged as "expense")
         $expenseRows = $db->fetchAllAssociative(
@@ -992,6 +1557,8 @@ class PosAccountingController extends AbstractController
             'expenses' => $expenses,
             'expenses_total_cents' => $expenseTotal,
             'net_cents' => $incomeTotal - $expenseTotal,
+            'tips_total_cents' => $tipTotal,
+            'reductions_total_cents' => $reductionTotal,
         ]);
     }
 

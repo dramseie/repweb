@@ -21,4 +21,40 @@ class ReportListController extends AbstractController
         ");
         return $this->json(['reports' => $rows]);
     }
+
+    #[Route('/api/reports/tenant/{tenant}', name: 'reports_list_tenant', methods: ['GET'])]
+    public function listByTenant(string $tenant): JsonResponse
+    {
+        $tenant = trim($tenant);
+        if ($tenant === '') {
+            return $this->json(['reports' => []]);
+        }
+
+        $rows = $this->db->fetchAllAssociative(
+            "SELECT repid, repshort, reptitle, reptype
+             FROM report
+             WHERE JSON_UNQUOTE(JSON_EXTRACT(reptenant, '$.tenant')) = :tenant
+             ORDER BY reptype, reptitle",
+            ['tenant' => $tenant]
+        );
+
+        return $this->json(['reports' => $rows]);
+    }
+
+    #[Route('/api/report/{repid}/meta', name: 'report_meta', methods: ['GET'])]
+    public function meta(int $repid): JsonResponse
+    {
+        $row = $this->db->fetchAssociative(
+            'SELECT repid, reptitle, repdesc, repparam FROM report WHERE repid = :id',
+            ['id' => $repid]
+        );
+
+        if (!$row) {
+            return $this->json(['message' => 'Report not found'], 404);
+        }
+
+        return $this->json([
+            'report' => $row,
+        ]);
+    }
 }

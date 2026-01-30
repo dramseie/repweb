@@ -1,0 +1,6 @@
+scheb_two_factor:
+  totp:
+    enabled: true
+    issuer: 'Repweb'
+    template: security/2fa_form.html.twig
+    leeway: 2

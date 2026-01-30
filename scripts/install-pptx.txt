@@ -1,0 +1,3 @@
+sudo rm -rf /var/www/html/repweb/site-packages
+sudo /usr/bin/python3 -m pip install --ignore-installed --upgrade --target /usr/local/lib/python3.9/site-packages python-pptx
+sudo -u apache /usr/bin/python3 -c "import pptx; print(pptx.__version__)"

@@ -38,6 +38,9 @@ class Report
     #[ORM\Column(name: 'repts', type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $repts = null;
 
+    #[ORM\Column(name: 'reptenant', type: 'json', nullable: true)]
+    private ?array $reptenant = null;
+
     // --- Getters / setters ---
 
     public function getRepid(): ?int
@@ -130,6 +133,17 @@ class Report
     public function setRepts(?\DateTimeInterface $repts): self
     {
         $this->repts = $repts;
+        return $this;
+    }
+
+    public function getReptenant(): ?array
+    {
+        return $this->reptenant;
+    }
+
+    public function setReptenant(?array $reptenant): self
+    {
+        $this->reptenant = $reptenant;
         return $this;
     }
 }

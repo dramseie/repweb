@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /** Parse a SQL/ISO-like local timestamp into a local Date. */
 function toLocalDate(s) {
@@ -28,7 +28,7 @@ export default function PaymentDialog({
   amountDueCents = 0,
   rendezVousAtIso = null, // e.g. "2025-09-10T13:00:00"
   elapsedMinutesInitial = null,  // NEW
-  orderId = null, // ← ADD THIS LINE
+  orderId = null,
 }) {
 
 
@@ -37,8 +37,12 @@ export default function PaymentDialog({
   const [reducValue, setReducValue] = useState("");
 
   // Method + money
-  const [method, setMethod] = useState("cash");         // cash|card|twint|voucher|transfer|other
+  const [method, setMethod] = useState("cash");         // cash|card|twint|cheque|voucher|transfer|loyalty|other
   const [amountReceived, setAmountReceived] = useState("");
+
+  // Invoice export
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [invoiceError, setInvoiceError] = useState("");
 
   // Time fields
   const [encaisseAt, setEncaisseAt] = useState(() => new Date());
@@ -77,7 +81,13 @@ export default function PaymentDialog({
     if (!show) return;
     const now = new Date();
     setEncaisseAt(now);
-    if (method === 'cash') setAmountReceived((dueAfterReducCents / 100).toFixed(2));
+    if (method === 'cash') {
+      setAmountReceived((dueAfterReducCents / 100).toFixed(2));
+    } else if (method === 'loyalty') {
+      setAmountReceived('0');
+    }
+    setInvoiceError("");
+    setInvoiceLoading(false);
   }, [show, dueAfterReducCents, method]);
 
   // Robust elapsed computation (LOCAL) — recompute whenever input or RDV changes
@@ -117,12 +127,45 @@ export default function PaymentDialog({
     if (d) setEncaisseAt(d);
   };
 
+  const previousReduction = useRef(null);
+
+  useEffect(() => {
+    if (method === 'loyalty') {
+      if (!previousReduction.current) {
+        previousReduction.current = { mode: reducMode, value: reducValue };
+      }
+      if (reducMode !== 'percent') setReducMode('percent');
+      if (reducValue !== '100') setReducValue('100');
+      setAmountReceived('0');
+    } else if (previousReduction.current) {
+      const { mode, value } = previousReduction.current;
+      previousReduction.current = null;
+      setReducMode(mode);
+      setReducValue(value);
+    }
+  }, [method, reducMode, reducValue]);
+
+  const handleMethodChange = (e) => {
+    const value = e.target.value;
+    setMethod(value);
+    if (value !== 'cash') {
+      setAmountReceived('0');
+    }
+  };
+
+  const loyaltySelected = method === 'loyalty';
+
 const handleConfirm = async () => {
   const payAmountCents = dueAfterReducCents;
   const amountReceivedCents = method === 'cash' ? asCents(amountReceived) : payAmountCents;
   
+  const payments = [{ method, amount_cents: payAmountCents }];
+  if (reductionCents > 0) {
+    payments.push({ method: 'reduction', amount_cents: -reductionCents });
+  }
+
   await onConfirm?.({
-    orderId,  // ← ADD THIS LINE (at the beginning of the object)
+    orderId,
     amountDueCents,
     reductionCents,
     amountReceivedCents,
@@ -130,10 +173,44 @@ const handleConfirm = async () => {
     encaisseAtIso: (toLocalDate(encaisseAt) || new Date()).toISOString(),
     elapsedMinutes: Number(elapsedMinutes) || 0,
     method,
-    payments: [{ method, amount_cents: payAmountCents }]
+    payments,
   });
   onClose?.();
 };
+
+  const handleInvoiceDownload = async () => {
+    if (!orderId || invoiceLoading) {
+      return;
+    }
+    setInvoiceError("");
+    setInvoiceLoading(true);
+    let blobUrl = null;
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}/invoice.pdf`, {
+        headers: { Accept: 'application/pdf' },
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `facture-${orderId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('Invoice download failed', err);
+      const message = err?.message || 'Impossible de generer la facture';
+      setInvoiceError(message);
+    } finally {
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+      setInvoiceLoading(false);
+    }
+  };
 
   if (!show) return null;
 
@@ -164,11 +241,13 @@ const handleConfirm = async () => {
                       type="button"
                       className={`btn btn-outline-secondary ${reducMode === 'amount' ? 'active' : ''}`}
                       onClick={() => setReducMode('amount')}
+                      disabled={loyaltySelected}
                     >€</button>
                     <button
                       type="button"
                       className={`btn btn-outline-secondary ${reducMode === 'percent' ? 'active' : ''}`}
                       onClick={() => setReducMode('percent')}
+                      disabled={loyaltySelected}
                     >%</button>
                   </div>
                 </div>
@@ -180,6 +259,7 @@ const handleConfirm = async () => {
                     min="0"
                     value={reducValue}
                     onChange={(e) => setReducValue(e.target.value)}
+                    disabled={loyaltySelected}
                     placeholder={reducMode === 'amount' ? 'Ex: 5,00' : 'Ex: 10'}
                   />
                   <span className="input-group-text">{reducMode === 'amount' ? '€' : '%'}</span>
@@ -192,12 +272,14 @@ const handleConfirm = async () => {
               {/* Méthode de paiement */}
               <div className="mb-2">
                 <label className="form-label">Méthode de paiement</label>
-                <select className="form-select" value={method} onChange={(e)=>setMethod(e.target.value)}>
+                <select className="form-select" value={method} onChange={handleMethodChange}>
                   <option value="cash">Espèces</option>
                   <option value="card">Carte</option>
                   <option value="twint">TWINT</option>
+                  <option value="cheque">Chèque</option>
                   <option value="voucher">Bon / chèque-cadeau</option>
                   <option value="transfer">Virement</option>
+                  <option value="loyalty">Carte de fidélité</option>
                   <option value="other">Autre</option>
                 </select>
               </div>
@@ -248,13 +330,30 @@ const handleConfirm = async () => {
               </div>
             </div>
 
-            <div className="modal-footer">
-              <button type="button" className="btn btn-outline-secondary" onClick={onClose}>
-                Annuler
-              </button>
-              <button type="button" className="btn btn-primary" onClick={handleConfirm}>
-                Confirmer l’encaissement
-              </button>
+            <div className="modal-footer flex-column align-items-stretch">
+              {invoiceError && (
+                <div className="alert alert-warning py-2 small w-100 mb-2">
+                  {invoiceError}
+                </div>
+              )}
+              <div className="d-flex w-100 flex-wrap align-items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={handleInvoiceDownload}
+                  disabled={!orderId || invoiceLoading}
+                >
+                  {invoiceLoading ? 'Generation...' : 'Facture PDF'}
+                </button>
+                <div className="ms-auto d-flex gap-2">
+                  <button type="button" className="btn btn-outline-secondary" onClick={onClose}>
+                    Annuler
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={handleConfirm}>
+                    Confirmer l’encaissement
+                  </button>
+                </div>
+              </div>
             </div>
 
           </div>

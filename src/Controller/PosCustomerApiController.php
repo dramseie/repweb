@@ -2,8 +2,8 @@
 namespace App\Controller;
 
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\ParameterType; // 👈 keep this
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Doctrine\DBAL\ParameterType; // 👈 keep this
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -23,7 +23,7 @@ class PosCustomerApiController extends AbstractController
         return $v === '' ? null : $v;
     }
 
-    /** Normalize + validate status. Returns [value|null, error|null] */
+    /** Normalize + validate status. Returns [value/null, error/null] */
     private function validateStatus(mixed $value, bool $defaultActive = true): array
     {
         if ($value === null || (is_string($value) && trim($value) === '')) {
@@ -38,6 +38,36 @@ class PosCustomerApiController extends AbstractController
         return [$status, null];
     }
 
+    /** Normalize preferences payload (object|string|null) into JSON string or null. */
+    private function normalizePreferences(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $trim = trim($value);
+            if ($trim === '') {
+                return null;
+            }
+            json_decode($trim, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \InvalidArgumentException('Préférences: JSON invalide');
+            }
+            return $trim;
+        }
+
+        if (is_array($value) || is_object($value)) {
+            try {
+                return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR);
+            } catch (\JsonException $e) {
+                throw new \InvalidArgumentException('Préférences: JSON invalide', 0, $e);
+            }
+        }
+
+        throw new \InvalidArgumentException('Préférences: format non supporté');
+    }
+
     #[Route('/customers', name: 'customers_search', methods: ['GET'])]
     public function search(Request $req): JsonResponse
     {
@@ -46,10 +76,10 @@ class PosCustomerApiController extends AbstractController
         // No query -> last updated
         if ($q === '') {
             $rows = $this->conn->fetchAllAssociative(
-                "SELECT id, first_name, last_name, phone, email, status
+                'SELECT id, first_name, last_name, phone, email, status
                    FROM ongleri.customers
                   ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
-                  LIMIT 20"
+                  LIMIT 20'
             );
             return $this->json(['items' => $rows]);
         }
@@ -59,7 +89,7 @@ class PosCustomerApiController extends AbstractController
         $like    = '%'.$q.'%';
 
         // ✅ Positional placeholders + DBAL types
-        $sql = "
+        $sql = '
                         SELECT id, first_name, last_name, phone, email, status
               FROM ongleri.customers
              WHERE (? IS NOT NULL AND id = ?)
@@ -71,7 +101,7 @@ class PosCustomerApiController extends AbstractController
                 CASE WHEN (? IS NOT NULL AND id = ?) THEN 0 ELSE 1 END,
                 last_name, first_name
              LIMIT 25
-        ";
+        ';
 
         $params = [
             $maybeId, $maybeId,
@@ -108,6 +138,15 @@ class PosCustomerApiController extends AbstractController
             return $this->json(['error' => $statusErr], 400);
         }
 
+        $preferencesJson = null;
+        if (array_key_exists('preferences', $p)) {
+            try {
+                $preferencesJson = $this->normalizePreferences($p['preferences']);
+            } catch (\InvalidArgumentException $e) {
+                return $this->json(['error' => $e->getMessage()], 400);
+            }
+        }
+
         try {
             $this->conn->insert('ongleri.customers', [
                 'first_name'    => $fn,
@@ -119,6 +158,7 @@ class PosCustomerApiController extends AbstractController
                 'gdpr_ok'       => !empty($p['gdpr_ok']) ? 1 : 0,
                 'status'        => $status,
                 'address'       => $this->tnull($p['address'] ?? null),
+                'preferences'   => $preferencesJson,
             ]);
             $id = (int)$this->conn->lastInsertId();
             return $this->json(['ok' => true, 'id' => $id, 'status' => $status]);
@@ -134,9 +174,9 @@ class PosCustomerApiController extends AbstractController
     {
         // Customer
         $c = $this->conn->fetchAssociative(
-            "SELECT id, first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok, status, address, created_at, updated_at
+            'SELECT id, first_name, last_name, phone, email, notes_public, notes_private, preferences, gdpr_ok, status, address, created_at, updated_at
                FROM ongleri.customers
-              WHERE id = ?",
+              WHERE id = ?',
             [$id],
             [ParameterType::INTEGER]
         );
@@ -144,9 +184,18 @@ class PosCustomerApiController extends AbstractController
             return $this->json(['error' => 'Not found'], 404);
         }
 
+        if (array_key_exists('preferences', $c) && is_string($c['preferences'])) {
+            $decoded = json_decode($c['preferences'], true);
+            if (json_last_error() === JSON_ERROR_NONE && (is_array($decoded) || is_object($decoded))) {
+                $c['preferences'] = $decoded;
+            } else {
+                $c['preferences'] = null;
+            }
+        }
+
         // Appointments (planned vs real + durations)
         $appts = $this->conn->fetchAllAssociative(
-            "SELECT
+            'SELECT
                  id,
                  start_at,
                  end_at,
@@ -164,18 +213,18 @@ class PosCustomerApiController extends AbstractController
              FROM ongleri.appointments
              WHERE customer_id = ?
              ORDER BY start_at DESC
-             LIMIT 50",
+             LIMIT 50',
             [$id],
             [ParameterType::INTEGER]
         );
 
         // Orders
         $orders = $this->conn->fetchAllAssociative(
-            "SELECT id, created_at, total_cents, total_tax_cents, note, appointment_id, elapsed_minutes, encaisse_at, tip_cents, realizations_json
+            'SELECT id, created_at, total_cents, total_tax_cents, note, appointment_id, elapsed_minutes, encaisse_at, tip_cents, realizations_json
                FROM ongleri.orders
               WHERE customer_id = ?
               ORDER BY created_at DESC
-              LIMIT 50",
+              LIMIT 50',
             [$id],
             [ParameterType::INTEGER]
         );
@@ -206,7 +255,7 @@ class PosCustomerApiController extends AbstractController
     {
         // Ensure customer exists
         $exists = (int)$this->conn->fetchOne(
-            "SELECT COUNT(*) FROM ongleri.customers WHERE id = ?",
+            'SELECT COUNT(*) FROM ongleri.customers WHERE id = ?',
             [$id],
             [ParameterType::INTEGER]
         );
@@ -227,7 +276,7 @@ class PosCustomerApiController extends AbstractController
         // Whitelist updatable fields
         $allowed = [
             'first_name', 'last_name', 'phone', 'email',
-            'notes_public', 'notes_private', 'gdpr_ok', 'status', 'address'
+            'notes_public', 'notes_private', 'gdpr_ok', 'status', 'address', 'preferences'
         ];
 
         $setParts = [];
@@ -240,6 +289,18 @@ class PosCustomerApiController extends AbstractController
                 if (in_array($f, ['phone','email','notes_public','notes_private','address'], true)) {
                     $val = $this->tnull($val);
                 }
+                if ($f === 'preferences') {
+                    try {
+                        $val = $this->normalizePreferences($val);
+                    } catch (\InvalidArgumentException $e) {
+                        return $this->json(['error' => $e->getMessage()], 400);
+                    }
+                    $setParts[] = "$f = ?";
+                    $params[]   = $val;
+                    $types[]    = ParameterType::STRING;
+                    continue;
+                }
+
                 if ($f === 'gdpr_ok') {
                     $val = !empty($val) ? 1 : 0;
                     $types[] = ParameterType::INTEGER;
@@ -261,7 +322,7 @@ class PosCustomerApiController extends AbstractController
         }
 
         // Append updated_at and id
-        $sql = "UPDATE ongleri.customers SET ".implode(', ', $setParts).", updated_at = NOW() WHERE id = ?";
+        $sql = 'UPDATE ongleri.customers SET '.implode(', ', $setParts).', updated_at = NOW() WHERE id = ?';
         $params[] = $id;
         $types[]  = ParameterType::INTEGER;
 
@@ -270,12 +331,21 @@ class PosCustomerApiController extends AbstractController
 
             // Return the fresh row
             $row = $this->conn->fetchAssociative(
-                "SELECT id, first_name, last_name, phone, email, notes_public, notes_private, gdpr_ok, status, address, created_at, updated_at
+                'SELECT id, first_name, last_name, phone, email, notes_public, notes_private, preferences, gdpr_ok, status, address, created_at, updated_at
                    FROM ongleri.customers
-                  WHERE id = ?",
+                  WHERE id = ?',
                 [$id],
                 [ParameterType::INTEGER]
             );
+
+            if ($row && array_key_exists('preferences', $row) && is_string($row['preferences'])) {
+                $decoded = json_decode($row['preferences'], true);
+                if (json_last_error() === JSON_ERROR_NONE && (is_array($decoded) || is_object($decoded))) {
+                    $row['preferences'] = $decoded;
+                } else {
+                    $row['preferences'] = null;
+                }
+            }
 
             return $this->json($row);
         } catch (UniqueConstraintViolationException $e) {
@@ -283,5 +353,42 @@ class PosCustomerApiController extends AbstractController
         } catch (\Throwable $e) {
             return $this->json(['error' => 'DB error', 'detail' => $e->getMessage()], 500);
         }
+    }
+
+    #[Route('/customers/{id}', name: 'customers_delete', methods: ['DELETE'])]
+    public function delete(int $id): JsonResponse
+    {
+        $exists = $this->conn->fetchAssociative(
+            'SELECT id FROM ongleri.customers WHERE id = ?',
+            [$id],
+            [ParameterType::INTEGER]
+        );
+        if (!$exists) {
+            return $this->json(['error' => 'Not found'], 404);
+        }
+
+        $refs = $this->conn->fetchAssociative(
+            'SELECT
+                 (SELECT COUNT(*) FROM ongleri.appointments WHERE customer_id = ?) AS appointments,
+                 (SELECT COUNT(*) FROM ongleri.orders       WHERE customer_id = ?) AS orders',
+            [$id, $id],
+            [ParameterType::INTEGER, ParameterType::INTEGER]
+        );
+
+        if (($refs['appointments'] ?? 0) > 0 || ($refs['orders'] ?? 0) > 0) {
+            return $this->json([
+                'error' => 'Impossible de supprimer un client avec des rendez-vous ou des commandes.',
+                'appointments' => (int)($refs['appointments'] ?? 0),
+                'orders' => (int)($refs['orders'] ?? 0),
+            ], 409);
+        }
+
+        $this->conn->executeStatement(
+            'DELETE FROM ongleri.customers WHERE id = ?',
+            [$id],
+            [ParameterType::INTEGER]
+        );
+
+        return $this->json(['ok' => true]);
     }
 }

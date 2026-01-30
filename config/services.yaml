@@ -27,6 +27,7 @@ parameters:
   grafana_jwt.issuer: 'repweb'
   grafana_jwt.audience: 'grafana'
   grafana_jwt.ttl: 3600  # seconds
+  gallery.storage_dir: '%env(resolve:GALLERY_STORAGE_PATH)%'
 
 services:
   _defaults:
@@ -109,6 +110,10 @@ services:
     arguments:
       $privateKeyPath: '%grafana_jwt.private_key_path%'
 
+  App\Service\GalleryManager:
+    arguments:
+      $storageDir: '%gallery.storage_dir%'
+
   App\Controller\GrafanaAuthController:
     public: true
     tags: ['controller.service_arguments']
@@ -145,4 +150,7 @@ services:
       $apiKey: '%env(string:MISTRAL_API_KEY)%'
       $baseUrl: '%env(string:MISTRAL_API_BASE)%'
       $model: '%env(string:MISTRAL_MODEL)%'
- 
+
+  App\Service\SmartsheetService:
+    arguments:
+      $smartsheetApiToken: '%env(string:SMARTSHEET_API_TOKEN)%'

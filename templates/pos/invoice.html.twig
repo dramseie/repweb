@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8">
+    <title>Facture {{ invoiceNumber }}</title>
+    <style>
+    :root {
+      --brand-color: #111111;
+      --muted-color: #5f5f5f;
+      --border-color: #1d1d1d;
+      --light-border: #dcdcdc;
+      --table-header: #f4f4f4;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: DejaVu Sans, sans-serif;
+      font-size: 12px;
+      color: var(--brand-color);
+      margin: 0;
+      padding: 32px 36px 40px;
+      background: #ffffff;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    @font-face {
+      font-family: 'Font Awesome 6 Free';
+      font-style: normal;
+      font-weight: 900;
+      font-display: swap;
+      src: url('{{ absolute_url(asset('bundles/easyadmin/fonts/fa-solid-900.ad1782c7.ttf')) }}') format('truetype');
+    }
+
+    .fa-solid {
+      font-family: 'Font Awesome 6 Free';
+      font-style: normal;
+      font-weight: 900;
+      display: inline-block;
+      line-height: 1;
+      text-rendering: auto;
+    }
+
+    .invoice-header {
+      width: 100%;
+      margin-bottom: 32px;
+      overflow: hidden;
+    }
+
+    .invoice-header::after {
+      content: "";
+      display: table;
+      clear: both;
+    }
+
+    .brand-block {
+      float: left;
+      width: 52%;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      align-items: flex-start;
+    }
+
+    .brand-logo {
+      width: 220px;
+      margin-bottom: 36px;
+    }
+
+    .brand-details .contact-icon {
+      width: 14px;
+      height: 14px;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+
+    .invoice-meta {
+      float: right;
+      width: 48%;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 36px;
+      align-items: flex-end;
+    }
+
+    .invoice-meta .customer-card {
+      margin-top: 120px;
+    }
+
+    .customer-card .label {
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0 32px;
+      font-size: 12px;
+    }
+
+    .items-table thead th {
+      background: var(--table-header);
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--border-color);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 11.5px;
+      text-align: left;
+    }
+
+    .items-table tbody td {
+      padding: 12px;
+      border-bottom: 1px solid var(--light-border);
+    }
+
+    .items-table tbody tr:last-child td {
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .payment-and-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 32px;
+      margin-top: 12px;
+    }
+
+    .payment-info {
+      flex: 1 1 40%;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+
+    .summary-table {
+      flex: 0 0 250px;
+      margin-left: auto;
+      border-top: 2px solid var(--border-color);
+      border-bottom: 2px solid var(--border-color);
+      padding: 12px 0;
+      display: grid;
+      row-gap: 10px;
+      text-align: right;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 18px;
+      font-size: 12.5px;
+    }
+
+    .summary-label {
+      flex: 1 1 auto;
+      text-align: right;
+      color: var(--muted-color);
+    }
+
+    .summary-value {
+      min-width: 100px;
+      text-align: right;
+      font-weight: 600;
+    }
+
+    .summary-row strong {
+      font-size: 13px;
+    }
+
+    .tax-note {
+      margin-top: 28px;
+      font-size: 11.5px;
+      color: var(--muted-color);
+    }
+
+    .footer-message {
+      margin-top: 48px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.35em;
+      font-size: 13px;
+    }
+
+    .footer-wave {
+      margin: 18px auto 0;
+      width: 180px;
+      height: 10px;
+      background: linear-gradient(90deg, var(--border-color) 25%, transparent 25%, transparent 50%, var(--border-color) 50%, var(--border-color) 75%, transparent 75%);
+      background-size: 24px 10px;
+      border-radius: 999px;
+      opacity: 0.5;
+    }
+
+    .notes {
+      margin-top: 20px;
+      font-size: 12px;
+    }
+
+    .notes strong {
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+  {% set total_ttc_cents = order.total_cents|default(0) %}
+  {% set total_tva_cents = order.total_tax_cents|default(0) %}
+  {% set total_ht_cents = total_ttc_cents - total_tva_cents %}
+  {% set payment_method = order.payment_method|default('') %}
+
+  {% set payment_method_label = {
+    'cash': 'Espèce',
+    'card': 'Carte',
+    'twint': 'Twint',
+    'cheque': 'Chèque',
+    'voucher': 'Bon cadeau',
+    'transfer': 'Virement',
+    'loyalty': 'Fidélité',
+    'other': 'Autre'
+  }[payment_method] | default(payment_method ?: 'Non précisé') %}
+
+  {% set phone_icon_data = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA1MTIgNTEyJz48cGF0aCBmaWxsPSdjdXJyZW50Q29sb3InIGQ9J00xNjQuOSAyNC42Yy03LjctMTguNi0yOC0yOC41LTQ3LjQtMjMuMmwtODggMjRDMTIuMSAzMC4yIDAgNDYgMCA2NEMwIDMxMS40IDIwMC42IDUxMiA0NDggNTEyYzE4IDAgMzMuOC0xMi4xIDM4LjYtMjkuNWwyNC04OGM1LjMtMTkuNC00LjYtMzkuNy0yMy4yLTQ3LjRsLTk2LTQwYy0xNi4zLTYuOC0zNS4yLTIuMS00Ni4zIDExLjZMMzA0LjcgMzY4QzIzNC4zIDMzNC43IDE3Ny4zIDI3Ny43IDE0NCAyMDcuM0wxOTMuMyAxNjdjMTMuNy0xMS4yIDE4LjQtMzAgMTEuNi00Ni4zbC00MC05NnonLz48L3N2Zz4=' %}
+  {% set globe_icon_data = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA1MTIgNTEyJz48cGF0aCBmaWxsPSdjdXJyZW50Q29sb3InIGQ9J00zNTIgMjU2YzAgMjIuMi0xLjIgNDMuNi0zLjMgNjRoLTE4NS4zYy0yLjItMjAuNC0zLjMtNDEuOC0zLjMtNjRzMS4yLTQzLjYgMy4zLTY0SDM0OC43YzIuMiAyMC40IDMuMyA0MS44IDMuMyA2NHptMjguOC02NEg1MDRjNS4zIDIwLjUgOC4xIDQxLjkgOC4xIDY0cy0yLjggNDMuNS04LjEgNjRIMzgwLjhjMi4xLTIwLjYgMy4yLTQyIDMuMi02NHMtMS4xLTQzLjQtMy4yLTY0em0xMTIuNi0zMkgzNzYuN2MtMTAtNjMuOS0yOS44LTExNy40LTU1LjMtMTUxLjZjNzguMyAyMC43IDE0MiA3Ny41IDE3MS45IDE1MS42em0tMTQ5LjEgMEgxNjcuN2M2LjEtMzYuNCAxNS41LTY4LjYgMjctOTQuN2MxMC41LTIzLjYgMjIuMi00MC43IDMzLjUtNTEuNUMyMzkuNCAzLjIgMjQ4LjcgMCAyNTYgMHMxNi42IDMuMiAyNy44IDEzLjhjMTEuMyAxMC44IDIzIDI3LjkgMzMuNSA1MS41YzExLjYgMjYgMjAuOSA1OC4yIDI3IDk0Ljd6bS0yMDkgMEgxOC42QzQ4LjYgODUuOSAxMTIuMiAyOS4xIDE5MC42IDguNEMxNjUuMSA0Mi42IDE0NS4zIDk2LjEgMTM1LjMgMTYwek04LjEgMTkyaDEyMy4xYy0yLjEgMjAuNi0zLjIgNDItMy4yIDY0czEuMSA0My40IDMuMiA2NEg4LjFDMi44IDI5OS41IDAgMjc4LjEgMCAyNTZzMi44LTQzLjUgOC4xLTY0em0xODYuNiAyNTQuNmMtMTEuNi0yNi0yMC45LTU4LjItMjctOTQuNmgxNzYuNmMtNi4xIDM2LjQtMTUuNSA2OC42LTI3IDk0LjZjLTEwLjUgMjMuNi0yMi4yIDQwLjctMzMuNSA1MS41QzI3Mi42IDUwOC44IDI2My4zIDUxMiAyNTYgNTEycy0xNi42LTMuMi0yNy44LTEzLjhjLTExLjMtMTAuOC0yMy0yNy45LTMzLjUtNTEuNXpNMTM1LjMgMzUyYzEwIDYzLjkgMjkuOCAxMTcuNCA1NS4zIDE1MS42QzExMi4yIDQ4Mi45IDQ4LjYgNDI2LjEgMTguNiAzNTJoMTE2Ljd6bTM1OC4xIDBjLTMwIDc0LjEtOTMuNiAxMzAuOS0xNzEuOSAxNTEuNmMyNS41LTM0LjIgNDUuMi04Ny43IDU1LjMtMTUxLjZINDkzLjR6Jy8+PC9zdmc+' %}
+
+  <header class="invoice-header">
+    <div class="brand-block">
+      <img src="{{ absolute_url(asset('images/logo_ongleri.png')) }}" alt="Logo" class="brand-logo">
+      <div class="brand-details">
+        {% if company.address %}
+          <div>{{ company.address|nl2br }}</div>
+        {% endif %}
+          {% if company.phone %}
+            <div class="line">
+              <img class="contact-icon" src="{{ phone_icon_data }}" alt="" role="presentation">
+              <span>{{ company.phone }}</span>
+            </div>
+          {% endif %}
+          {% if company.website is defined %}
+            <div class="line">
+              <img class="contact-icon" src="{{ globe_icon_data }}" alt="" role="presentation">
+              <span>{{ company.website|default('longleri.ramseier.com')|replace({'longleriaramseier.com': 'longleri.ramseier.com'}) }}</span>
+            </div>
+          {% endif %}
+        {% if company.siret %}
+          <div>SIRET {{ company.siret }}</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="invoice-meta">
+      <div class="invoice-meta-info">
+        <strong>FACTURE</strong>
+        <div>Facture N° : {{ invoiceNumber }}</div>
+        <div>Date : {{ invoiceDate|date('d/m/Y') }}</div>
+      </div>
+      <div class="customer-card">
+        {% if customer %}
+          <div>{{ customer.last_name|default('')|upper }} {{ customer.first_name|default('') }}</div>
+          {% if customerAddress %}
+            {% if customerAddress.formatted is defined %}
+              <div>{{ customerAddress.formatted|nl2br }}</div>
+            {% else %}
+              {% set line1 = [customerAddress.house_number|default(''), customerAddress.street|default('')] | join(' ') | trim %}
+              {% set line2 = [customerAddress.postcode|default(''), customerAddress.city|default('')] | join(' ') | trim %}
+              {% if line1 %}<div>{{ line1 }}</div>{% endif %}
+              {% if line2 %}<div>{{ line2 }}</div>{% endif %}
+              {% if customerAddress.country|default('') %}<div>{{ customerAddress.country }}</div>{% endif %}
+            {% endif %}
+          {% endif %}
+        {% else %}
+          <div>Client non renseigné</div>
+        {% endif %}
+      </div>
+
+    </div>
+  </header>
+
+  <section>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Désignation</th>
+          <th class="text-right">Quantité</th>
+          <th class="text-right">Prix unitaire</th>
+          <th class="text-right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if lineItems %}
+          {% for line in lineItems %}
+            {% set unit = (line.unit_cents|default(0) / 100) %}
+            {% set total = (line.total_cents|default(0) / 100) %}
+            <tr>
+              <td>{{ line.label }}</td>
+              <td class="text-right">{{ line.quantity }}</td>
+              <td class="text-right">{{ unit|number_format(2, ',', ' ') }} €</td>
+              <td class="text-right">{{ total|number_format(2, ',', ' ') }} €</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="4">Aucune ligne d'article</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="payment-and-summary">
+    <div class="payment-info">
+      <div><strong>Mode de paiement :</strong> {{ payment_method_label }}</div>
+      {% if order.encaisse_at %}
+        <div><strong>Date d'encaissement :</strong> {{ order.encaisse_at|date('d/m/Y H:i') }}</div>
+      {% endif %}
+    </div>
+    <div class="summary-table">
+      <div class="summary-row">
+        <span class="summary-label">Total HT</span>
+        <span class="summary-value">{{ (total_ht_cents / 100)|number_format(2, ',', ' ') }} €</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">T.V.A (si applicable)</span>
+        <span class="summary-value">{{ (total_tva_cents / 100)|number_format(2, ',', ' ') }} €</span>
+      </div>
+      <div class="summary-row">
+        <strong class="summary-label">Total TTC</strong>
+        <strong class="summary-value">{{ (total_ttc_cents / 100)|number_format(2, ',', ' ') }} €</strong>
+      </div>
+    </div>
+  </section>
+
+  <p class="tax-note">TVA non applicable, art. 293 B du code général des impôts</p>
+
+  {% if order.note %}
+    <div class="notes">
+      <strong>Notes</strong>
+      <div>{{ order.note }}</div>
+    </div>
+  {% endif %}
+
+  <div class="footer-message">Merci de votre confiance !</div>
+  <div class="footer-wave"></div>
+</body>
+</html>

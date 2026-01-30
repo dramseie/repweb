@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -27,6 +27,10 @@ const fmtBlock = (a) => {
   const line3 = a.country || '';
   return [line1, line2, line3].filter(Boolean).join('\n');
 };
+const fmtSingleLine = (a) => {
+  const block = fmtBlock(a);
+  return block ? block.replace(/\s*\n\s*/g, ', ').replace(/\s{2,}/g, ' ').trim() : '';
+};
 const nowIso = () => new Date().toISOString();
 
 // --- Map picker modal (inline component for simplicity)
@@ -34,108 +38,189 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
   const mapRef = useRef(null);
   const nodeRef = useRef(null);
   const markerRef = useRef(null);
+  const reverseGeocodeRef = useRef(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState(null);
+
+  const clearMarker = useCallback(() => {
+    if (markerRef.current && mapRef.current) {
+      mapRef.current.removeLayer(markerRef.current);
+    }
+    markerRef.current = null;
+  }, []);
+
+  const ensureMarker = useCallback((lat, lon) => {
+    if (!mapRef.current) return;
+    if (!markerRef.current) {
+      markerRef.current = L.marker([lat, lon], { draggable: true }).addTo(mapRef.current);
+      markerRef.current.on('dragend', (ev) => {
+        const { lat: nLat, lng: nLon } = ev.target.getLatLng();
+        reverseGeocodeRef.current?.(nLat, nLon);
+      });
+    } else {
+      markerRef.current.setLatLng([lat, lon]);
+    }
+  }, []);
+
+  const nominatimToAddress = useCallback((payload, lat, lon) => {
+    const a = payload?.address || {};
+    const street = a.road
+      || a.residential
+      || a.pedestrian
+      || a.cycleway
+      || a.footway
+      || a.path
+      || a.street
+      || a.suburb
+      || '';
+    const addr = {
+      ...emptyAddr,
+      street,
+      house_number: a.house_number ? String(a.house_number).trim() : '',
+      postcode: a.postcode ? String(a.postcode).trim() : '',
+      city: (a.city || a.town || a.village || a.municipality || a.hamlet || a.locality || '').trim(),
+      region: (a.state || a.region || a.county || '').trim(),
+      country: (a.country_code ? a.country_code.toUpperCase() : (a.country || '')).trim(),
+      geo: { lat, lng: lon },
+      place_id: payload?.place_id ? `nominatim:${payload.place_id}` : '',
+      source: 'nominatim'
+    };
+    addr.formatted = fmtBlock(addr);
+    addr.updated_at = nowIso();
+    return addr;
+  }, []);
+
+  const applySelection = useCallback((addr) => {
+    setSelected(addr);
+    setQuery(addr ? fmtSingleLine(addr) : '');
+  }, []);
+
+  const reverseGeocode = useCallback(async (lat, lon) => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`);
+      if (!res.ok) throw new Error('Recherche inverse indisponible');
+      const data = await res.json();
+      if (!data?.address) throw new Error('Aucune adresse trouvée');
+      const addr = nominatimToAddress(data, lat, lon);
+      ensureMarker(lat, lon);
+      applySelection(addr);
+      if (mapRef.current) {
+        const nextZoom = Math.max(mapRef.current.getZoom() || 0, 17);
+        mapRef.current.setView([lat, lon], nextZoom);
+      }
+    } catch (err) {
+      setError(err.message || 'Reverse geocoding échoué');
+    } finally {
+      setBusy(false);
+    }
+  }, [applySelection, ensureMarker, nominatimToAddress]);
 
   useEffect(() => {
-    if (!show) return;
-    if (!nodeRef.current) return;
+    reverseGeocodeRef.current = reverseGeocode;
+  }, [reverseGeocode]);
 
-    // init map once
+  useEffect(() => {
+    if (!show || !nodeRef.current) return;
+
     if (!mapRef.current) {
-      mapRef.current.setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
+      mapRef.current = L.map(nodeRef.current, { zoomControl: true }).setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap'
       }).addTo(mapRef.current);
 
-      mapRef.current.on('click', async (e) => {
-        setBusy(true); setError('');
-        try {
-          const lat = e.latlng.lat, lon = e.latlng.lng;
-          if (!markerRef.current) {
-            markerRef.current = L.marker(e.latlng).addTo(mapRef.current);
-          } else {
-            markerRef.current.setLatLng(e.latlng);
-          }
-          const res = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`);
-          const j = await res.json();
-          if (!j || !j.address) throw new Error('No address found');
-
-          const a = j.address;
-          const addr = {
-            street: a.road || a.pedestrian || a.footway || a.path || '',
-            house_number: a.house_number || '',
-            postcode: a.postcode || '',
-            city: a.city || a.town || a.village || a.hamlet || '',
-            region: a.state || '',
-            country: a.country_code ? a.country_code.toUpperCase() : (a.country || ''),
-            formatted: j.display_name || '',
-            geo: { lat, lng: lon },
-            place_id: j.place_id ? `nominatim:${j.place_id}` : '',
-            source: 'nominatim',
-            updated_at: nowIso()
-          };
-          onPick(addr);
-        } catch (e2) {
-          setError(e2.message || 'Reverse geocoding failed');
-        } finally {
-          setBusy(false);
-        }
+      mapRef.current.on('click', (e) => {
+        const { lat, lng } = e.latlng;
+        ensureMarker(lat, lng);
+        reverseGeocodeRef.current?.(lat, lng);
       });
     }
 
-    // center to initial if available
-    if (initial?.geo) {
-      mapRef.current.setView([initial.geo.lat, initial.geo.lng], 17);
-      if (!markerRef.current) {
-        markerRef.current = L.marker([initial.geo.lat, initial.geo.lng]).addTo(mapRef.current);
-      } else {
-        markerRef.current.setLatLng([initial.geo.lat, initial.geo.lng]);
+    // ensure tiles resize once modal animation is done
+    setTimeout(() => {
+      try { mapRef.current?.invalidateSize(); } catch (_) {}
+    }, 100);
+  }, [show, ensureMarker]);
+
+  useEffect(() => {
+    if (!show) return;
+    setError('');
+    setBusy(false);
+
+    if (initial && typeof initial === 'object') {
+      const rawGeo = initial.geo || null;
+      const rawLat = rawGeo?.lat ?? rawGeo?.latitude ?? null;
+      const rawLon = rawGeo?.lng ?? rawGeo?.lon ?? rawGeo?.longitude ?? null;
+      const lat = rawLat == null ? NaN : parseFloat(rawLat);
+      const lon = rawLon == null ? NaN : parseFloat(rawLon);
+      const geo = Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lng: lon } : null;
+      const seed = {
+        ...emptyAddr,
+        ...initial,
+        geo
+      };
+      seed.formatted = fmtBlock(seed);
+      applySelection(seed);
+      if (geo && !Number.isNaN(geo.lat) && !Number.isNaN(geo.lng) && mapRef.current) {
+        ensureMarker(geo.lat, geo.lng);
+        const targetZoom = mapRef.current.getZoom() >= 17 ? mapRef.current.getZoom() : 17;
+        mapRef.current.setView([geo.lat, geo.lng], targetZoom);
+      } else if (mapRef.current) {
+        clearMarker();
+        mapRef.current.setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
       }
     } else {
-      mapRef.current.setView([48.8566, 2.3522], 12); // Paris default
+      setSelected(null);
+      setQuery('');
+      if (mapRef.current) {
+        clearMarker();
+        mapRef.current.setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
+      }
     }
-  }, [show]);
+  }, [show, initial, applySelection, ensureMarker, clearMarker]);
 
   const onSubmitSearch = async (e) => {
     e.preventDefault();
-    if (!query.trim()) return;
-    setBusy(true); setError('');
+    const raw = (query || '').trim();
+    if (!raw) return;
+    setBusy(true);
+    setError('');
     try {
-      const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(query)}&limit=5`);
-      const j = await res.json();
-      if (!Array.isArray(j) || j.length === 0) { setError('No results'); return; }
-      const r = j[0]; // take first hit
-      const lat = parseFloat(r.lat), lon = parseFloat(r.lon);
-      mapRef.current.setView([lat, lon], 18);
-      if (!markerRef.current) {
-        markerRef.current = L.marker([lat, lon]).addTo(mapRef.current);
-      } else {
-        markerRef.current.setLatLng([lat, lon]);
+      const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(raw)}&limit=5`);
+      if (!res.ok) throw new Error('Recherche indisponible');
+      const results = await res.json();
+      if (!Array.isArray(results) || results.length === 0) throw new Error('Aucun résultat');
+      const hit = results[0];
+      const lat = parseFloat(hit.lat);
+      const lon = parseFloat(hit.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Coordonnées invalides');
+      const addr = nominatimToAddress(hit, lat, lon);
+      ensureMarker(lat, lon);
+      if (mapRef.current) {
+        const targetZoom = mapRef.current.getZoom() >= 18 ? mapRef.current.getZoom() : 18;
+        mapRef.current.setView([lat, lon], targetZoom);
       }
-      // synthesize address object from search hit
-      const a = r.address || {};
-      const addr = {
-        street: a.road || a.pedestrian || a.footway || '',
-        house_number: a.house_number || '',
-        postcode: a.postcode || '',
-        city: a.city || a.town || a.village || '',
-        region: a.state || '',
-        country: a.country_code ? a.country_code.toUpperCase() : (a.country || ''),
-        formatted: r.display_name || '',
-        geo: { lat, lng: lon },
-        place_id: r.place_id ? `nominatim:${r.place_id}` : '',
-        source: 'nominatim',
-        updated_at: nowIso()
-      };
-      onPick(addr);
-    } catch (e2) {
-      setError(e2.message || 'Search failed');
+      applySelection(addr);
+    } catch (err) {
+      setError(err.message || 'Recherche échouée');
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleSave = () => {
+    if (!selected) return;
+    const payload = {
+      ...selected,
+      geo: selected.geo ? { ...selected.geo } : null,
+      formatted: fmtBlock(selected),
+      updated_at: nowIso()
+    };
+    onPick(payload);
   };
 
   return (
@@ -166,6 +251,9 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-outline-secondary" onClick={onClose}>Fermer</button>
+            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!selected || busy}>
+              Enregistrer
+            </button>
           </div>
         </div>
       </div>

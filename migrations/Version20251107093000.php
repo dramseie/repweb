@@ -16,6 +16,10 @@ final class Version20251107093000 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
+        if ($this->tableExists($this->connection->getDatabase() ?? 'repweb', 'psr_task_progress_log')) {
+            return;
+        }
+
         $this->addSql("CREATE TABLE psr_task_progress_log (
             id BIGINT UNSIGNED AUTO_INCREMENT NOT NULL,
             task_id BIGINT UNSIGNED NOT NULL,
@@ -29,6 +33,21 @@ final class Version20251107093000 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
+        if (!$this->tableExists($this->connection->getDatabase() ?? 'repweb', 'psr_task_progress_log')) {
+            return;
+        }
+
         $this->addSql('DROP TABLE psr_task_progress_log');
+    }
+
+    private function tableExists(string $schema, string $table): bool
+    {
+        $sql = 'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table';
+        $count = (int) $this->connection->fetchOne($sql, [
+            'schema' => $schema,
+            'table' => $table,
+        ]);
+
+        return $count > 0;
     }
 }

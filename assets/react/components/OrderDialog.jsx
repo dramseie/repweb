@@ -21,6 +21,12 @@ const PM_LABEL = {
   "": "—",
   cash: "Espèces",
   card: "CB / Carte",
+  cheque: "Chèque",
+  twint: "TWINT",
+  voucher: "Bon / chèque-cadeau",
+  transfer: "Virement",
+  loyalty: "Carte de fidélité",
+  reduction: "Réduction",
   other: "Autre",
 };
 
@@ -60,6 +66,16 @@ export default function OrderDialog({ show, onClose, data }) {
       return [];
     }
   }, [order?.payments_json]);
+
+  const reductionCents = useMemo(() => {
+    if (!payments.length) return 0;
+    return payments.reduce((sum, p) => {
+      if (!p || typeof p !== "object") return sum;
+      if ((p.method || "") !== "reduction") return sum;
+      const raw = Number(p.amount_cents);
+      return Number.isFinite(raw) ? sum + raw : sum;
+    }, 0);
+  }, [payments]);
 
   const total = fmtMoney(order.total_cents);
   const totalTax = fmtMoney(order.total_tax_cents || 0);
@@ -295,6 +311,12 @@ export default function OrderDialog({ show, onClose, data }) {
                         <th colSpan={4} className="text-end">Pourboire</th>
                         <th className="text-end">{tip}</th>
                       </tr>
+                      {reductionCents !== 0 && (
+                        <tr>
+                          <th colSpan={4} className="text-end">Réduction</th>
+                          <th className="text-end">{fmtMoney(reductionCents)}</th>
+                        </tr>
+                      )}
                       <tr>
                         <th colSpan={4} className="text-end">Encaissement</th>
                         <th className="text-end">{encaisseAt}</th>

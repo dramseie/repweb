@@ -1,0 +1,149 @@
+{# templates/security/totp_setup.html.twig #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Two-Factor Authentication</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 2rem;
+      color: #1f2a37;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.5rem;
+    }
+
+    .flash {
+      margin: 0 0 1rem 0;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    .flash-success { background: #e7f7ef; color: #0c6b3b; }
+    .flash-error { background: #fdecea; color: #b00020; }
+    .flash-info { background: #e9f2fb; color: #005bac; }
+
+    .section {
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    code {
+      word-break: break-all;
+      background: #f5f7fa;
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 0.65rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 1rem;
+      text-align: center;
+      letter-spacing: 0.12rem;
+      box-sizing: border-box;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .btn {
+      border: none;
+      background: #005bac;
+      color: #fff;
+      padding: 0.65rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      text-decoration: none;
+      text-align: center;
+    }
+
+    .btn.secondary {
+      background: #6b7280;
+    }
+
+    .btn.danger {
+      background: #b00020;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Two-Factor Authentication (TOTP)</h1>
+
+    {% for label, messages in app.flashes %}
+      {% for message in messages %}
+        <div class="flash flash-{{ label }}">{{ message }}</div>
+      {% endfor %}
+    {% endfor %}
+
+    {% if enabled %}
+      <p>Status: <strong>Enabled</strong></p>
+      <form action="{{ path('account_2fa_disable') }}" method="post" class="section">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('totp_disable') }}">
+        <p>If you disable 2FA, you will only need your password to sign in.</p>
+        <div class="actions">
+          <button type="submit" class="btn danger">Disable 2FA</button>
+        </div>
+      </form>
+    {% else %}
+      <p>Status: <strong>Not enabled</strong></p>
+      <div class="section">
+        <h2>1) Add to your authenticator app</h2>
+        {% if provisioning_uri %}
+          <p>Scan the QR code using your authenticator app or enter this setup key manually:</p>
+          {% if qr_data_uri %}
+            <p><img src="{{ qr_data_uri }}" alt="TOTP QR code"></p>
+          {% endif %}
+          <p><strong>Setup key:</strong> <code>{{ secret }}</code></p>
+          <p><strong>Provisioning URI:</strong> <code>{{ provisioning_uri }}</code></p>
+        {% else %}
+          <p>Unable to generate a setup key. Please refresh this page.</p>
+        {% endif %}
+        <div class="actions">
+          <a class="btn secondary" href="{{ path('account_2fa', { regen: 1 }) }}">Regenerate key</a>
+        </div>
+      </div>
+
+      <form action="{{ path('account_2fa_enable') }}" method="post" class="section">
+        <h2>2) Verify and enable</h2>
+        <label for="code">6-digit code</label>
+        <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required>
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('totp_setup') }}">
+        <div class="actions">
+          <button type="submit" class="btn">Enable 2FA</button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+</body>
+</html>

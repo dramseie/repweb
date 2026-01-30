@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="210" height="210" viewBox="0 0 210 210" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .title { font-family: 'DejaVu Sans', 'Helvetica', sans-serif; font-size: 28px; font-weight: 600; letter-spacing: 1px; }
+    .subtitle { font-family: 'DejaVu Sans', 'Helvetica', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; }
+    .butterfly { fill: none; stroke: #111; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .butterfly-body { fill: none; stroke: #111; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <g transform="translate(10,10)">
+    <path class="butterfly" d="M40,90 C20,70 20,40 40,20 C60,0 90,10 95,35 C100,10 130,0 150,20 C170,40 170,70 150,90" />
+    <path class="butterfly" d="M95,35 C105,55 105,75 95,95" />
+    <path class="butterfly-body" d="M95,95 C90,105 85,115 75,120 C80,118 85,115 90,110" />
+    <text class="title" x="95" y="150" text-anchor="middle">L'ongle RI</text>
+    <text class="subtitle" x="95" y="170" text-anchor="middle">By RAMSEIER ISABELLE</text>
+  </g>
+</svg>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>{{ reptitle|default('Report') }}</title>
+    {{ encore_entry_link_tags('app') }}
+    <style>
+      body { margin: 0; padding: 12px; background: #fff; }
+      .container-embed { max-width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="container-embed">
+      <div
+        id="react-datatables-report"
+        data-repid="{{ repid }}"
+        data-reptitle="{{ reptitle|default('')|e('html_attr') }}"
+        data-repdesc="{{ repdesc|default('')|e('html_attr') }}"
+        data-cols-url="{{ path('dt_db_columns', { repid: repid }) }}"
+        data-data-url="{{ path('dt_db_data', { repid: repid }) }}"
+        data-apikey="{{ repweb_api_key|e('html_attr') }}"
+        data-repparam="{{ repparam_json|e('html_attr') }}"
+      ></div>
+    </div>
+    {{ encore_entry_script_tags('app') }}
+  </body>
+</html>

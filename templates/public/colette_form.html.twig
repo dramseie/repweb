@@ -1,0 +1,428 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}
+  {% if mode == 'edit' %}Éditer une page de Colette{% else %}Nouvelle page — Les escapade de Colette{% endif %}
+{% endblock %}
+
+{% block body %}
+  <style>
+    :root {
+      --colette-bg: linear-gradient(160deg, #f7f3eb 0%, #eef4f2 100%);
+      --colette-card-bg: rgba(255, 255, 255, 0.92);
+      --colette-primary: #1d4d4f;
+      --colette-primary-soft: rgba(29, 77, 79, 0.12);
+      --colette-accent: #f28f3b;
+      --colette-text: #1f2a33;
+      --colette-muted: #5d6d74;
+    }
+
+    .colette-page {
+      background: var(--colette-bg);
+      min-height: 100vh;
+      padding: 48px 0;
+      font-family: 'Lato', sans-serif;
+      color: var(--colette-text);
+    }
+
+    .colette-form-wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--colette-card-bg);
+      border-radius: 28px;
+      padding: 48px 54px;
+      box-shadow: 0 32px 64px rgba(31, 51, 58, 0.18);
+      backdrop-filter: blur(8px);
+    }
+
+    .colette-form-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .colette-form-head h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.2;
+      color: var(--colette-primary);
+      letter-spacing: 0.04em;
+    }
+
+    .colette-form-head a {
+      color: var(--colette-accent);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .colette-form-head a:hover {
+      text-decoration: underline;
+    }
+
+    .colette-info {
+      background: rgba(61, 160, 128, 0.12);
+      border-radius: 20px;
+      padding: 18px 24px;
+      font-size: 15px;
+      color: #275446;
+      margin-bottom: 28px;
+      line-height: 1.6;
+      border: 1px solid rgba(61, 160, 128, 0.18);
+    }
+
+    .colette-grid {
+      display: grid;
+      gap: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .colette-field {
+      margin-bottom: 18px;
+    }
+
+    .colette-field label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: var(--colette-muted);
+      font-size: 14px;
+      letter-spacing: 0.02em;
+    }
+
+    .colette-field input,
+    .colette-field select,
+    .colette-field textarea {
+      width: 100%;
+      border: 1px solid rgba(28, 40, 48, 0.12);
+      border-radius: 16px;
+      padding: 12px 16px;
+      font-size: 15px;
+      background: rgba(255, 255, 255, 0.8);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .colette-field textarea {
+      line-height: 1.6;
+    }
+
+    .colette-field input:focus,
+    .colette-field select:focus,
+    .colette-field textarea:focus {
+      border-color: rgba(29, 77, 79, 0.28);
+      box-shadow: 0 0 0 3px rgba(29, 77, 79, 0.14);
+      outline: none;
+    }
+
+    .colette-image-zone {
+      border: 2px dashed rgba(29, 77, 79, 0.35);
+      border-radius: 22px;
+      padding: 30px 24px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.6);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 12px;
+      color: var(--colette-muted);
+    }
+
+    .colette-image-zone.drag-over {
+      border-color: var(--colette-accent);
+      transform: scale(1.01);
+      background: rgba(242, 143, 59, 0.08);
+    }
+
+    .colette-image-zone.has-image {
+      border-style: solid;
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .colette-image-zone img {
+      max-width: 100%;
+      border-radius: 16px;
+      box-shadow: 0 18px 32px rgba(25, 36, 42, 0.24);
+    }
+
+    .colette-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .colette-button {
+      border: none;
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .colette-button.primary {
+      background: var(--colette-primary);
+      color: #ffffff;
+      box-shadow: 0 12px 24px rgba(29, 77, 79, 0.24);
+    }
+
+    .colette-button.primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 28px rgba(29, 77, 79, 0.32);
+    }
+
+    .colette-button.secondary {
+      background: var(--colette-primary-soft);
+      color: var(--colette-primary);
+    }
+
+    .colette-button.secondary:hover {
+      transform: translateY(-1px);
+    }
+
+    .colette-form-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .colette-form-actions a {
+      color: var(--colette-muted);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .colette-form-actions a:hover {
+      text-decoration: underline;
+    }
+
+    .ocr-card {
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 20px;
+      border: 1px solid rgba(29, 77, 79, 0.1);
+      padding: 20px;
+      min-height: 150px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ocr-card textarea {
+      background: transparent;
+      border: none;
+      padding: 0;
+      resize: vertical;
+    }
+
+    .colette-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 15px;
+      color: var(--colette-muted);
+    }
+
+    .colette-checkbox input {
+      width: auto;
+      transform: scale(1.25);
+      margin: 0;
+    }
+
+    @media (max-width: 768px) {
+      .colette-page {
+        padding: 24px 12px;
+      }
+
+      .colette-form-wrap {
+        padding: 32px 24px;
+        border-radius: 22px;
+      }
+
+      .colette-form-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+
+  <div class="colette-page">
+    <div class="colette-form-wrap" data-controller="">
+    <div class="colette-form-head">
+      <h1>
+        {% if mode == 'edit' %}
+          Mettre à jour {{ entry.title ?? 'l\'entrée' }}
+        {% else %}
+          Ajouter une nouvelle escapade
+        {% endif %}
+      </h1>
+      <a href="{{ path('app_colette') }}">Retour à la collection</a>
+    </div>
+
+      <div class="colette-info">
+        Collez une image directement (Ctrl/Cmd + V) ou faites-la glisser dans la zone dédiée.
+        L'OCR tentera d'en extraire du texte pour enrichir votre description.
+      </div>
+
+      {{ form_start(form) }}
+        <div class="colette-grid">
+          <div class="colette-field">{{ form_row(form.slug) }}</div>
+          <div class="colette-field">{{ form_row(form.title) }}</div>
+        </div>
+
+        <div class="colette-grid">
+          <div class="colette-field">{{ form_row(form.subtitle) }}</div>
+          <div class="colette-field">{{ form_row(form.category) }}</div>
+        </div>
+
+        <div class="colette-field">
+          <label class="form-label">Image collée ou déposée</label>
+          <div id="colette-image-zone" class="colette-image-zone">
+            <p id="colette-image-help">Collez ici (Ctrl/Cmd + V) ou faites glisser une image.</p>
+            <img id="colette-image-preview" alt="Aperçu" style="display:none;" />
+          </div>
+          <div class="colette-toolbar">
+            <button type="button" class="colette-button secondary" id="colette-reset-image">Effacer l'image</button>
+            <button type="button" class="colette-button primary" id="colette-append-ocr">Ajouter l'extraction OCR au texte</button>
+          </div>
+        </div>
+
+        <div class="colette-field">{{ form_row(form.content) }}</div>
+        <div class="colette-field">{{ form_row(form.sourceNotes) }}</div>
+
+        <div class="colette-field">
+          <label for="colette-ocr-preview" class="form-label">Résultat OCR proposé</label>
+          <div class="ocr-card">
+            {{ form_widget(form.ocrExtract, { 'attr': {'id': 'colette-ocr-preview'} }) }}
+          </div>
+        </div>
+
+        {{ form_row(form.imageData) }}
+        {{ form_row(form.imageMimeType) }}
+
+        <div class="colette-field colette-checkbox">{{ form_row(form.isPublished) }}</div>
+
+        <div class="colette-form-actions">
+          <a href="{{ path('app_colette') }}">Annuler</a>
+          <button type="submit" class="colette-button primary">Enregistrer</button>
+        </div>
+      {{ form_end(form) }}
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const imageZone = document.getElementById('colette-image-zone');
+      const imagePreview = document.getElementById('colette-image-preview');
+      const imageHelp = document.getElementById('colette-image-help');
+      const resetButton = document.getElementById('colette-reset-image');
+      const appendButton = document.getElementById('colette-append-ocr');
+      const contentField = document.getElementById('{{ form.content.vars.id }}');
+      const ocrField = document.getElementById('{{ form.ocrExtract.vars.id }}');
+      const imageDataField = document.getElementById('{{ form.imageData.vars.id }}');
+      const imageMimeTypeField = document.getElementById('{{ form.imageMimeType.vars.id }}');
+
+      const setPreview = (base64Data, mimeType) => {
+        if (!base64Data) {
+          imagePreview.src = '';
+          imagePreview.style.display = 'none';
+          imageZone.classList.remove('has-image');
+          imageHelp.style.display = 'block';
+          imageDataField.value = '';
+          imageMimeTypeField.value = '';
+          ocrField.value = '';
+          return;
+        }
+
+        imagePreview.src = `data:${mimeType};base64,${base64Data}`;
+        imagePreview.style.display = 'block';
+        imageZone.classList.add('has-image');
+        imageHelp.style.display = 'none';
+        imageDataField.value = base64Data;
+        imageMimeTypeField.value = mimeType;
+
+        fetch('{{ path('app_colette_ocr') }}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'fetch',
+          },
+          body: JSON.stringify({ imageData: base64Data, mimeType }),
+        })
+          .then((response) => response.json())
+          .then((payload) => {
+            if (payload.text) {
+              ocrField.value = payload.text;
+            } else if (payload.message) {
+              ocrField.value = payload.message;
+            }
+          })
+          .catch(() => {
+            ocrField.value = "Impossible d'extraire du texte.";
+          });
+      };
+
+      const handleBlob = (blob) => {
+        if (!blob || !blob.type.startsWith('image/')) {
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64Data = reader.result.split(',')[1];
+          setPreview(base64Data, blob.type);
+        };
+        reader.readAsDataURL(blob);
+      };
+
+      document.addEventListener('paste', (event) => {
+        if (!event.clipboardData) {
+          return;
+        }
+
+        const items = Array.from(event.clipboardData.items || []);
+        const imageItem = items.find((item) => item.type.startsWith('image/'));
+        if (imageItem) {
+          event.preventDefault();
+          handleBlob(imageItem.getAsFile());
+        }
+      });
+
+      imageZone.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        imageZone.classList.add('drag-over');
+      });
+
+      imageZone.addEventListener('dragleave', () => {
+        imageZone.classList.remove('drag-over');
+      });
+
+      imageZone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        imageZone.classList.remove('drag-over');
+        const file = event.dataTransfer.files[0];
+        handleBlob(file);
+      });
+
+      resetButton.addEventListener('click', () => setPreview('', ''));
+
+      appendButton.addEventListener('click', () => {
+        if (!ocrField.value) {
+          return;
+        }
+
+        const separator = contentField.value.endsWith('\n') || contentField.value === '' ? '' : '\n\n';
+        contentField.value = `${contentField.value}${separator}${ocrField.value}`;
+      });
+
+      // Initialize preview when editing existing entry
+      if (imageDataField.value && imageMimeTypeField.value) {
+        setPreview(imageDataField.value, imageMimeTypeField.value);
+      }
+    })();
+  </script>
+{% endblock %}

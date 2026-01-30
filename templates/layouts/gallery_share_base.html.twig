@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>repweb · Shared Gallery</title>
+    {{ encore_entry_link_tags('app') }}
+    {% block stylesheets %}{% endblock %}
+  </head>
+  <body class="bg-light">
+    <main class="container py-4">
+      {% block body %}{% endblock %}
+    </main>
+
+    {{ encore_entry_script_tags('app') }}
+    {% block javascripts %}{% endblock %}
+    <script>
+      window.__repweb = window.__repweb || { flags: {
+        MIGRATION_MANAGER_ENABLED: {{ flags.MIGRATION_MANAGER_ENABLED|default(false) ? 'true' : 'false' }},
+        BLAUE_ELISE_ENABLED: {{ flags.BLAUE_ELISE_ENABLED|default(false) ? 'true' : 'false' }},
+        PROGRESS_INDICATORS_ENABLED: {{ flags.PROGRESS_INDICATORS_ENABLED|default(false) ? 'true' : 'false' }},
+      } };
+    </script>
+  </body>
+</html>

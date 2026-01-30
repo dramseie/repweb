@@ -15,6 +15,27 @@
     box-shadow: none !important;
 }
 
+/* Smartsheet tables: tighten row height */
+.smartsheet-pivot .dataTable tbody td,
+.smartsheet-pivot .dataTable tbody th {
+  padding: 0.35rem 0.5rem;
+  line-height: 1.15;
+}
+
+/* Fallback zebra striping for presentation tables inside the smartsheet-pivot container.
+   This enforces a subtle alternating row background even if Bootstrap classes are missing
+   or overridden by other styles. */
+.smartsheet-pivot table.table tbody tr:nth-child(odd) {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+.smartsheet-pivot table.table tbody tr:nth-child(even) {
+  background-color: transparent !important;
+}
+.smartsheet-pivot table.table.table-striped tbody tr:nth-child(odd) {
+  /* slightly stronger stripe when the table explicitly requests striped styling */
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
 /* Remove hover fill and keep text black */
 .dt-buttons .dt-button:hover,
 .dt-buttons .btn:hover {
@@ -377,6 +398,32 @@
 }
 
 .psr-progress-control span {
+
+/* Country header sizing: ensure the card header is tall enough on large screens
+   to contain the centered progress blocks (Assessment / Installation / Store Signoff). */
+@media (min-width: 992px) {
+  .country-header {
+    min-height: 150px; /* increased to fit progress blocks */
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+}
+
+/* Timeline row banding and year header */
+.timeline-row:nth-child(odd) {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+.timeline-row {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+.timeline-year-header {
+  margin-bottom: 0.5rem;
+  border-top: 2px solid rgba(0,0,0,0.12);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+
   font-weight: 600;
   color: #0f172a;
   min-width: 42px;

@@ -1,0 +1,104 @@
+{# templates/security/2fa_form.html.twig #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Two-Factor Verification</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .login-container {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+
+    .login-container h1 {
+      margin: 0 0 0.75rem 0;
+      font-size: 1.3rem;
+      color: #1f2a37;
+    }
+
+    .login-container p {
+      margin: 0 0 1.25rem 0;
+      color: #52606d;
+      font-size: 0.95rem;
+    }
+
+    .login-container input,
+    .login-container button {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 5px;
+      box-sizing: border-box;
+      font-size: 1rem;
+    }
+
+    .login-container input {
+      border: 1px solid #ccc;
+      margin: 0.5rem 0;
+      text-align: center;
+      letter-spacing: 0.1rem;
+    }
+
+    .login-container button {
+      background: #005bac;
+      color: white;
+      border: none;
+      margin-top: 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .login-container button:hover {
+      background: #004a8f;
+    }
+
+    .error {
+      color: #b00020;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h1>Two-Factor Verification</h1>
+    <p>Enter the 6-digit code from your authenticator app.</p>
+
+    {% if authenticationError is defined and authenticationError %}
+      <div class="error">{{ authenticationError|trans(authenticationErrorData ?? {}, 'SchebTwoFactorBundle') }}</div>
+    {% endif %}
+
+    <form action="{{ checkPathUrl ? checkPathUrl : path(checkPathRoute) }}" method="post">
+      <input
+        type="text"
+        name="{{ authCodeParameterName ?? '_auth_code' }}"
+        autocomplete="one-time-code"
+        inputmode="numeric"
+        pattern="[0-9]{6}"
+        placeholder="123456"
+        required
+        autofocus
+      >
+
+      {% if csrfParameterName is defined and csrfTokenId is defined %}
+        <input type="hidden" name="{{ csrfParameterName }}" value="{{ csrf_token(csrfTokenId) }}">
+      {% endif %}
+
+      <button type="submit">Verify</button>
+    </form>
+  </div>
+</body>
+</html>

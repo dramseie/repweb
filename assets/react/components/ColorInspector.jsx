@@ -48,7 +48,7 @@ export default function ColorInspector({ ideasEndpoint = null }) {
   const [activeHarmony, setActiveHarmony] = useState(HARMONIES[0].key);
   const [aiState, setAiState] = useState({ loading: false, message: "", suggestions: [] });
   const [hexInput, setHexInput] = useState(previewColor);
-  const [isCameraVisible, setIsCameraVisible] = useState(true);
+  const [isCameraVisible, setIsCameraVisible] = useState(false);
 
   useEffect(() => {
     return () => {

@@ -176,26 +176,47 @@ function normalizeRulesForPersist(rules, resolveIndex) {
 }
 
 /* ===== Component ===== */
-export default function DataTablesReport() {
+export default function DataTablesReport({
+  repid: repidProp,
+  reptitle: reptitleProp,
+  repdesc: repdescProp,
+  colsUrl: colsUrlProp,
+  dataUrl: dataUrlProp,
+  apiKey: apiKeyProp,
+  tableKey: tableKeyProp,
+  dateColumnName: dateColumnNameProp,
+  dateColumnIndex: dateColumnIndexProp,
+  repparam: repparamProp,
+} = {}) {
   injectOnce();
 
-  const hostEl = document.getElementById('react-datatables-report');
+  const hasPropsConfig = Boolean(
+    repidProp || colsUrlProp || dataUrlProp || apiKeyProp || tableKeyProp ||
+    dateColumnNameProp || dateColumnIndexProp || repparamProp || reptitleProp || repdescProp
+  );
 
-  const repid    = Number(hostEl?.dataset?.repid || 0);
-  const reptitle = hostEl?.dataset?.reptitle || '';
-  const repdesc  = hostEl?.dataset?.repdesc  || '';
+  const [hostEl, setHostEl] = useState(null);
+  useEffect(() => {
+    if (!hostEl && !hasPropsConfig) {
+      setHostEl(document.getElementById('react-datatables-report'));
+    }
+  }, [hostEl, hasPropsConfig]);
 
-  const colsUrl = hostEl?.dataset?.colsUrl || (repid ? `/api/dt/${repid}/columns` : '');
-  const dataUrl = hostEl?.dataset?.dataUrl || (repid ? `/api/dt/${repid}` : '');
+  const repid    = Number(repidProp ?? hostEl?.dataset?.repid ?? 0);
+  const reptitle = reptitleProp ?? hostEl?.dataset?.reptitle ?? '';
+  const repdesc  = repdescProp  ?? hostEl?.dataset?.repdesc  ?? '';
 
-  const apiKey  = hostEl?.dataset?.apikey || window.REPWEB_API_KEY || '';
+  const colsUrl = colsUrlProp || hostEl?.dataset?.colsUrl || (repid ? `/api/dt/${repid}/columns` : '');
+  const dataUrl = dataUrlProp || hostEl?.dataset?.dataUrl || (repid ? `/api/dt/${repid}` : '');
+
+  const apiKey  = apiKeyProp || hostEl?.dataset?.apikey || window.REPWEB_API_KEY || '';
 
   // --- derive a robust, always non-empty tableKey ---
   const tableKey = (() => {
-    const explicit = hostEl?.dataset?.tableKey;
+    const explicit = tableKeyProp ?? hostEl?.dataset?.tableKey;
     if (explicit && String(explicit).trim() !== '') return String(explicit).trim();
     if (repid) return `report:${repid}`;
-    const durl = hostEl?.dataset?.dataUrl;
+    const durl = dataUrlProp ?? hostEl?.dataset?.dataUrl;
     if (durl) {
       try {
         const u = new URL(durl, window.location.origin);
@@ -206,11 +227,20 @@ export default function DataTablesReport() {
     return `path:${path}`;
   })();
 
-  const dateColumnName = hostEl?.dataset?.dateColumnName || null;
-  const dateColumnIndex = Number.isInteger(Number(hostEl?.dataset?.dateColumnIndex))
-    ? Number(hostEl?.dataset?.dateColumnIndex) : null;
+  const dateColumnName = dateColumnNameProp ?? hostEl?.dataset?.dateColumnName ?? null;
+  const dateColumnIndex = Number.isInteger(Number(dateColumnIndexProp ?? hostEl?.dataset?.dateColumnIndex))
+    ? Number(dateColumnIndexProp ?? hostEl?.dataset?.dateColumnIndex) : null;
 
-  const reportParams = hostEl?.dataset?.repparam ? JSON.parse(hostEl.dataset.repparam) : {};
+  const reportParams = (() => {
+    if (repparamProp && typeof repparamProp === 'object') return repparamProp;
+    if (typeof repparamProp === 'string' && repparamProp.trim() !== '') {
+      try { return JSON.parse(repparamProp); } catch { return {}; }
+    }
+    if (hostEl?.dataset?.repparam) {
+      try { return JSON.parse(hostEl.dataset.repparam); } catch { return {}; }
+    }
+    return {};
+  })();
   const initialRawRules = Array.isArray(reportParams?.columnDefs) ? reportParams.columnDefs : [];
   const initialRevived  = reviveColumnDefsFromParams(reportParams);
 
@@ -688,6 +718,7 @@ export default function DataTablesReport() {
 
   // boot on urls change
   useEffect(() => {
+    if (!colsUrl || !dataUrl) return;
     bootDataTable();
     return () => { try { dtRef.current?.destroy(true); dtRef.current = null; } catch {} };
     // eslint-disable-next-line react-hooks/exhaustive-deps

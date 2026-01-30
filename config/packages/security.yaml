@@ -29,6 +29,10 @@ security:
         default_target_path: /
       entry_point: form_login
 
+      two_factor:
+        auth_form_path: /2fa
+        check_path: /2fa/check
+
       logout:
         path: app_logout
         target: app_login
@@ -44,6 +48,10 @@ security:
     - { path: ^/login$, roles: PUBLIC_ACCESS }
     - { path: ^/logout$, roles: PUBLIC_ACCESS }
 
+    # 2FA form (only during 2FA flow)
+    - { path: ^/2fa/check, roles: IS_AUTHENTICATED_2FA_IN_PROGRESS }
+    - { path: ^/2fa, roles: IS_AUTHENTICATED_2FA_IN_PROGRESS }
+
     # Public assets (login page, etc.)
     - { path: ^/build, roles: PUBLIC_ACCESS }     # Webpack Encore output
     - { path: ^/images, roles: PUBLIC_ACCESS }    # logos, favicon
@@ -52,6 +60,9 @@ security:
     - { path: ^/api/menu$, roles: PUBLIC_ACCESS }
     - { path: ^/api/mail, roles: PUBLIC_ACCESS }  # TODO: tighten later (ROLE_USER/ROLE_ADMIN)
     - { path: ^/s/, roles: PUBLIC_ACCESS }        # token-based public links
+    - { path: ^/gallery/share, roles: PUBLIC_ACCESS }
+    - { path: ^/gallery/media, roles: PUBLIC_ACCESS }
+    - { path: ^/api/galleries/share, roles: PUBLIC_ACCESS }
     - { path: ^/api/sql/preview$, roles: PUBLIC_ACCESS }
     - { path: ^/api/sqlc, roles: PUBLIC_ACCESS }
 

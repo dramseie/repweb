@@ -347,10 +347,10 @@ export default function PosAgenda() {
             <div className="mb-2">
               <label className="form-label small">Statut</label>
               <select className="form-select" value={status} onChange={e=>setStatus(e.target.value)}>
-                <option value="booked">booked</option>
-                <option value="done">done</option>
-                <option value="cancelled">cancelled</option>
-                <option value="no-show">no-show</option>
+                <option value="booked">réservé</option>
+                <option value="done">réalisé</option>
+                <option value="no-show">pas venue</option>
+                <option value="cancelled">annulé</option>
               </select>
             </div>
 
@@ -376,7 +376,7 @@ export default function PosAgenda() {
       <FullCalendar
         ref={calRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-        initialView="timeGridWeek"
+  initialView="dayGridMonth"
         headerToolbar={{ left:'prev,next today', center:'title', right:'dayGridMonth,timeGridWeek,timeGridDay' }}
         slotMinTime="08:00:00"
         slotMaxTime="20:00:00"

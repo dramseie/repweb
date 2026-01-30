@@ -1,0 +1,2906 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import $ from 'jquery';
+import DataTablesReport from '../../components/DataTablesReport.jsx';
+import TrumboField from '../components/common/TrumboField.jsx';
+
+const formatValue = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return String(value);
+};
+
+const formatLongDate = (value) => {
+  const date = value instanceof Date ? value : parseDateValue(value);
+  if (!date) return '—';
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const resolveCellValue = (row, key) => {
+  if (!row || !key) return null;
+  return row[key] ?? null;
+};
+
+const formatDateTimeDisplay = (value) => {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+};
+
+const getRowField = (row, keys) => {
+  if (!row || !Array.isArray(keys)) return null;
+  for (const key of keys) {
+    const value = resolveCellValue(row, key);
+    if (value !== null && value !== undefined && value !== '') {
+      return value;
+    }
+  }
+  return null;
+};
+
+const cleanSiteName = (value) => {
+  if (!value) return '';
+  return String(value).replace(/^IKEAStore\s*-\s*/i, '').trim();
+};
+
+const parseDateValue = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatShortDate = (value) => {
+  const date = parseDateValue(value);
+  if (!date) return '—';
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+};
+
+const formatDateDisplay = (value) => {
+  const date = parseDateValue(value);
+  if (!date) return '—';
+  return date.toLocaleDateString();
+};
+
+const formatDisplayValue = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
+
+const formatMonthLabel = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
+};
+
+const buildMonthTicks = (min, max) => {
+  const ticks = [];
+  const start = new Date(min);
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(max);
+  end.setDate(1);
+  end.setHours(0, 0, 0, 0);
+  let cursor = new Date(start);
+  while (cursor <= end) {
+    const time = cursor.getTime();
+    ticks.push({ time, label: formatMonthLabel(cursor) });
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return ticks;
+};
+
+const buildQuarterTicks = (min, max) => {
+  const ticks = [];
+  const start = new Date(min);
+  const startQuarter = Math.floor(start.getMonth() / 3) * 3;
+  start.setMonth(startQuarter, 1);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(max);
+  end.setDate(1);
+  end.setHours(0, 0, 0, 0);
+  let cursor = new Date(start);
+  while (cursor <= end) {
+    const time = cursor.getTime();
+    ticks.push({ time, label: formatMonthLabel(cursor) });
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 1);
+  }
+  return ticks;
+};
+
+const COUNTRY_FLAG_MAP = {
+  Australia: 'AU',
+  Austria: 'AT',
+  Belgium: 'BE',
+  Bulgaria: 'BG',
+  Canada: 'CA',
+  Croatia: 'HR',
+  Cyprus: 'CY',
+  Czechia: 'CZ',
+  'Czech Republic': 'CZ',
+  Denmark: 'DK',
+  Estonia: 'EE',
+  Finland: 'FI',
+  France: 'FR',
+  Germany: 'DE',
+  Greece: 'GR',
+  Hungary: 'HU',
+  Iceland: 'IS',
+  India: 'IN',
+  Ireland: 'IE',
+  Italy: 'IT',
+  Latvia: 'LV',
+  Lithuania: 'LT',
+  Luxembourg: 'LU',
+  Malta: 'MT',
+  Netherlands: 'NL',
+  Norway: 'NO',
+  Poland: 'PL',
+  Portugal: 'PT',
+  Romania: 'RO',
+  Slovakia: 'SK',
+  Slovenia: 'SI',
+  Spain: 'ES',
+  Sweden: 'SE',
+  Switzerland: 'CH',
+  'United Kingdom': 'GB',
+  UK: 'GB',
+  'United States': 'US',
+  USA: 'US',
+};
+
+const countryFlagCode = (country) => {
+  if (!country) {
+    return '';
+  }
+  return COUNTRY_FLAG_MAP[country.trim()] || '';
+};
+
+const CountryFlag = ({ country }) => {
+  const code = countryFlagCode(country);
+  if (!code) {
+    return null;
+  }
+  const src = `https://flagcdn.com/24x18/${code.toLowerCase()}.png`;
+  return <img src={src} alt="" width={24} height={18} style={{ marginRight: 8, verticalAlign: 'text-bottom' }} />;
+};
+
+const confidenceVariant = (value) => {
+  if (value === null || value === undefined) {
+    return 'secondary';
+  }
+  const normalized = String(value).toLowerCase();
+  if (normalized.includes('high')) {
+    return 'success';
+  }
+  if (normalized.includes('medium')) {
+    return 'warning';
+  }
+  if (normalized.includes('low')) {
+    return 'danger';
+  }
+  return 'secondary';
+};
+
+const confidenceColor = (value) => {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized.includes('high')) return '#198754';
+  if (normalized.includes('medium')) return '#ffc107';
+  if (normalized.includes('low')) return '#dc3545';
+  return '';
+};
+
+const SmartsheetPivotPage = () => {
+  const [activeTab, setActiveTab] = useState('explorer');
+
+  const [workspaces, setWorkspaces] = useState([]);
+  const [workspaceError, setWorkspaceError] = useState(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+
+  const [sheets, setSheets] = useState([]);
+  const [sheetsError, setSheetsError] = useState(null);
+  const [sheetsLoading, setSheetsLoading] = useState(false);
+
+  const [selectedWorkspace, setSelectedWorkspace] = useState('');
+  const [selectedSheet, setSelectedSheet] = useState('');
+
+  const [columns, setColumns] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [pivotError, setPivotError] = useState(null);
+  const [pivotLoading, setPivotLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const [analyseTasks, setAnalyseTasks] = useState([]);
+  const [analyseTaskError, setAnalyseTaskError] = useState(null);
+  const [analyseTaskLoading, setAnalyseTaskLoading] = useState(false);
+
+  const [taskA, setTaskA] = useState('');
+  const [taskB, setTaskB] = useState('');
+  const [fieldA, setFieldA] = useState('End_Date');
+  const [fieldB, setFieldB] = useState('Start_Date');
+
+  const [analyseColumns, setAnalyseColumns] = useState([]);
+  const [analyseRows, setAnalyseRows] = useState([]);
+  const [analyseError, setAnalyseError] = useState(null);
+  const [analyseLoading, setAnalyseLoading] = useState(false);
+
+  const [presentationAssessments, setPresentationAssessments] = useState({ meta: null, items: [] });
+  const [presentationInstallations, setPresentationInstallations] = useState({ meta: null, items: [] });
+  const [presentationPostDeployment, setPresentationPostDeployment] = useState({ meta: null, items: [] });
+  const [presentationTimeline, setPresentationTimeline] = useState({ items: [] });
+  const [presentationIssues, setPresentationIssues] = useState({ items: [] });
+  const [presentationProgress, setPresentationProgress] = useState({ items: [] });
+  const [presentationOverview, setPresentationOverview] = useState({ items: [] });
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState(null);
+  const [presentationError, setPresentationError] = useState(null);
+  const [presentationLoading, setPresentationLoading] = useState(false);
+  const [presentationLoaded, setPresentationLoaded] = useState(false);
+  const [presentationCountryFilter, setPresentationCountryFilter] = useState([]);
+  const [presentationExporting, setPresentationExporting] = useState(false);
+  const [presentationEditMode, setPresentationEditMode] = useState(false);
+  const [presentationEdits, setPresentationEdits] = useState({});
+  const [presentationSaving, setPresentationSaving] = useState(false);
+  const [presentationSaveError, setPresentationSaveError] = useState(null);
+  const [issueDrafts, setIssueDrafts] = useState({});
+  const [issueSaving, setIssueSaving] = useState({});
+  const [issueEditTargets, setIssueEditTargets] = useState({});
+  const [slideshowOpen, setSlideshowOpen] = useState(false);
+  const [slideshowIndex, setSlideshowIndex] = useState(0);
+  const [highlightsContent, setHighlightsContent] = useState('');
+  const [highlightsLoading, setHighlightsLoading] = useState(false);
+  const [highlightsSaving, setHighlightsSaving] = useState(false);
+  const [highlightsError, setHighlightsError] = useState(null);
+  const [highlightsLoaded, setHighlightsLoaded] = useState(false);
+
+  const [statusData, setStatusData] = useState({ categories: [], items: [] });
+  const [statusError, setStatusError] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusLoaded, setStatusLoaded] = useState(false);
+  const [statusDrafts, setStatusDrafts] = useState({});
+  const [statusCountryFilter, setStatusCountryFilter] = useState('');
+
+  const [plannedWeekRows, setPlannedWeekRows] = useState([]);
+  const [plannedWeekLoading, setPlannedWeekLoading] = useState(false);
+  const [plannedWeekError, setPlannedWeekError] = useState(null);
+
+  const [reportList, setReportList] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState(null);
+  const [selectedReportId, setSelectedReportId] = useState('');
+  const [reportMeta, setReportMeta] = useState(null);
+  const [reportMetaLoading, setReportMetaLoading] = useState(false);
+  const [reportMetaError, setReportMetaError] = useState(null);
+
+  const presentationDateLabel = formatLongDate();
+
+  const workspacesAbortRef = useRef(null);
+  const sheetsAbortRef = useRef(null);
+  const pivotAbortRef = useRef(null);
+  const datatableRef = useRef(null);
+  const tableRef = useRef(null);
+  const analyseDatatableRef = useRef(null);
+  const analyseTableRef = useRef(null);
+
+  const destroyTable = useCallback(() => {
+    if (datatableRef.current) {
+      datatableRef.current.destroy();
+      datatableRef.current = null;
+    }
+    if (tableRef.current) {
+      const tbody = tableRef.current.querySelector('tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPlannedWeek = async () => {
+      setPlannedWeekLoading(true);
+      setPlannedWeekError(null);
+      try {
+        const res = await fetch('/api/smartsheet/presentation/planned-week');
+        if (!res.ok) throw new Error(`Failed to load planned-week (HTTP ${res.status})`);
+        const payload = await res.json();
+        if (!cancelled) setPlannedWeekRows(Array.isArray(payload?.items) ? payload.items : []);
+      } catch (err) {
+        if (!cancelled) setPlannedWeekError(err.message || 'Failed to load planned-week');
+      } finally {
+        if (!cancelled) setPlannedWeekLoading(false);
+      }
+    };
+    loadPlannedWeek();
+    return () => { cancelled = true; };
+  }, []);
+
+  const fetchPresentation = useCallback(async () => {
+    setPresentationLoading(true);
+    setPresentationError(null);
+    setOverviewLoading(true);
+    setOverviewError(null);
+
+    try {
+      const [assessmentsResponse, installationsResponse, postDeploymentResponse, issuesResponse, progressResponse, overviewResponse, timelineResponse] = await Promise.all([
+        fetch('/api/smartsheet/presentation/planned-assessments'),
+        fetch('/api/smartsheet/presentation/planned-installations'),
+        fetch('/api/smartsheet/presentation/post-deployment-signoff'),
+        fetch('/api/smartsheet/presentation/issues'),
+        fetch('/api/smartsheet/presentation/progress'),
+        fetch('/api/smartsheet/presentation/overview'),
+        fetch('/api/smartsheet/presentation/timeline'),
+      ]);
+      if (!assessmentsResponse.ok) {
+        throw new Error(`Failed to load planned assessments (HTTP ${assessmentsResponse.status}).`);
+      }
+      if (!installationsResponse.ok) {
+        throw new Error(`Failed to load planned installations (HTTP ${installationsResponse.status}).`);
+      }
+      if (!postDeploymentResponse.ok) {
+        throw new Error(`Failed to load post-deployment sign-off (HTTP ${postDeploymentResponse.status}).`);
+      }
+      if (!issuesResponse.ok) {
+        throw new Error(`Failed to load issue log (HTTP ${issuesResponse.status}).`);
+      }
+      if (!progressResponse.ok) {
+        throw new Error(`Failed to load progress summary (HTTP ${progressResponse.status}).`);
+      }
+      if (!overviewResponse.ok) {
+        throw new Error(`Failed to load programme overview (HTTP ${overviewResponse.status}).`);
+      }
+      if (!timelineResponse.ok) {
+        throw new Error(`Failed to load timeline data (HTTP ${timelineResponse.status}).`);
+      }
+      const assessmentsPayload = await assessmentsResponse.json();
+      const installationsPayload = await installationsResponse.json();
+      const postDeploymentPayload = await postDeploymentResponse.json();
+      const issuesPayload = await issuesResponse.json();
+      const progressPayload = await progressResponse.json();
+      const overviewPayload = await overviewResponse.json();
+      const timelinePayload = await timelineResponse.json();
+      setPresentationAssessments({
+        meta: assessmentsPayload?.meta ?? null,
+        items: Array.isArray(assessmentsPayload?.items) ? assessmentsPayload.items : [],
+      });
+      setPresentationInstallations({
+        meta: installationsPayload?.meta ?? null,
+        items: Array.isArray(installationsPayload?.items) ? installationsPayload.items : [],
+      });
+      setPresentationPostDeployment({
+        meta: postDeploymentPayload?.meta ?? null,
+        items: Array.isArray(postDeploymentPayload?.items) ? postDeploymentPayload.items : [],
+      });
+      setPresentationIssues({
+        items: Array.isArray(issuesPayload?.items) ? issuesPayload.items : [],
+      });
+      setPresentationProgress({
+        items: Array.isArray(progressPayload?.items) ? progressPayload.items : [],
+      });
+      setPresentationOverview({
+        items: Array.isArray(overviewPayload?.items) ? overviewPayload.items : [],
+      });
+      setPresentationTimeline({
+        items: Array.isArray(timelinePayload?.items) ? timelinePayload.items : [],
+      });
+      setPresentationEdits({});
+      setPresentationLoaded(true);
+    } catch (error) {
+      setPresentationError(error.message || 'Unable to load presentation data.');
+      setPresentationLoaded(true);
+    } finally {
+      setPresentationLoading(false);
+      setOverviewLoading(false);
+    }
+  }, []);
+
+  const fetchHighlights = useCallback(async () => {
+    if (highlightsLoaded || highlightsLoading) return;
+    setHighlightsLoading(true);
+    setHighlightsError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/content?section=highlights');
+      if (!response.ok) {
+        throw new Error(`Failed to load highlights (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setHighlightsContent(payload?.content || '');
+      setHighlightsLoaded(true);
+    } catch (error) {
+      setHighlightsError(error.message || 'Unable to load highlights.');
+      setHighlightsLoaded(true);
+    } finally {
+      setHighlightsLoading(false);
+    }
+  }, [highlightsLoaded, highlightsLoading]);
+
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(true);
+    setStatusError(null);
+
+    try {
+      const response = await fetch('/api/smartsheet/presentation/status');
+      if (!response.ok) {
+        throw new Error(`Failed to load status data (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setStatusData({
+        categories: Array.isArray(payload?.categories) ? payload.categories : [],
+        items: Array.isArray(payload?.items) ? payload.items : [],
+      });
+      setStatusLoaded(true);
+    } catch (error) {
+      setStatusError(error.message || 'Unable to load status data.');
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  const fetchReports = useCallback(async () => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const response = await fetch('/api/reports/tenant/IKEA');
+      if (!response.ok) {
+        throw new Error(`Failed to load reports (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload?.reports) ? payload.reports : [];
+      setReportList(items);
+      if (!selectedReportId && items.length > 0) {
+        setSelectedReportId(String(items[0].repid));
+      }
+    } catch (error) {
+      setReportError(error.message || 'Unable to load reports.');
+    } finally {
+      setReportLoading(false);
+    }
+  }, [selectedReportId]);
+
+  const fetchReportMeta = useCallback(async (repid) => {
+    if (!repid) {
+      setReportMeta(null);
+      return;
+    }
+    setReportMetaLoading(true);
+    setReportMetaError(null);
+    try {
+      const response = await fetch(`/api/report/${encodeURIComponent(repid)}/meta`);
+      if (!response.ok) {
+        throw new Error(`Failed to load report meta (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setReportMeta(payload?.report ?? null);
+    } catch (error) {
+      setReportMetaError(error.message || 'Unable to load report details.');
+      setReportMeta(null);
+    } finally {
+      setReportMetaLoading(false);
+    }
+  }, []);
+
+  const destroyAnalyseTable = useCallback(() => {
+    if (analyseDatatableRef.current) {
+      analyseDatatableRef.current.destroy();
+      analyseDatatableRef.current = null;
+    }
+    if (analyseTableRef.current) {
+      const tbody = analyseTableRef.current.querySelector('tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+      }
+    }
+  }, []);
+
+  const hydrateTable = useCallback((cols, dataRows) => {
+    if (!tableRef.current) {
+      return;
+    }
+
+    destroyTable();
+
+    if (!cols.length) {
+      return;
+    }
+
+    const dataset = dataRows.map((row) => cols.map((col) => formatValue(resolveCellValue(row, col.key))));
+
+    datatableRef.current = $(tableRef.current).DataTable({
+      dom:
+        "<'row g-2 align-items-center'<'col-md-7 dt-toolbar-left d-flex align-items-center'B><'col-md-5 dt-toolbar-right'f>>" +
+        "<'row'<'col-12'tr>>" +
+        "<'row'<'col-md-5'i><'col-md-7'p>>",
+      data: dataset,
+      columns: cols.map((col) => ({ title: col.label })),
+      buttons: [
+        { extend: 'colvis', text: '<i class="fas fa-columns me-1"></i> Columns', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'copyHtml5', text: '<i class="fas fa-copy me-1"></i> Copy', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'excelHtml5', text: '<i class="fas fa-file-excel me-1"></i> XLSX', className: 'btn btn-sm btn-success' },
+        { extend: 'csvHtml5', text: '<i class="fas fa-file-csv me-1"></i> CSV', className: 'btn btn-sm btn-outline-primary' },
+        { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf me-1"></i> PDF', className: 'btn btn-sm btn-outline-danger' },
+        { extend: 'print', text: '<i class="fas fa-print me-1"></i> Print', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'searchBuilder', text: '<i class="fas fa-filter me-1"></i> Filter', className: 'btn btn-sm btn-outline-primary' },
+      ],
+      pageLength: 50,
+      lengthMenu: [25, 50, 100, 250],
+      fixedHeader: true,
+      colReorder: true,
+      responsive: false,
+      scrollY: '60vh',
+      scrollX: true,
+      scrollCollapse: true,
+      deferRender: true,
+      scroller: true,
+      stateSave: true,
+      searchBuilder: true,
+      language: { searchBuilder: { button: '<i class="fas fa-filter me-1"></i> Filter' } },
+      order: [],
+    });
+  }, [destroyTable]);
+
+  const hydrateAnalyseTable = useCallback((cols, dataRows) => {
+    if (!analyseTableRef.current) {
+      return;
+    }
+
+    destroyAnalyseTable();
+
+    if (!cols.length) {
+      return;
+    }
+
+    const dataset = dataRows.map((row) => cols.map((col) => formatValue(resolveCellValue(row, col.key))));
+
+    analyseDatatableRef.current = $(analyseTableRef.current).DataTable({
+      dom:
+        "<'row g-2 align-items-center'<'col-md-7 dt-toolbar-left d-flex align-items-center'B><'col-md-5 dt-toolbar-right'f>>" +
+        "<'row'<'col-12'tr>>" +
+        "<'row'<'col-md-5'i><'col-md-7'p>>",
+      data: dataset,
+      columns: cols.map((col) => ({ title: col.label })),
+      buttons: [
+        { extend: 'colvis', text: '<i class="fas fa-columns me-1"></i> Columns', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'copyHtml5', text: '<i class="fas fa-copy me-1"></i> Copy', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'excelHtml5', text: '<i class="fas fa-file-excel me-1"></i> XLSX', className: 'btn btn-sm btn-success' },
+        { extend: 'csvHtml5', text: '<i class="fas fa-file-csv me-1"></i> CSV', className: 'btn btn-sm btn-outline-primary' },
+        { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf me-1"></i> PDF', className: 'btn btn-sm btn-outline-danger' },
+        { extend: 'print', text: '<i class="fas fa-print me-1"></i> Print', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      pageLength: 50,
+      lengthMenu: [25, 50, 100, 250],
+      fixedHeader: true,
+      colReorder: true,
+      responsive: false,
+      scrollY: '60vh',
+      scrollX: true,
+      scrollCollapse: true,
+      deferRender: true,
+      scroller: true,
+      stateSave: true,
+      order: [],
+    });
+  }, [destroyAnalyseTable]);
+
+  const fetchWorkspaces = useCallback(async () => {
+    workspacesAbortRef.current?.abort();
+    const controller = new AbortController();
+    workspacesAbortRef.current = controller;
+
+    setWorkspaceLoading(true);
+    setWorkspaceError(null);
+
+    try {
+      const response = await fetch('/api/smartsheet/pivot/workspaces', { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Failed to load workspaces (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setWorkspaces(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+      setWorkspaceError(error.message || 'Unable to load workspaces.');
+    } finally {
+      if (workspacesAbortRef.current === controller) {
+        workspacesAbortRef.current = null;
+      }
+      setWorkspaceLoading(false);
+    }
+  }, []);
+
+  const fetchSheets = useCallback(async (workspaceId) => {
+    sheetsAbortRef.current?.abort();
+    const controller = new AbortController();
+    sheetsAbortRef.current = controller;
+
+    setSheets([]);
+    setSelectedSheet('');
+    setColumns([]);
+    setRows([]);
+    destroyTable();
+    setSheetsLoading(true);
+    setSheetsError(null);
+
+    if (!workspaceId) {
+      setSheetsLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/smartsheet/pivot/workspaces/${encodeURIComponent(workspaceId)}/sheets`, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Failed to load sheets (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setSheets(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+      setSheetsError(error.message || 'Unable to load sheets.');
+    } finally {
+      if (sheetsAbortRef.current === controller) {
+        sheetsAbortRef.current = null;
+      }
+      setSheetsLoading(false);
+    }
+  }, [destroyTable]);
+
+  const fetchPivot = useCallback(async (sheetId) => {
+    pivotAbortRef.current?.abort();
+    const controller = new AbortController();
+    pivotAbortRef.current = controller;
+
+    setPivotLoading(true);
+    setPivotError(null);
+    setColumns([]);
+    setRows([]);
+    destroyTable();
+
+    if (!sheetId) {
+      setPivotLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/smartsheet/pivot/sheets/${encodeURIComponent(sheetId)}/data`, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Failed to load sheet data (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const cols = Array.isArray(payload?.columns) ? payload.columns : [];
+      const dataRows = Array.isArray(payload?.items) ? payload.items : [];
+      setColumns(cols);
+      setRows(dataRows);
+      setLastUpdated(new Date());
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+      setPivotError(error.message || 'Unable to load Smartsheet data.');
+    } finally {
+      if (pivotAbortRef.current === controller) {
+        pivotAbortRef.current = null;
+      }
+      setPivotLoading(false);
+    }
+  }, [destroyTable, hydrateTable]);
+
+  useEffect(() => {
+    fetchWorkspaces();
+
+    const controller = new AbortController();
+    const fetchTasks = async () => {
+      setAnalyseTaskLoading(true);
+      setAnalyseTaskError(null);
+      try {
+        const response = await fetch('/api/smartsheet/analyse/tasks', { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Failed to load tasks (HTTP ${response.status}).`);
+        }
+        const payload = await response.json();
+        setAnalyseTasks(Array.isArray(payload?.items) ? payload.items : []);
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return;
+        }
+        setAnalyseTaskError(error.message || 'Unable to load task list.');
+      } finally {
+        setAnalyseTaskLoading(false);
+      }
+    };
+
+    fetchTasks();
+
+    return () => {
+      workspacesAbortRef.current?.abort();
+      sheetsAbortRef.current?.abort();
+      pivotAbortRef.current?.abort();
+      controller.abort();
+      destroyTable();
+      destroyAnalyseTable();
+    };
+  }, [destroyAnalyseTable, destroyTable, fetchWorkspaces]);
+
+  useEffect(() => {
+    fetchSheets(selectedWorkspace);
+  }, [fetchSheets, selectedWorkspace]);
+
+  useEffect(() => {
+    fetchPivot(selectedSheet);
+  }, [fetchPivot, selectedSheet]);
+
+  useEffect(() => {
+    if (!columns.length) {
+      destroyTable();
+      return;
+    }
+
+    hydrateTable(columns, rows);
+  }, [columns, rows, destroyTable, hydrateTable]);
+
+  useEffect(() => {
+    if (!analyseColumns.length) {
+      destroyAnalyseTable();
+      return;
+    }
+
+    hydrateAnalyseTable(analyseColumns, analyseRows);
+  }, [analyseColumns, analyseRows, destroyAnalyseTable, hydrateAnalyseTable]);
+
+  const onWorkspaceChange = (event) => {
+    setSelectedWorkspace(event.target.value);
+    setSelectedSheet('');
+  };
+
+  const onSheetChange = (event) => {
+    setSelectedSheet(event.target.value);
+  };
+
+  const onRefresh = () => {
+    if (selectedSheet) {
+      fetchPivot(selectedSheet);
+    }
+  };
+
+  const onRunAnalysis = async () => {
+    if (!taskA || !taskB || !fieldA || !fieldB) {
+      return;
+    }
+
+    setAnalyseLoading(true);
+    setAnalyseError(null);
+    setAnalyseColumns([]);
+    setAnalyseRows([]);
+
+    try {
+      const params = new URLSearchParams({
+        taskA,
+        taskB,
+        fieldA,
+        fieldB,
+      });
+      const response = await fetch(`/api/smartsheet/analyse/durations?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Failed to run analysis (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setAnalyseColumns(Array.isArray(payload?.columns) ? payload.columns : []);
+      setAnalyseRows(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setAnalyseError(error.message || 'Unable to run analysis.');
+    } finally {
+      setAnalyseLoading(false);
+    }
+  };
+
+  const currentWorkspace = workspaces.find((item) => String(item.id) === String(selectedWorkspace));
+  const currentSheet = sheets.find((item) => String(item.id) === String(selectedSheet));
+
+  const taskOptions = analyseTasks.map((taskName) => ({
+    value: taskName,
+    label: taskName,
+  }));
+
+  const fieldOptions = [
+    { value: 'Start_Date', label: 'Start Date' },
+    { value: 'End_Date', label: 'End Date' },
+  ];
+
+  const assessmentItems = Array.isArray(presentationAssessments.items) ? presentationAssessments.items : [];
+  const installationItems = Array.isArray(presentationInstallations.items) ? presentationInstallations.items : [];
+  const postDeploymentItems = Array.isArray(presentationPostDeployment.items) ? presentationPostDeployment.items : [];
+  const issueItems = Array.isArray(presentationIssues.items) ? presentationIssues.items : [];
+  const assessmentMeta = presentationAssessments.meta ?? null;
+  const installationMeta = presentationInstallations.meta ?? null;
+  const postDeploymentMeta = presentationPostDeployment.meta ?? null;
+  const presentationMeta = assessmentMeta ?? installationMeta ?? postDeploymentMeta;
+  const overviewItems = Array.isArray(presentationOverview.items) ? presentationOverview.items : [];
+  const progressItems = Array.isArray(presentationProgress.items) ? presentationProgress.items : [];
+
+  const mergeCountryItems = (primary, secondary, tertiary, issues) => {
+    const map = new Map();
+    primary.forEach((block) => {
+      map.set(block.country, { country: block.country, assessments: block, installations: null, postDeployment: null, issues: null });
+    });
+    secondary.forEach((block) => {
+      const existing = map.get(block.country);
+      if (existing) {
+        existing.installations = block;
+      } else {
+        map.set(block.country, { country: block.country, assessments: null, installations: block, postDeployment: null, issues: null });
+      }
+    });
+    tertiary.forEach((block) => {
+      const existing = map.get(block.country);
+      if (existing) {
+        existing.postDeployment = block;
+      } else {
+        map.set(block.country, { country: block.country, assessments: null, installations: null, postDeployment: block, issues: null });
+      }
+    });
+    issues.forEach((block) => {
+      const existing = map.get(block.country);
+      if (existing) {
+        existing.issues = block;
+      } else {
+        map.set(block.country, { country: block.country, assessments: null, installations: null, postDeployment: null, issues: block });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.country.localeCompare(b.country));
+  };
+
+  const presentationItems = mergeCountryItems(assessmentItems, installationItems, postDeploymentItems, issueItems);
+  const presentationCountries = Array.from(new Set(presentationItems.map((item) => item.country))).sort((a, b) => a.localeCompare(b));
+  const isSpecialFilter = (value) => value.startsWith('__');
+  const selectedCountryValues = presentationCountryFilter.filter((value) => !isSpecialFilter(value));
+  const selectedSpecialValues = presentationCountryFilter.filter(isSpecialFilter);
+  
+  const filterByCountry = (items) => {
+    if (!selectedCountryValues.length) {
+      return items;
+    }
+    return items.filter((item) => selectedCountryValues.includes(item.country));
+  };
+  
+  const filteredAssessmentItems = filterByCountry(assessmentItems);
+  const filteredInstallationItems = filterByCountry(installationItems);
+  const filteredPostDeploymentItems = filterByCountry(postDeploymentItems);
+  const filteredIssueItems = filterByCountry(issueItems);
+  const filteredOverviewItems = filterByCountry(overviewItems);
+  const filteredProgressItems = filterByCountry(progressItems);
+  const timelineItems = filterByCountry(Array.isArray(presentationTimeline.items) ? presentationTimeline.items : []);
+
+  const overviewByCountry = React.useMemo(() => {
+    const map = new Map();
+    filteredOverviewItems.forEach((row) => {
+      if (row?.country) {
+        map.set(row.country, row);
+      }
+    });
+    return map;
+  }, [filteredOverviewItems]);
+
+  const timelineDomain = React.useMemo(() => {
+    let min = null;
+    let max = null;
+    timelineItems.forEach((item) => {
+      const start = parseDateValue(item.startDate);
+      const end = parseDateValue(item.endDate);
+      if (!start || !end) {
+        return;
+      }
+      const startTime = start.getTime();
+      const endTime = end.getTime();
+      min = min === null ? startTime : Math.min(min, startTime);
+      max = max === null ? endTime : Math.max(max, endTime);
+    });
+    if (min === null || max === null) {
+      return null;
+    }
+    if (min === max) {
+      max = min + 24 * 60 * 60 * 1000;
+    }
+    const now = Date.now();
+    return {
+      min,
+      max,
+      span: max - min,
+      now: now >= min && now <= max ? now : null,
+      ticks: buildMonthTicks(min, max),
+      quarterTicks: buildQuarterTicks(min, max),
+    };
+  }, [timelineItems]);
+
+  const filteredPresentationItems = selectedCountryValues.length
+    ? presentationItems.filter((item) => selectedCountryValues.includes(item.country))
+    : presentationItems;
+
+  const statusCategories = Array.isArray(statusData.categories) ? statusData.categories : [];
+  const statusItems = Array.isArray(statusData.items) ? statusData.items : [];
+  const statusCountries = Array.from(new Set(statusItems.map((item) => item.country))).sort((a, b) => a.localeCompare(b));
+
+  const statusKey = (country, siteId) => `${country}||${siteId}`;
+
+  const buildSiteOptions = (countryBlock) => {
+    const map = new Map();
+    const addEntries = (entries) => {
+      (entries || []).forEach((entry) => {
+        const siteId = entry.siteId ? String(entry.siteId) : '';
+        const siteName = entry.siteName ? String(entry.siteName) : '';
+        if (!siteId && !siteName) return;
+        const key = siteId || siteName;
+        if (!map.has(key)) {
+          map.set(key, { siteId, siteName });
+        }
+      });
+    };
+    addEntries(countryBlock.assessments?.current);
+    addEntries(countryBlock.assessments?.next);
+    addEntries(countryBlock.installations?.current);
+    addEntries(countryBlock.installations?.next);
+    addEntries(countryBlock.postDeployment?.current);
+    addEntries(countryBlock.postDeployment?.next);
+    return Array.from(map.values()).sort((a, b) => (a.siteName || a.siteId).localeCompare(b.siteName || b.siteId));
+  };
+
+  const getIssueDraft = (country) => {
+    return issueDrafts[country] || {
+      storeId: '',
+      storeName: '',
+      description: '',
+      priority: '',
+      responsibleParty: '',
+      actionRequired: '',
+      resolveDate: '',
+    };
+  };
+
+  const getIssueEditTarget = (country) => issueEditTargets[country] || null;
+
+  const startIssueEdit = (country, entry) => {
+    if (!entry?.id) return;
+    setIssueEditTargets((prev) => ({ ...prev, [country]: entry.id }));
+    updateIssueDraft(country, {
+      storeId: entry.storeId || '',
+      storeName: entry.storeName || '',
+      description: entry.description || '',
+      priority: entry.priority || '',
+      responsibleParty: entry.responsibleParty || '',
+      actionRequired: entry.actionRequired || '',
+      resolveDate: entry.resolveDate || '',
+    });
+  };
+
+  const clearIssueEdit = (country) => {
+    setIssueEditTargets((prev) => {
+      const next = { ...prev };
+      delete next[country];
+      return next;
+    });
+  };
+
+  const updateIssueDraft = (country, patch) => {
+    setIssueDrafts((prev) => ({
+      ...prev,
+      [country]: { ...getIssueDraft(country), ...patch },
+    }));
+  };
+
+  const submitIssue = async (country) => {
+    const draft = getIssueDraft(country);
+    const editingId = getIssueEditTarget(country);
+    setIssueSaving((prev) => ({ ...prev, [country]: true }));
+    try {
+      const response = await fetch(
+        editingId
+          ? `/api/smartsheet/presentation/issues/${editingId}`
+          : '/api/smartsheet/presentation/issues',
+        {
+          method: editingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            country,
+            storeId: draft.storeId || null,
+            storeName: draft.storeName || null,
+            description: draft.description || null,
+            priority: draft.priority || null,
+            responsibleParty: draft.responsibleParty || null,
+            actionRequired: draft.actionRequired || null,
+            resolveDate: draft.resolveDate || null,
+          }),
+        }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      updateIssueDraft(country, {
+        storeId: '',
+        storeName: '',
+        description: '',
+        priority: '',
+        responsibleParty: '',
+        actionRequired: '',
+        resolveDate: '',
+      });
+      if (editingId) {
+        clearIssueEdit(country);
+      }
+      fetchPresentation();
+    } catch (error) {
+      setPresentationSaveError(error.message || 'Failed to save issue.');
+    } finally {
+      setIssueSaving((prev) => ({ ...prev, [country]: false }));
+    }
+  };
+
+  const scopeCategoryMap = {
+    'assessments-current': 'assessment',
+    'assessments-next': 'assessment',
+    'installations-current': 'installation',
+    'installations-next': 'installation',
+    'postdeployment-current': 'post_deployment',
+    'postdeployment-next': 'post_deployment',
+  };
+
+  const presentationEntryKey = (entry, scope, country) => [
+    scope,
+    country ?? '',
+    entry.siteId ?? '',
+    entry.siteName ?? '',
+    entry.startDate ?? '',
+    entry.endDate ?? '',
+  ].join('||');
+
+  const getPresentationDraft = (entry, scope, country) => {
+    const key = presentationEntryKey(entry, scope, country);
+    return presentationEdits[key] || {
+      confidence: entry.confidence ?? '',
+      status: entry.status ?? '',
+      country,
+      siteId: entry.siteId ?? '',
+      siteName: entry.siteName ?? '',
+      category: scopeCategoryMap[scope] || '',
+    };
+  };
+
+  const updatePresentationDraft = (entry, scope, country, patch) => {
+    const key = presentationEntryKey(entry, scope, country);
+    const base = getPresentationDraft(entry, scope, country);
+    setPresentationEdits((prev) => ({
+      ...prev,
+      [key]: { ...base, ...patch },
+    }));
+  };
+
+  const savePresentationEdits = async () => {
+    const edits = Object.values(presentationEdits);
+    if (edits.length === 0) {
+      setPresentationSaveError('No changes to save.');
+      return;
+    }
+
+    setPresentationSaving(true);
+    setPresentationSaveError(null);
+
+    try {
+      await Promise.all(
+        edits.map((edit) =>
+          fetch('/api/smartsheet/presentation/status/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              country: edit.country,
+              siteId: edit.siteId,
+              siteName: edit.siteName || null,
+              category: edit.category,
+              ragConfidence: edit.confidence || null,
+              statusText: edit.status || '',
+            }),
+          }).then(async (response) => {
+            if (!response.ok) {
+              const payload = await response.json().catch(() => ({}));
+              throw new Error(payload?.message || `HTTP ${response.status}`);
+            }
+          })
+        )
+      );
+      setPresentationEdits({});
+      setPresentationEditMode(false);
+      fetchPresentation();
+    } catch (error) {
+      setPresentationSaveError(error.message || 'Failed to save presentation updates.');
+    } finally {
+      setPresentationSaving(false);
+    }
+  };
+
+  const updateStatusDraft = (country, siteId, categoryId, patch) => {
+    const key = statusKey(country, siteId);
+    setStatusDrafts((prev) => {
+      const current = prev[key] || {};
+      const nextCategory = { ...(current[categoryId] || {}), ...patch };
+      return { ...prev, [key]: { ...current, [categoryId]: nextCategory } };
+    });
+  };
+
+  const getStatusDraft = (country, siteId, categoryId) => {
+    const key = statusKey(country, siteId);
+    return statusDrafts[key]?.[categoryId] || { ragConfidence: '', statusText: '', saving: false, error: null };
+  };
+
+  const submitStatusLog = async (site, categoryId) => {
+    const draft = getStatusDraft(site.country, site.siteId, categoryId);
+    const statusText = (draft.statusText || '').trim();
+    if (!statusText) {
+      updateStatusDraft(site.country, site.siteId, categoryId, { error: 'Status text is required.' });
+      return;
+    }
+
+    updateStatusDraft(site.country, site.siteId, categoryId, { saving: true, error: null });
+
+    try {
+      const response = await fetch('/api/smartsheet/presentation/status/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          country: site.country,
+          siteId: site.siteId,
+          siteName: site.siteName,
+          category: categoryId,
+          ragConfidence: draft.ragConfidence || null,
+          statusText,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      updateStatusDraft(site.country, site.siteId, categoryId, { statusText: '', saving: false });
+      fetchStatus();
+    } catch (error) {
+      updateStatusDraft(site.country, site.siteId, categoryId, { saving: false, error: error.message || 'Failed to save status.' });
+    }
+  };
+
+  const renderAssessmentTable = (entries, scope, country) => {
+    if (!entries || entries.length === 0) {
+      return <div className="text-muted small">No planned assessments.</div>;
+    }
+
+    return (
+      <div className="table-responsive">
+        <table className="table table-sm table-bordered table-striped align-middle mb-0">
+          <colgroup>
+            <col style={{ width: '26%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '38%' }} />
+          </colgroup>
+          <thead className="table-light">
+            <tr>
+              <th>Site Name</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>Confidence</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry, index) => (
+              <tr key={`${entry.siteId ?? 'site'}-${index}`}>
+                <td>
+                  {formatDisplayValue(entry.siteName)}
+                  {entry.siteId ? ` (${entry.siteId})` : ''}
+                </td>
+                <td>{formatDateDisplay(entry.startDate)}</td>
+                <td>{formatDateDisplay(entry.endDate)}</td>
+                <td>
+                  {presentationEditMode ? (
+                    <select
+                      className="form-select form-select-sm"
+                      value={getPresentationDraft(entry, scope, country).confidence}
+                      onChange={(event) =>
+                        updatePresentationDraft(entry, scope, country, { confidence: event.target.value })
+                      }
+                      style={{
+                        backgroundColor: confidenceColor(getPresentationDraft(entry, scope, country).confidence),
+                        color: getPresentationDraft(entry, scope, country).confidence ? '#fff' : undefined,
+                      }}
+                    >
+                      <option value="">—</option>
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                    </select>
+                  ) : (
+                    (getPresentationDraft(entry, scope, country).confidence || entry.confidence) ? (
+                      <span className={`badge bg-${confidenceVariant(getPresentationDraft(entry, scope, country).confidence || entry.confidence)}`}>
+                        {formatDisplayValue(getPresentationDraft(entry, scope, country).confidence || entry.confidence)}
+                      </span>
+                    ) : (
+                      '—'
+                    )
+                  )}
+                </td>
+                <td>
+                  {presentationEditMode ? (
+                    <textarea
+                      className="form-control form-control-sm"
+                      rows={2}
+                      value={getPresentationDraft(entry, scope, country).status}
+                      onChange={(event) =>
+                        updatePresentationDraft(entry, scope, country, { status: event.target.value })
+                      }
+                      placeholder="Status"
+                    />
+                  ) : (
+                    formatDisplayValue(getPresentationDraft(entry, scope, country).status || entry.status)
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderIssueTable = (entries, country) => {
+    if (!entries || entries.length === 0) {
+      return <div className="text-muted small">No issues logged.</div>;
+    }
+
+    return (
+      <div className="table-responsive">
+        <table className="table table-sm table-bordered table-striped align-middle mb-0">
+          <thead className="table-light">
+            <tr>
+              <th>Site Name</th>
+              <th>Site ID</th>
+              <th>Description</th>
+              <th>Priority (CHML)</th>
+              <th>Responsible Party</th>
+              <th>Action to be taken (DD.MM.YY - NS)</th>
+              <th>Date to be resolved (DD.MM.YY)</th>
+              {presentationEditMode && <th />}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry, index) => (
+              <tr key={`${entry.storeId ?? 'store'}-${index}`}>
+                <td>{formatDisplayValue(entry.storeName)}</td>
+                <td>{formatDisplayValue(entry.storeId)}</td>
+                <td>{formatDisplayValue(entry.description)}</td>
+                <td>{formatDisplayValue(entry.priority)}</td>
+                <td>{formatDisplayValue(entry.responsibleParty)}</td>
+                <td>{formatDisplayValue(entry.actionRequired)}</td>
+                <td>{formatDateDisplay(entry.resolveDate)}</td>
+                {presentationEditMode && (
+                  <td className="text-nowrap">
+                    {entry.id ? (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => startIssueEdit(country, entry)}
+                      >
+                        Edit
+                      </button>
+                    ) : (
+                      <span className="text-muted small">—</span>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderGeneralIssuesTable = (entries) => {
+    if (!entries || entries.length === 0) {
+      return <div className="text-muted small">No issues logged.</div>;
+    }
+
+    return (
+      <div className="table-responsive">
+        <table className="table table-sm table-bordered table-striped align-middle mb-0">
+          <thead className="table-light">
+            <tr>
+              <th>Country</th>
+              <th>Site Name</th>
+              <th>Site ID</th>
+              <th>Description</th>
+              <th>Priority (CHML)</th>
+              <th>Responsible Party</th>
+              <th>Action to be taken (DD.MM.YY - NS)</th>
+              <th>Date to be resolved (DD.MM.YY)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry, index) => (
+              <tr key={`${entry.country ?? 'country'}-${entry.storeId ?? index}`}>
+                <td>{formatDisplayValue(entry.country)}</td>
+                <td>{formatDisplayValue(entry.storeName)}</td>
+                <td>{formatDisplayValue(entry.storeId)}</td>
+                <td>{formatDisplayValue(entry.description)}</td>
+                <td>{formatDisplayValue(entry.priority)}</td>
+                <td>{formatDisplayValue(entry.responsibleParty)}</td>
+                <td>{formatDisplayValue(entry.actionRequired)}</td>
+                <td>{formatDateDisplay(entry.resolveDate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const openSlideshow = () => {
+    setSlideshowIndex(0);
+    setSlideshowOpen(true);
+  };
+
+  const closeSlideshow = () => {
+    setSlideshowOpen(false);
+  };
+
+  const slideshowItems = filteredPresentationItems;
+  const slideshowItem = slideshowItems[slideshowIndex] || null;
+
+  const findProgressForCountry = (country) => {
+    const items = Array.isArray(presentationProgress?.items) ? presentationProgress.items : [];
+    return items.find((item) => item.country === country) || null;
+  };
+
+  const renderProgressRow = (task) => {
+    const total = Number(task.total) || 0;
+    const donePct = Number(task.donePct) || 0;
+    const inProgressPct = Number(task.inProgressPct) || 0;
+    const notStartedPct = Number(task.notStartedPct) || 0;
+
+    return (
+      <div key={task.key} className="d-flex flex-column gap-1">
+        <div className="d-flex justify-content-between small">
+          <span className="fw-semibold">{task.label}</span>
+          <span className="text-muted">
+            {total > 0
+              ? `Done ${donePct}% · In progress ${inProgressPct}% · Not started ${notStartedPct}%`
+              : 'No stores'}
+          </span>
+        </div>
+        <div className="progress" style={{ height: 8 }}>
+          <div
+            className="progress-bar bg-success"
+            role="progressbar"
+            style={{ width: `${donePct}%` }}
+            aria-label={`${task.label} done`}
+          />
+          <div
+            className="progress-bar bg-warning"
+            role="progressbar"
+            style={{ width: `${inProgressPct}%` }}
+            aria-label={`${task.label} in progress`}
+          />
+          <div
+            className="progress-bar bg-secondary"
+            role="progressbar"
+            style={{ width: `${notStartedPct}%` }}
+            aria-label={`${task.label} not started`}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const saveHighlights = async () => {
+    setHighlightsSaving(true);
+    setHighlightsError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section: 'highlights', content: highlightsContent || '' }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      setHighlightsError(error.message || 'Failed to save highlights.');
+    } finally {
+      setHighlightsSaving(false);
+    }
+  };
+
+  const renderCountryMedals = (country) => {
+    const progress = findProgressForCountry(country);
+    if (!progress || !Array.isArray(progress.tasks)) {
+      return null;
+    }
+    const medals = progress.tasks.filter((task) => Number(task.total) > 0 && Number(task.donePct) === 100);
+    if (medals.length === 0) {
+      return null;
+    }
+    return (
+      <span className="ms-2 small" title="100% complete">
+        {medals.map((task) => (
+          <span key={task.key} className="me-2">🥇 {task.label}</span>
+        ))}
+      </span>
+    );
+  };
+
+  const normalizeRag = (value) => {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) {
+      return '';
+    }
+    if (text.includes('green')) {
+      return 'green';
+    }
+    if (text.includes('amber') || text.includes('yellow')) {
+      return 'amber';
+    }
+    if (text.includes('red')) {
+      return 'red';
+    }
+    return '';
+  };
+
+  const trendGroups = filteredOverviewItems.reduce(
+    (acc, row) => {
+      const rag = normalizeRag(row.rag);
+      if (rag && acc[rag]) {
+        acc[rag].push(row);
+      }
+      return acc;
+    },
+    { green: [], amber: [], red: [] }
+  );
+
+  const flattenedIssues = filteredIssueItems.flatMap((block) =>
+    (block.issues || []).map((issue) => ({ ...issue, country: block.country }))
+  );
+
+  
+
+  useEffect(() => {
+    if (activeTab === 'presentation' && !presentationLoaded && !presentationLoading) {
+      fetchPresentation();
+    }
+  }, [activeTab, fetchPresentation, presentationLoaded, presentationLoading]);
+
+  useEffect(() => {
+    if (activeTab === 'presentation') {
+      fetchHighlights();
+    }
+  }, [activeTab, fetchHighlights]);
+
+  const onPresentationCountryChange = (event) => {
+    const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
+    setPresentationCountryFilter(selected);
+  };
+
+  const exportPresentation = async () => {
+    setPresentationExporting(true);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countries: presentationCountryFilter }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || 'presentation-export.pptx';
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.message || 'Failed to export presentation.');
+    } finally {
+      setPresentationExporting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'status' && !statusLoaded && !statusLoading) {
+      fetchStatus();
+    }
+  }, [activeTab, fetchStatus, statusLoaded, statusLoading]);
+
+  useEffect(() => {
+    if (activeTab === 'reports' && !reportLoading && reportList.length === 0) {
+      fetchReports();
+    }
+  }, [activeTab, fetchReports, reportList.length, reportLoading]);
+
+  useEffect(() => {
+    if (activeTab === 'reports' && selectedReportId) {
+      fetchReportMeta(selectedReportId);
+    }
+  }, [activeTab, selectedReportId, fetchReportMeta]);
+
+  return (
+    <div className="smartsheet-pivot">
+      <ul className="nav nav-tabs mb-3" role="tablist">
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'explorer' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'explorer'}
+            onClick={() => setActiveTab('explorer')}
+          >
+            Explorer
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'analyse' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'analyse'}
+            onClick={() => setActiveTab('analyse')}
+          >
+            Analyse
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'presentation' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'presentation'}
+            onClick={() => setActiveTab('presentation')}
+          >
+            Presentation
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'status' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'status'}
+            onClick={() => setActiveTab('status')}
+          >
+            Status
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'reports' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'reports'}
+            onClick={() => setActiveTab('reports')}
+          >
+            Reports
+          </button>
+        </li>
+      </ul>
+
+      {activeTab === 'explorer' && (
+        <>
+          <div className="card shadow-sm mb-3">
+            <div className="card-body">
+              <div className="row g-3 align-items-end">
+                <div className="col-12 col-md-4">
+                  <label className="form-label fw-medium" htmlFor="smartsheet-workspace">Workspace</label>
+                  <select
+                    id="smartsheet-workspace"
+                    className="form-select"
+                    value={selectedWorkspace}
+                    onChange={onWorkspaceChange}
+                    disabled={workspaceLoading}
+                  >
+                    <option value="">Select a workspace…</option>
+                    {workspaces.map((workspace) => (
+                      <option key={workspace.id ?? workspace.name} value={workspace.id ?? ''}>
+                        {workspace.name ?? workspace.id}
+                      </option>
+                    ))}
+                  </select>
+                  {workspaceLoading && <div className="form-text text-muted">Loading workspaces…</div>}
+                  {workspaceError && <div className="form-text text-danger">{workspaceError}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label fw-medium" htmlFor="smartsheet-sheet">Sheet</label>
+                  <select
+                    id="smartsheet-sheet"
+                    className="form-select"
+                    value={selectedSheet}
+                    onChange={onSheetChange}
+                    disabled={!selectedWorkspace || sheetsLoading}
+                  >
+                    <option value="">Select a sheet…</option>
+                    {sheets.map((sheet) => (
+                      <option key={sheet.id ?? sheet.name} value={sheet.id ?? ''}>
+                        {sheet.name ?? sheet.id}
+                      </option>
+                    ))}
+                  </select>
+                  {sheetsLoading && <div className="form-text text-muted">Loading sheets…</div>}
+                  {sheetsError && <div className="form-text text-danger">{sheetsError}</div>}
+                </div>
+
+                <div className="col-12 col-md-4 d-flex gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    disabled={workspaceLoading}
+                    onClick={fetchWorkspaces}
+                  >
+                    Reload Workspaces
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!selectedSheet || pivotLoading}
+                    onClick={onRefresh}
+                  >
+                    Refresh Sheet
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 small text-muted">
+                {currentWorkspace && (
+                  <span className="me-3">Workspace: <strong>{currentWorkspace.name ?? currentWorkspace.id}</strong></span>
+                )}
+                {currentSheet && (
+                  <span>Sheet: <strong>{currentSheet.name ?? currentSheet.id}</strong></span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="card shadow-sm">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                  <h2 className="h5 mb-0">Sheet Data</h2>
+                  <small className="text-muted">
+                    {pivotLoading && 'Loading Smartsheet data…'}
+                    {!pivotLoading && selectedSheet && lastUpdated && `Last updated ${lastUpdated.toLocaleString()}`}
+                    {!pivotLoading && !selectedSheet && 'Select a sheet to load details.'}
+                  </small>
+                </div>
+                {rows.length > 0 && (
+                  <span className="badge bg-secondary">{rows.length.toLocaleString()} rows</span>
+                )}
+              </div>
+
+              {pivotError && (
+                <div className="alert alert-danger" role="alert">
+                  {pivotError}
+                </div>
+              )}
+
+              {!columns.length && !pivotLoading && (
+                <div className="alert alert-info" role="alert">
+                  Columns will appear once a sheet is loaded.
+                </div>
+              )}
+
+              <div className="table-responsive">
+                <table ref={tableRef} className="table table-striped table-bordered w-100" data-testid="smartsheet-pivot-table">
+                  <thead>
+                    <tr>
+                      {columns.map((col) => (
+                        <th key={col.key}>{col.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'analyse' && (
+        <>
+          <div className="card shadow-sm mb-3">
+            <div className="card-body">
+              <h2 className="h5 mb-3">Task Duration Analysis</h2>
+              <div className="row g-3 align-items-end">
+                <div className="col-12 col-lg-4">
+                  <label className="form-label fw-medium" htmlFor="smartsheet-task-a">Task A</label>
+                  <select
+                    id="smartsheet-task-a"
+                    className="form-select"
+                    value={taskA}
+                    onChange={(event) => setTaskA(event.target.value)}
+                    disabled={analyseTaskLoading}
+                  >
+                    <option value="">Select a task…</option>
+                    {taskOptions.map((option) => (
+                      <option key={`task-a-${option.value}`} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12 col-lg-2">
+                  <label className="form-label fw-medium" htmlFor="smartsheet-field-a">Compare</label>
+                  <select
+                    id="smartsheet-field-a"
+                    className="form-select"
+                    value={fieldA}
+                    onChange={(event) => setFieldA(event.target.value)}
+                  >
+                    {fieldOptions.map((option) => (
+                      <option key={`field-a-${option.value}`} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-12 col-lg-4">
+                  <label className="form-label fw-medium" htmlFor="smartsheet-task-b">Task B</label>
+                  <select
+                    id="smartsheet-task-b"
+                    className="form-select"
+                    value={taskB}
+                    onChange={(event) => setTaskB(event.target.value)}
+                    disabled={analyseTaskLoading}
+                  >
+                    <option value="">Select a task…</option>
+                    {taskOptions.map((option) => (
+                      <option key={`task-b-${option.value}`} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12 col-lg-2">
+                  <label className="form-label fw-medium" htmlFor="smartsheet-field-b">Compare</label>
+                  <select
+                    id="smartsheet-field-b"
+                    className="form-select"
+                    value={fieldB}
+                    onChange={(event) => setFieldB(event.target.value)}
+                  >
+                    {fieldOptions.map((option) => (
+                      <option key={`field-b-${option.value}`} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3 d-flex flex-wrap gap-2 align-items-center">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={onRunAnalysis}
+                  disabled={!taskA || !taskB || analyseLoading}
+                >
+                  Run Analysis
+                </button>
+                {analyseTaskLoading && <span className="text-muted small">Loading tasks…</span>}
+                {analyseTaskError && <span className="text-danger small">{analyseTaskError}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="card shadow-sm">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                  <h2 className="h6 mb-0">Results</h2>
+                  <small className="text-muted">
+                    {analyseLoading && 'Running analysis…'}
+                    {!analyseLoading && analyseRows.length === 0 && 'Run analysis to load results.'}
+                  </small>
+                </div>
+                {analyseRows.length > 0 && (
+                  <span className="badge bg-secondary">{analyseRows.length.toLocaleString()} rows</span>
+                )}
+              </div>
+
+              {analyseError && (
+                <div className="alert alert-danger" role="alert">
+                  {analyseError}
+                </div>
+              )}
+
+              {!analyseLoading && analyseRows.length === 0 && !analyseError && (
+                <div className="alert alert-info" role="alert">
+                  No results yet. Pick two tasks and run analysis.
+                </div>
+              )}
+
+              {analyseRows.length > 0 && (
+                <div className="table-responsive">
+                  <table ref={analyseTableRef} className="table table-striped table-bordered w-100" data-testid="smartsheet-analyse-table">
+                    <thead>
+                      <tr>
+                        {analyseColumns.map((col) => (
+                          <th key={col.key}>{col.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'presentation' && (
+        <div className="d-flex flex-column gap-3">
+          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+            <div>
+              <h2 className="h5 mb-0">IKEA/Wi-Fi migration – HPE Programme meeting</h2>
+              <div className="text-muted small">
+                {presentationLoading && 'Loading presentation data…'}
+                {!presentationLoading && presentationMeta && (
+                  <span>{presentationDateLabel}</span>
+                )}
+                {!presentationLoading && !presentationMeta && 'Current and next month coverage.'}
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                multiple
+                value={presentationCountryFilter}
+                onChange={onPresentationCountryChange}
+                style={{ minWidth: 220, maxHeight: 120 }}
+              >
+                <optgroup label="Exec Summary">
+                  <option value="__exec_highlights">Highlights</option>
+                  <option value="__exec_overview">Programme Overview Per Country</option>
+                  <option value="__exec_status">Status planned assessments and installations</option>
+                  <option value="__exec_timeline">Timeline</option>
+                </optgroup>
+                <optgroup label="Country Trend">
+                  <option value="__trend_green">Green</option>
+                  <option value="__trend_amber">Amber</option>
+                  <option value="__trend_red">Red</option>
+                </optgroup>
+                <optgroup label="General Issues">
+                  <option value="__issues">General Issues</option>
+                </optgroup>
+                <optgroup label="Country Detail">
+                  {presentationCountries.map((country) => (
+                    <option key={country} value={country}>{country}</option>
+                  ))}
+                </optgroup>
+              </select>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={() => setPresentationCountryFilter([])}
+                disabled={!presentationCountryFilter.length}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={fetchPresentation}
+                disabled={presentationLoading}
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm"
+                onClick={() => setPresentationEditMode((prev) => !prev)}
+                disabled={presentationLoading}
+              >
+                {presentationEditMode ? 'Done' : 'Edit'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-dark btn-sm"
+                onClick={openSlideshow}
+                disabled={presentationLoading || filteredPresentationItems.length === 0}
+              >
+                Slideshow
+              </button>
+              {presentationEditMode && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={savePresentationEdits}
+                  disabled={presentationSaving}
+                >
+                  {presentationSaving ? 'Saving…' : 'Save'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={exportPresentation}
+                disabled={presentationExporting}
+              >
+                {presentationExporting ? 'Exporting…' : 'Export PPTX'}
+              </button>
+            </div>
+          </div>
+
+          {presentationError && (
+            <div className="alert alert-danger" role="alert">
+              {presentationError}
+            </div>
+          )}
+
+          {presentationSaveError && (
+            <div className="alert alert-warning" role="alert">
+              {presentationSaveError}
+            </div>
+          )}
+
+          {!presentationLoading && filteredPresentationItems.length === 0 && (
+            <div className="alert alert-info" role="alert">
+              No planned assessments, installations, or post-deployment sign-off found for the selected months.
+            </div>
+          )}
+
+          <div className="d-flex flex-column gap-3">
+            {[
+              { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
+              { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
+              { key: '__exec_status', title: 'Status planned assessments and installations', body: 'Snapshot of planned assessments and installations status.' },
+              { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
+              { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
+              { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
+              { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
+              { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
+            ].map((meta) => (
+              <div key={meta.key} className="card shadow-sm">
+                <div className="card-header fw-semibold">{meta.title}</div>
+                <div className="card-body">
+                  {meta.key === '__exec_highlights' ? (
+                    <div className="d-flex flex-column gap-3">
+                      {highlightsLoading && (
+                        <div className="text-muted small">Loading highlights...</div>
+                      )}
+                      {highlightsError && (
+                        <div className="alert alert-warning py-2 mb-0" role="alert">
+                          {highlightsError}
+                        </div>
+                      )}
+                      {!highlightsLoading && !highlightsError && presentationEditMode ? (
+                        <>
+                          <TrumboField
+                            value={highlightsContent}
+                            onChange={(value) => setHighlightsContent(value || '')}
+                            placeholder="Add key wins, risks, and milestones..."
+                          />
+                          <div className="d-flex justify-content-end">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              onClick={saveHighlights}
+                              disabled={highlightsSaving}
+                            >
+                              {highlightsSaving ? 'Saving…' : 'Save highlights'}
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                      {!highlightsLoading && !highlightsError && !presentationEditMode && (
+                        highlightsContent ? (
+                          <div
+                            className="presentation-highlight-content"
+                            dangerouslySetInnerHTML={{ __html: highlightsContent }}
+                          />
+                        ) : (
+                          <div className="text-muted small">No highlights yet.</div>
+                        )
+                      )}
+                    </div>
+                  ) : meta.key === '__exec_overview' ? (
+                    <div className="d-flex flex-column gap-2">
+                      {overviewLoading && (
+                        <div className="text-muted small">Loading overview...</div>
+                      )}
+                      {overviewError && (
+                        <div className="alert alert-warning py-2 mb-0" role="alert">
+                          {overviewError}
+                        </div>
+                      )}
+                      {!overviewLoading && !overviewError && filteredOverviewItems.length === 0 && (
+                        <div className="text-muted small">No overview data available.</div>
+                      )}
+                      {!overviewLoading && !overviewError && filteredOverviewItems.length > 0 && (
+                        <div className="table-responsive">
+                          <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                            <colgroup>
+                              <col style={{ width: '26%' }} />
+                              <col style={{ width: '9%' }} />
+                              <col style={{ width: '9%' }} />
+                              <col style={{ width: '12%' }} />
+                              <col style={{ width: '9%' }} />
+                              <col style={{ width: '9%' }} />
+                              <col style={{ width: '8%' }} />
+                              <col style={{ width: '18%' }} />
+                            </colgroup>
+                            <thead className="table-light">
+                              <tr>
+                                <th>Country</th>
+                                <th>Stores</th>
+                                <th>Assessed</th>
+                                <th>Ongoing Installations</th>
+                                <th>Installed</th>
+                                <th>Sign-off</th>
+                                <th>RAG</th>
+                                <th>Comment</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredOverviewItems.map((row) => {
+                                const rag = normalizeRag(row.rag);
+                                const ragLabel = rag ? rag.charAt(0).toUpperCase() + rag.slice(1) : '—';
+                                const ragClass = rag === 'green'
+                                  ? 'success'
+                                  : rag === 'amber'
+                                    ? 'warning text-dark'
+                                    : rag === 'red'
+                                      ? 'danger'
+                                      : 'secondary';
+                                return (
+                                  <tr key={row.country}>
+                                    <td className="fw-semibold">
+                                      <CountryFlag country={row.country} />
+                                      {row.country}
+                                    </td>
+                                    <td>{formatDisplayValue(row.stores)}</td>
+                                    <td>{formatDisplayValue(row.assessed)}</td>
+                                    <td>{formatDisplayValue(row.ongoingInstallations)}</td>
+                                    <td>{formatDisplayValue(row.storesInstalled)}</td>
+                                    <td>{formatDisplayValue(row.storeSignoff)}</td>
+                                    <td>
+                                      <span className={`badge bg-${ragClass}`}>
+                                        {ragLabel}
+                                      </span>
+                                    </td>
+                                    <td className="text-muted small">{formatDisplayValue(row.comment)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ) : meta.key === '__exec_status' ? (
+                    <div className="d-flex flex-column gap-2">
+                      {plannedWeekLoading && (
+                        <div className="text-muted small">Loading status snapshot...</div>
+                      )}
+                      {plannedWeekError && (
+                        <div className="alert alert-warning py-2 mb-0" role="alert">
+                          {plannedWeekError}
+                        </div>
+                      )}
+                      {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length === 0 && (
+                        <div className="text-muted small">No planned assessments or installations found.</div>
+                      )}
+                      {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length > 0 && (
+                        <div className="table-responsive">
+                          <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                            <colgroup>
+                              <col style={{ width: '18%' }} />
+                              <col style={{ width: '24%' }} />
+                              <col style={{ width: '16%' }} />
+                              <col style={{ width: '10%' }} />
+                              <col style={{ width: '10%' }} />
+                              <col style={{ width: '12%' }} />
+                              <col style={{ width: '10%' }} />
+                            </colgroup>
+                            <thead className="table-light">
+                              <tr>
+                                <th>Country</th>
+                                <th>Site Name (Site ID)</th>
+                                <th>Activity</th>
+                                <th>Start</th>
+                                <th>End</th>
+                                <th>Status</th>
+                                <th>Comment</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {plannedWeekRows.map((row, index) => {
+                                const country = getRowField(row, ['country', 'Country']) || '—';
+                                const siteName = cleanSiteName(getRowField(row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '');
+                                const siteId = getRowField(row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) || '';
+                                const taskName = getRowField(row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) || '—';
+                                const startDate = getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']);
+                                const endDate = getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']);
+                                const status = getRowField(row, ['status', 'Status']) || '';
+                                const comment = getRowField(row, ['comment', 'Comment']) || '';
+
+                                return (
+                                  <tr key={`${country}-${siteId || siteName || index}`}>
+                                    <td className="fw-semibold">
+                                      <CountryFlag country={country} />
+                                      {country}
+                                    </td>
+                                    <td>
+                                      {siteName || '—'}
+                                      {siteId ? ` (${siteId})` : ''}
+                                    </td>
+                                    <td>{formatDisplayValue(taskName)}</td>
+                                    <td>{formatDateDisplay(startDate)}</td>
+                                    <td>{formatDateDisplay(endDate)}</td>
+                                    <td>{formatDisplayValue(status)}</td>
+                                    <td className="text-muted small">{formatDisplayValue(comment)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ) : meta.key === '__exec_timeline' ? (
+                    <div className="d-flex flex-column gap-3">
+                      {!timelineItems.length && (
+                        <div className="text-muted small">No timeline data available.</div>
+                      )}
+                      {timelineItems.length > 0 && !timelineDomain && (
+                        <div className="text-muted small">Timeline dates are missing.</div>
+                      )}
+                      {timelineItems.length > 0 && timelineDomain && (
+                        <>
+                          <div className="timeline-year-header" style={{ position: 'relative', height: 36 }}>
+                            {(() => {
+                              const years = [];
+                              const minYear = new Date(timelineDomain.min).getUTCFullYear();
+                              const maxYear = new Date(timelineDomain.max).getUTCFullYear();
+                              for (let y = minYear; y <= maxYear; y++) {
+                                const yearStart = Date.UTC(y, 0, 1);
+                                const left = ((yearStart - timelineDomain.min) / timelineDomain.span) * 100;
+                                years.push(
+                                  <div
+                                    key={y}
+                                    style={{ position: 'absolute', left: `${left}%`, transform: 'translateX(-50%)', top: 8, fontSize: 16, fontWeight: 700, color: '#222' }}
+                                  >
+                                    {y}
+                                  </div>
+                                );
+                              }
+                              return years;
+                            })()}
+                          </div>
+                          <div className="d-flex flex-column gap-2" style={{ position: 'relative' }}>
+                            {/* simplified timeline: no date labels or vertical grid lines; keep 'now' indicator */}
+                            {timelineDomain.now !== null && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: `${((timelineDomain.now - timelineDomain.min) / timelineDomain.span) * 100}%`,
+                                  top: 0,
+                                  bottom: 0,
+                                  width: 2,
+                                  background: '#1f3b64',
+                                  boxShadow: '0 0 0 1px rgba(31,59,100,0.25)',
+                                }}
+                              />
+                            )}
+                            {timelineItems.map((item) => {
+                              const start = parseDateValue(item.startDate);
+                              const installEnd = parseDateValue(item.installEndDate || item.endDate);
+                              const end = parseDateValue(item.endDate);
+                              if (!start || !end || !timelineDomain) {
+                                return (
+                                  <div key={item.country} className="d-flex align-items-center gap-2">
+                                    <div className="text-truncate fw-semibold" style={{ width: 160 }}>
+                                      <CountryFlag country={item.country} />
+                                      {item.country}
+                                    </div>
+                                    <div className="flex-grow-1">
+                                      <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
+                                    </div>
+                                    <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
+                                      —
+                                    </div>
+                                    <div className="small text-muted" style={{ minWidth: 150, textAlign: 'right' }}>
+                                      —
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              const left = ((start.getTime() - timelineDomain.min) / timelineDomain.span) * 100;
+                              const installWidth = installEnd ? Math.max(0.5, ((installEnd.getTime() - start.getTime()) / timelineDomain.span) * 100) : 0;
+                              const totalWidth = Math.max(0.5, ((end.getTime() - start.getTime()) / timelineDomain.span) * 100);
+                              const restWidth = Math.max(0, totalWidth - installWidth);
+                              const overview = overviewByCountry.get(item.country);
+                              const totalStores = overview?.stores ?? null;
+                              const installedStores = overview?.storesInstalled ?? null;
+
+                              return (
+                                <div key={item.country} className="d-flex align-items-center gap-2">
+                                  <div className="text-truncate fw-semibold" style={{ width: 160 }}>
+                                    <CountryFlag country={item.country} />
+                                    {item.country}
+                                  </div>
+                                  <div className="flex-grow-1" style={{ minWidth: 240 }}>
+                                    <div style={{ position: 'relative', height: 22, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+                                      <div
+                                        style={{
+                                          position: 'absolute',
+                                          left: `${left}%`,
+                                          width: `${installWidth}%`,
+                                          top: 1,
+                                          bottom: 1,
+                                          background: '#0f9d88',
+                                          borderRadius: 6,
+                                          boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
+                                        }}
+                                      />
+                                      {restWidth > 0 && (
+                                        <div
+                                          style={{
+                                            position: 'absolute',
+                                            left: `${left + installWidth}%`,
+                                            width: `${restWidth}%`,
+                                            top: 1,
+                                            bottom: 1,
+                                            background: '#7fd9c9',
+                                            borderRadius: 6,
+                                            boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
+                                    {formatShortDate(start)}
+                                  </div>
+                                  <div className="small text-muted" style={{ minWidth: 150, textAlign: 'right' }}>
+                                    {formatShortDate(end)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : meta.key === '__trend_amber' ? (
+                    <div className="d-flex flex-column gap-2">
+                      {trendGroups.amber.length === 0 ? (
+                        <div className="text-muted small">No amber countries available.</div>
+                      ) : (
+                        <ul className="list-group list-group-flush">
+                          {trendGroups.amber.map((row) => (
+                            <li key={row.country} className="list-group-item px-0">
+                              <div className="d-flex justify-content-between">
+                                <span className="fw-semibold">{row.country}</span>
+                                <span className="badge bg-warning text-dark">Amber</span>
+                              </div>
+                              <div className="text-muted small">{row.comment || 'No comment provided.'}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ) : meta.key === '__trend_red' ? (
+                    <div className="d-flex flex-column gap-2">
+                      {trendGroups.red.length === 0 ? (
+                        <div className="text-muted small">No red countries available.</div>
+                      ) : (
+                        <ul className="list-group list-group-flush">
+                          {trendGroups.red.map((row) => (
+                            <li key={row.country} className="list-group-item px-0">
+                              <div className="d-flex justify-content-between">
+                                <span className="fw-semibold">{row.country}</span>
+                                <span className="badge bg-danger">Red</span>
+                              </div>
+                              <div className="text-muted small">{row.comment || 'No comment provided.'}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ) : meta.key === '__issues' ? (
+                    renderGeneralIssuesTable(flattenedIssues)
+                  ) : (
+                    <div className="text-muted">{meta.body}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredPresentationItems.map((countryBlock) => (
+              <div key={countryBlock.country} className="card shadow-sm">
+                <div className="card-header country-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative">
+                <strong>
+                  <CountryFlag country={countryBlock.country} />
+                  {countryBlock.country}
+                  {renderCountryMedals(countryBlock.country)}
+                </strong>
+                {(() => {
+                  const progress = findProgressForCountry(countryBlock.country);
+                  if (!progress || !Array.isArray(progress.tasks) || progress.tasks.length === 0) {
+                    return null;
+                  }
+                  return (
+                    <>
+                      <div className="d-flex flex-column gap-2 d-lg-none mx-auto" style={{ maxWidth: 520 }}>
+                        {progress.tasks.map(renderProgressRow)}
+                      </div>
+                      <div
+                        className="d-none d-lg-flex position-absolute justify-content-center"
+                        style={{ left: 0, right: 0, top: '50%', transform: 'translateY(-50%)' }}
+                      >
+                        <div className="d-flex flex-column gap-2" style={{ maxWidth: 520 }}>
+                          {progress.tasks.map(renderProgressRow)}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+                {presentationMeta && (
+                  <span className="text-muted small">
+                    {presentationDateLabel}
+                  </span>
+                )}
+              </div>
+              <div className="card-body">
+                <div className="d-flex flex-column gap-4">
+                  <div>
+                    <div className="fw-semibold mb-2">Planned Assessments</div>
+                    <div className="row g-3">
+                      <div className="col-12 col-lg-6">
+                        <div className="text-uppercase text-muted small mb-2">
+                          {assessmentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                        </div>
+                        {renderAssessmentTable(countryBlock.assessments?.current || [], 'assessments-current', countryBlock.country)}
+                      </div>
+                      <div className="col-12 col-lg-6">
+                        <div className="text-uppercase text-muted small mb-2">
+                          {assessmentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                        </div>
+                        {renderAssessmentTable(countryBlock.assessments?.next || [], 'assessments-next', countryBlock.country)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="fw-semibold mb-2">Planned Installations</div>
+                    <div className="row g-3">
+                      <div className="col-12 col-lg-6">
+                        <div className="text-uppercase text-muted small mb-2">
+                          {installationMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                        </div>
+                        {renderAssessmentTable(countryBlock.installations?.current || [], 'installations-current', countryBlock.country)}
+                      </div>
+                      <div className="col-12 col-lg-6">
+                        <div className="text-uppercase text-muted small mb-2">
+                          {installationMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                        </div>
+                        {renderAssessmentTable(countryBlock.installations?.next || [], 'installations-next', countryBlock.country)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="fw-semibold mb-2">Post-Deployment &amp; Sign-off</div>
+                    <div className="row g-3">
+                      <div className="col-12 col-lg-6">
+                        <div className="text-uppercase text-muted small mb-2">
+                          {postDeploymentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                        </div>
+                        {renderAssessmentTable(countryBlock.postDeployment?.current || [], 'postdeployment-current', countryBlock.country)}
+                      </div>
+                      <div className="col-12 col-lg-6">
+                        <div className="text-uppercase text-muted small mb-2">
+                          {postDeploymentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                        </div>
+                        {renderAssessmentTable(countryBlock.postDeployment?.next || [], 'postdeployment-next', countryBlock.country)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="fw-semibold mb-2">Issue Log</div>
+                    {presentationEditMode && (
+                      <div className="border rounded p-2 mb-3">
+                        <div className="row g-2 align-items-end">
+                          <div className="col-12 col-lg-3">
+                            <label className="form-label small mb-1">Site</label>
+                            <select
+                              className="form-select form-select-sm"
+                              value={getIssueDraft(countryBlock.country).storeId}
+                              onChange={(event) => {
+                                const selected = buildSiteOptions(countryBlock).find((opt) => opt.siteId === event.target.value);
+                                updateIssueDraft(countryBlock.country, {
+                                  storeId: event.target.value,
+                                  storeName: selected?.siteName || getIssueDraft(countryBlock.country).storeName,
+                                });
+                              }}
+                            >
+                              <option value="">Select site</option>
+                              {buildSiteOptions(countryBlock).map((site) => (
+                                <option key={site.siteId || site.siteName} value={site.siteId}>
+                                  {site.siteName || site.siteId}{site.siteId && site.siteName ? ` (${site.siteId})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-12 col-lg-3">
+                            <label className="form-label small mb-1">Site Name</label>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              value={getIssueDraft(countryBlock.country).storeName}
+                              onChange={(event) => updateIssueDraft(countryBlock.country, { storeName: event.target.value })}
+                              placeholder="Site Name"
+                            />
+                          </div>
+                          <div className="col-12 col-lg-2">
+                            <label className="form-label small mb-1">Site ID</label>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              value={getIssueDraft(countryBlock.country).storeId}
+                              onChange={(event) => updateIssueDraft(countryBlock.country, { storeId: event.target.value })}
+                              placeholder="Site ID"
+                            />
+                          </div>
+                          <div className="col-12 col-lg-2">
+                            <label className="form-label small mb-1">Priority</label>
+                            <select
+                              className="form-select form-select-sm"
+                              value={getIssueDraft(countryBlock.country).priority}
+                              onChange={(event) => updateIssueDraft(countryBlock.country, { priority: event.target.value })}
+                            >
+                              <option value="">—</option>
+                              <option value="Critical">Critical</option>
+                              <option value="High">High</option>
+                              <option value="Medium">Medium</option>
+                              <option value="Low">Low</option>
+                            </select>
+                          </div>
+                          <div className="col-12 col-lg-2">
+                            <label className="form-label small mb-1">Resolve Date</label>
+                            <input
+                              type="date"
+                              className="form-control form-control-sm"
+                              value={getIssueDraft(countryBlock.country).resolveDate}
+                              onChange={(event) => updateIssueDraft(countryBlock.country, { resolveDate: event.target.value })}
+                            />
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small mb-1">Description</label>
+                            <textarea
+                              className="form-control form-control-sm"
+                              rows={2}
+                              value={getIssueDraft(countryBlock.country).description}
+                              onChange={(event) => updateIssueDraft(countryBlock.country, { description: event.target.value })}
+                            />
+                          </div>
+                          <div className="col-12 col-lg-6">
+                            <label className="form-label small mb-1">Responsible Party</label>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              value={getIssueDraft(countryBlock.country).responsibleParty}
+                              onChange={(event) => updateIssueDraft(countryBlock.country, { responsibleParty: event.target.value })}
+                            />
+                          </div>
+                          <div className="col-12 col-lg-6">
+                            <label className="form-label small mb-1">Action to be taken (DD.MM.YY - NS)</label>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              value={getIssueDraft(countryBlock.country).actionRequired}
+                              onChange={(event) => updateIssueDraft(countryBlock.country, { actionRequired: event.target.value })}
+                            />
+                          </div>
+                          <div className="col-12 d-flex justify-content-end">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              onClick={() => submitIssue(countryBlock.country)}
+                              disabled={issueSaving[countryBlock.country]}
+                            >
+                              {issueSaving[countryBlock.country]
+                                ? 'Saving…'
+                                : (getIssueEditTarget(countryBlock.country) ? 'Save' : '+ Add Issue')}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {renderIssueTable(countryBlock.issues?.issues || [], countryBlock.country)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'presentation' && slideshowOpen && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column"
+          style={{ background: 'rgba(0,0,0,0.8)', zIndex: 2000 }}
+        >
+          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 p-3 text-white">
+            <div className="fw-semibold">
+              {slideshowItem?.country || 'Country'}
+              {slideshowItem ? renderCountryMedals(slideshowItem.country) : null}
+            </div>
+            {(() => {
+              if (!slideshowItem) return null;
+              const progress = findProgressForCountry(slideshowItem.country);
+              if (!progress || !Array.isArray(progress.tasks) || progress.tasks.length === 0) {
+                return null;
+              }
+              return (
+                <div className="d-flex flex-column gap-2 mx-auto" style={{ minWidth: 320 }}>
+                  {progress.tasks.map(renderProgressRow)}
+                </div>
+              );
+            })()}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-light"
+              onClick={closeSlideshow}
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-grow-1 overflow-auto p-3">
+            {slideshowItem ? (
+              <div className="card shadow-sm">
+                <div className="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                  <strong>
+                    <CountryFlag country={slideshowItem.country} />
+                    {slideshowItem.country}
+                  </strong>
+                  {presentationMeta && (
+                    <span className="text-muted small">
+                      {presentationDateLabel}
+                    </span>
+                  )}
+                </div>
+                <div className="card-body">
+                  <div className="d-flex flex-column gap-4">
+                    <div>
+                      <div className="fw-semibold mb-2">Planned Assessments</div>
+                      <div className="row g-3">
+                        <div className="col-12 col-lg-6">
+                          <div className="text-uppercase text-muted small mb-2">
+                            {assessmentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                          </div>
+                          {renderAssessmentTable(slideshowItem.assessments?.current || [], 'assessments-current', slideshowItem.country)}
+                        </div>
+                        <div className="col-12 col-lg-6">
+                          <div className="text-uppercase text-muted small mb-2">
+                            {assessmentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                          </div>
+                          {renderAssessmentTable(slideshowItem.assessments?.next || [], 'assessments-next', slideshowItem.country)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="fw-semibold mb-2">Planned Installations</div>
+                      <div className="row g-3">
+                        <div className="col-12 col-lg-6">
+                          <div className="text-uppercase text-muted small mb-2">
+                            {installationMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                          </div>
+                          {renderAssessmentTable(slideshowItem.installations?.current || [], 'installations-current', slideshowItem.country)}
+                        </div>
+                        <div className="col-12 col-lg-6">
+                          <div className="text-uppercase text-muted small mb-2">
+                            {installationMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                          </div>
+                          {renderAssessmentTable(slideshowItem.installations?.next || [], 'installations-next', slideshowItem.country)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="fw-semibold mb-2">Post-Deployment &amp; Sign-off</div>
+                      <div className="row g-3">
+                        <div className="col-12 col-lg-6">
+                          <div className="text-uppercase text-muted small mb-2">
+                            {postDeploymentMeta?.currentMonth ?? presentationMeta?.currentMonth ?? 'Current month'}
+                          </div>
+                          {renderAssessmentTable(slideshowItem.postDeployment?.current || [], 'postdeployment-current', slideshowItem.country)}
+                        </div>
+                        <div className="col-12 col-lg-6">
+                          <div className="text-uppercase text-muted small mb-2">
+                            {postDeploymentMeta?.nextMonth ?? presentationMeta?.nextMonth ?? 'Next month'}
+                          </div>
+                          {renderAssessmentTable(slideshowItem.postDeployment?.next || [], 'postdeployment-next', slideshowItem.country)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="fw-semibold mb-2">Issue Log</div>
+                      {renderIssueTable(slideshowItem.issues?.issues || [], slideshowItem.country)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-white">No country data available.</div>
+            )}
+          </div>
+          <div className="d-flex justify-content-between align-items-center p-3 bg-dark text-white">
+            <button
+              type="button"
+              className="btn btn-outline-light"
+              onClick={() => setSlideshowIndex((prev) => Math.max(0, prev - 1))}
+              disabled={slideshowIndex <= 0}
+            >
+              Previous
+            </button>
+            <div className="d-flex align-items-center gap-2">
+              <span className="small">Country</span>
+              <select
+                className="form-select form-select-sm"
+                style={{ minWidth: 200 }}
+                value={slideshowIndex}
+                onChange={(event) => setSlideshowIndex(Number(event.target.value))}
+              >
+                {slideshowItems.map((item, index) => (
+                  <option key={item.country} value={index}>{item.country}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline-light"
+              onClick={() => setSlideshowIndex((prev) => Math.min(slideshowItems.length - 1, prev + 1))}
+              disabled={slideshowIndex >= slideshowItems.length - 1}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'status' && (
+        <div className="d-flex flex-column gap-3">
+          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+            <div>
+              <h2 className="h5 mb-0">Status</h2>
+              <div className="text-muted small">Update RAG confidence and add status log entries per site.</div>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                value={statusCountryFilter}
+                onChange={(event) => setStatusCountryFilter(event.target.value)}
+                style={{ minWidth: 220 }}
+              >
+                <option value="">All countries</option>
+                {statusCountries.map((country) => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={fetchStatus}
+                disabled={statusLoading}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {statusLoading && <div className="text-muted">Loading status data…</div>}
+
+          {!statusLoading && statusItems.length === 0 && (
+            <div className="alert alert-info" role="alert">
+              No sites available for status updates.
+            </div>
+          )}
+
+          {!statusLoading && statusItems.length > 0 && (
+            <div className="d-flex flex-column gap-3">
+              {statusItems
+                .filter((site) => !statusCountryFilter || site.country === statusCountryFilter)
+                .reduce((acc, site) => {
+                const group = acc.find((item) => item.country === site.country);
+                if (group) {
+                  group.sites.push(site);
+                } else {
+                  acc.push({ country: site.country, sites: [site] });
+                }
+                return acc;
+              }, [])
+                .map((countryBlock) => (
+                <div key={countryBlock.country} className="card shadow-sm">
+                  <div className="card-header">
+                    <strong>{countryBlock.country}</strong>
+                  </div>
+                  <div className="card-body d-flex flex-column gap-3">
+                    {countryBlock.sites.map((site) => (
+                      <div key={`${site.country}-${site.siteId}`} className="border rounded p-3">
+                        <div className="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-2">
+                          <div className="fw-semibold">{site.siteName || 'Site'} {site.siteId ? `(${site.siteId})` : ''}</div>
+                        </div>
+                        <div className="row g-3">
+                          {statusCategories.map((category) => {
+                            const categoryData = site.categories?.[category.id] || { ragConfidence: null, logs: [] };
+                            const draft = getStatusDraft(site.country, site.siteId, category.id);
+                            return (
+                              <div key={`${site.siteId}-${category.id}`} className="col-12 col-lg-4">
+                                <div className="border rounded h-100 p-2 d-flex flex-column gap-2">
+                                  <div className="fw-semibold small">{category.label}</div>
+                                  <div>
+                                    <label className="form-label small mb-1">RAG Confidence</label>
+                                    <select
+                                      className="form-select form-select-sm"
+                                      value={draft.ragConfidence ?? categoryData.ragConfidence ?? ''}
+                                      onChange={(event) =>
+                                        updateStatusDraft(site.country, site.siteId, category.id, { ragConfidence: event.target.value })
+                                      }
+                                    >
+                                      <option value="">—</option>
+                                      <option value="High">High</option>
+                                      <option value="Medium">Medium</option>
+                                      <option value="Low">Low</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="form-label small mb-1">Add status update</label>
+                                    <textarea
+                                      className="form-control form-control-sm"
+                                      rows={2}
+                                      value={draft.statusText || ''}
+                                      onChange={(event) =>
+                                        updateStatusDraft(site.country, site.siteId, category.id, { statusText: event.target.value })
+                                      }
+                                    />
+                                  </div>
+                                  {draft.error && <div className="text-danger small">{draft.error}</div>}
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary"
+                                    disabled={draft.saving}
+                                    onClick={() => submitStatusLog(site, category.id)}
+                                  >
+                                    {draft.saving ? 'Saving…' : 'Add log entry'}
+                                  </button>
+                                  <div className="mt-2">
+                                    <div className="text-uppercase text-muted small mb-1">Log</div>
+                                    {categoryData.logs && categoryData.logs.length > 0 ? (
+                                      <ul className="list-unstyled small mb-0">
+                                        {categoryData.logs.map((entry) => (
+                                          <li key={entry.id ?? `${entry.createdAt}-${entry.statusText}`} className="mb-2">
+                                            <div className="d-flex justify-content-between">
+                                              <span>{formatDateTimeDisplay(entry.createdAt)}</span>
+                                              {entry.ragConfidence && (
+                                                <span className={`badge bg-${confidenceVariant(entry.ragConfidence)}`}>{entry.ragConfidence}</span>
+                                              )}
+                                            </div>
+                                            <div>{entry.statusText}</div>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <div className="text-muted small">No status updates yet.</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'reports' && (
+        <div className="d-flex flex-column gap-3">
+          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+            <div>
+              <h2 className="h5 mb-0">Reports</h2>
+              <div className="text-muted small">Tenant: IKEA</div>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                value={selectedReportId}
+                onChange={(event) => setSelectedReportId(event.target.value)}
+                disabled={reportLoading || reportList.length === 0}
+                style={{ minWidth: 260 }}
+              >
+                <option value="">Select a report…</option>
+                {reportList.map((report) => (
+                  <option key={report.repid} value={report.repid}>{report.reptitle || report.repshort || `Report ${report.repid}`}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={fetchReports}
+                disabled={reportLoading}
+              >
+                Refresh
+              </button>
+              {selectedReportId && (
+                <a className="btn btn-outline-primary btn-sm" href={`/report/${selectedReportId}`} target="_blank" rel="noreferrer">
+                  Open
+                </a>
+              )}
+            </div>
+          </div>
+
+          {reportError && (
+            <div className="alert alert-danger" role="alert">
+              {reportError}
+            </div>
+          )}
+
+          {reportMetaError && (
+            <div className="alert alert-danger" role="alert">
+              {reportMetaError}
+            </div>
+          )}
+
+          {selectedReportId ? (
+            <div className="border rounded shadow-sm p-3">
+              {reportMetaLoading && <div className="text-muted">Loading report…</div>}
+              {!reportMetaLoading && reportMeta && (
+                <>
+                  <div
+                    id="react-datatables-report"
+                    data-auto-mount="false"
+                    data-repid={selectedReportId}
+                    data-reptitle={reportMeta.reptitle || ''}
+                    data-repdesc={reportMeta.repdesc || ''}
+                    data-repparam={
+                      typeof reportMeta.repparam === 'string'
+                        ? reportMeta.repparam
+                        : JSON.stringify(reportMeta.repparam || {})
+                    }
+                  />
+                  <DataTablesReport
+                    key={selectedReportId}
+                    repid={Number(selectedReportId)}
+                    reptitle={reportMeta.reptitle || ''}
+                    repdesc={reportMeta.repdesc || ''}
+                    repparam={reportMeta.repparam || {}}
+                  />
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="text-muted">Select a report to view the table.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SmartsheetPivotPage;

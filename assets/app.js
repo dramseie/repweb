@@ -16,6 +16,7 @@ import 'bootstrap-icons/font/bootstrap-icons.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import './styles/app.css';
 import './styles/meganav-pro.css';
+import './styles/gallery.css';
 
 // Pivot UI CSS (drag/drop pivot controls)
 import 'react-pivottable/pivottable.css';
@@ -153,6 +154,7 @@ import WidgetsDashboard from './react/components/WidgetsDashboard';
 import ColorInspector from './react/components/ColorInspector.jsx';
 
 import ProgressPage from './react/pages/ProgressPage';
+import IssueTrackerPage from './react/pages/IssueTrackerPage.jsx';
 import DiscoveryManagerApp from './react/discovery/DiscoveryManagerApp.jsx';
 
 // EAV Editor boot
@@ -164,10 +166,15 @@ import './styles/widget-zoom.css';
 
 // Service Catalog
 import ServiceCatalogApp from './react/ServiceCatalogApp.jsx';
+import SmartsheetPivotPage from './react/pages/SmartsheetPivotPage.jsx';
 
 // POS apps
 import PosApp from './react/components/PosApp.jsx';
 import PosAgenda from './react/components/PosAgenda.jsx';
+import PosCustomerManager from './react/components/PosCustomerManager.jsx';
+import GalleryApp from './react/components/GalleryApp.jsx';
+import GalleryDashboard from './react/components/GalleryDashboard.jsx';
+import GalleryShareView from './react/components/GalleryShareView.jsx';
 
 // Leaflet fixes (default marker icons)
 import 'leaflet/dist/leaflet.css';
@@ -304,7 +311,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Reports & dashboards
   const elReport = document.getElementById('react-datatables-report');
-  if (elReport) createRoot(elReport).render(<DataTablesReport />);
+  if (elReport && elReport.dataset.autoMount !== 'false') {
+    createRoot(elReport).render(<DataTablesReport />);
+  }
 
   const elPivot = document.getElementById('react-pivot-report');
   if (elPivot) {
@@ -351,6 +360,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const agendaRoot = document.getElementById('pos-agenda-root');
   if (agendaRoot) createRoot(agendaRoot).render(<PosAgenda />);
 
+  const posClientRoot = document.getElementById('pos-client-root');
+  if (posClientRoot) createRoot(posClientRoot).render(<PosCustomerManager />);
+
   // Service Catalog (ID is server-rendered; safe to check now)
   const scRoot = document.getElementById('service-catalog-root');
   if (scRoot) createRoot(scRoot).render(<ServiceCatalogApp defaultTenant="cmdb" />);
@@ -359,10 +371,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const elProgress = document.getElementById('progress-root');
   if (elProgress) createRoot(elProgress).render(<ProgressPage />);
 
+  const issuesRoot = document.getElementById('issues-app-root');
+  if (issuesRoot) createRoot(issuesRoot).render(<IssueTrackerPage />);
+
   const discoveryRoot = document.getElementById('discovery-root');
   if (discoveryRoot) {
     const apiBase = discoveryRoot.getAttribute('data-api-base') || '/api/discovery';
     createRoot(discoveryRoot).render(<DiscoveryManagerApp apiBase={apiBase} />);
+  }
+
+  const galleryRoot = document.getElementById('gallery-root');
+  if (galleryRoot) {
+    const { apiBase, initialSlug } = galleryRoot.dataset;
+    createRoot(galleryRoot).render(
+      <GalleryDashboard
+        apiBase={apiBase}
+        initialSlug={initialSlug || ''}
+      />
+    );
+  }
+
+  const galleryShareRoot = document.getElementById('gallery-share-root');
+  if (galleryShareRoot) {
+    const { apiShare, token } = galleryShareRoot.dataset;
+    createRoot(galleryShareRoot).render(
+      <GalleryShareView
+        apiShare={apiShare}
+        token={token}
+      />
+    );
   }
 
   const colorInspectorRoot = document.getElementById('color-inspector-root');
@@ -371,6 +408,11 @@ document.addEventListener('DOMContentLoaded', () => {
     createRoot(colorInspectorRoot).render(
       <ColorInspector ideasEndpoint={ideasEndpoint || null} />
     );
+  }
+
+  const smartsheetPivotRoot = document.getElementById('smartsheet-pivot-root');
+  if (smartsheetPivotRoot) {
+    createRoot(smartsheetPivotRoot).render(<SmartsheetPivotPage />);
   }
 
   // Rest API Explorer

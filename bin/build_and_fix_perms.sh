@@ -110,4 +110,24 @@ if [[ -n "${SYMFONY_DIR:-}" && -d "${SYMFONY_DIR}/var" ]]; then
   chmod -R u+rwX,go+rX "${SYMFONY_DIR}/var" || true
 fi
 
+# Stage all changes in git (optional, comment out if not desired)
+if command -v git >/dev/null 2>&1; then
+  echo "📂 Running git add . to stage all changes..."
+  git add .
+
+  if git diff --cached --quiet; then
+    echo "ℹ️ No staged changes to commit."
+  else
+    if [[ -z "$(git config user.name)" || -z "$(git config user.email)" ]]; then
+      echo "⚠️ git user.name or user.email not set — skipping git commit."
+    else
+      COMMIT_MESSAGE="${COMMIT_MESSAGE:-Automated repweb build}"
+      echo "🧾 Committing staged changes..."
+      git commit -m "$COMMIT_MESSAGE"
+    fi
+  fi
+else
+  echo "⚠️ git not found — skipping git add."
+fi
+
 echo "✅ Done."

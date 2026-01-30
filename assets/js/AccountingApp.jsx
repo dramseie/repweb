@@ -92,6 +92,71 @@ const CUSTOMER_STATUS_LABELS = {
 const customerStatusLabel = (status) =>
   CUSTOMER_STATUS_LABELS[status] || (status ? String(status) : "—");
 
+const CATEGORY_KIND_LABEL = {
+  bank: "Banque",
+  expense: "Dépense",
+};
+
+const MAIN_CATEGORY_LABELS = {
+  asset: "Actif",
+  liability: "Passif",
+  income: "Produit",
+  expense: "Charge",
+};
+
+const MAIN_CATEGORY_ORDER = ["asset", "liability", "income", "expense"];
+
+const normalizeName = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const mainKindOrder = (mainKind) => {
+  const idx = MAIN_CATEGORY_ORDER.indexOf(mainKind || "");
+  return idx === -1 ? MAIN_CATEGORY_ORDER.length : idx;
+};
+
+const inferMainKind = (cat) => {
+  const raw = String(cat?.main_kind || "").toLowerCase();
+  if (raw && MAIN_CATEGORY_LABELS[raw]) {
+    return raw;
+  }
+
+  const nameNorm = normalizeName(cat?.name);
+  const codeNorm = normalizeName(cat?.code);
+
+  if (/credit\s*mutuel.*perso/.test(nameNorm) || /perso/.test(codeNorm)) {
+    return "liability";
+  }
+  if (/recette|vente|produit/.test(nameNorm)) {
+    return "income";
+  }
+  if (/formation|urssaf|fourniture|abonnement|charge/.test(nameNorm)) {
+    return "expense";
+  }
+  if (/coffre|caisse|credit\s*mutuel.*pro/.test(nameNorm)) {
+    return "asset";
+  }
+
+  if (cat?.kind === "expense") {
+    return "expense";
+  }
+  if (cat?.kind === "bank" && /perso/.test(nameNorm)) {
+    return "liability";
+  }
+
+  return "asset";
+};
+
+const normalizeCategory = (cat) => ({
+  ...cat,
+  main_kind: inferMainKind(cat),
+});
+
+const normalizeCategories = (items) =>
+  Array.isArray(items) ? items.map((item) => normalizeCategory(item)) : [];
+
 /* ——— Caisse denominations ——— */
 const DENOMS = [
   { c: 20000, label: "200" },
@@ -246,7 +311,24 @@ const TransferCard = React.memo(function TransferCard({
   onChangeXfer,
   onCreateTransfer,
 }) {
-  const allCats = useMemo(() => [...bankCats, ...expenseCats], [bankCats, expenseCats]);
+  const allCats = useMemo(() => normalizeCategories([...bankCats, ...expenseCats]), [bankCats, expenseCats]);
+  const groupedCats = useMemo(() => {
+    const groups = {};
+    MAIN_CATEGORY_ORDER.forEach((key) => {
+      groups[key] = [];
+    });
+    allCats.forEach((cat) => {
+      const key = MAIN_CATEGORY_LABELS[cat.main_kind] ? cat.main_kind : 'asset';
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(cat);
+    });
+    Object.keys(groups).forEach((key) => {
+      groups[key].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
+    });
+    return groups;
+  }, [allCats]);
 
   return (
     <div className="card shadow-sm mb-3">
@@ -276,11 +358,24 @@ const TransferCard = React.memo(function TransferCard({
               }
             >
               <option value="">— catégorie source —</option>
-              {allCats.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              {MAIN_CATEGORY_ORDER.map((mainKey) => {
+                const items = groupedCats[mainKey] || [];
+                if (!items.length) {
+                  return null;
+                }
+                return (
+                  <optgroup
+                    key={mainKey}
+                    label={MAIN_CATEGORY_LABELS[mainKey] || mainKey}
+                  >
+                    {items.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
           </div>
           <div className="col-md-3">
@@ -293,11 +388,24 @@ const TransferCard = React.memo(function TransferCard({
               }
             >
               <option value="">— catégorie destination —</option>
-              {allCats.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              {MAIN_CATEGORY_ORDER.map((mainKey) => {
+                const items = groupedCats[mainKey] || [];
+                if (!items.length) {
+                  return null;
+                }
+                return (
+                  <optgroup
+                    key={mainKey}
+                    label={MAIN_CATEGORY_LABELS[mainKey] || mainKey}
+                  >
+                    {items.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
           </div>
           <div className="col-md-2">
@@ -496,7 +604,24 @@ const JournalCard = React.memo(function JournalCard({
 });
 
 const LedgerTable = React.memo(function LedgerTable({ ledger, monthYM }) {
-  const cats = ledger?.categories || [];
+  const cats = useMemo(() => normalizeCategories(ledger?.categories || []), [ledger]);
+  const groupedCats = useMemo(() => {
+    const groups = {};
+    MAIN_CATEGORY_ORDER.forEach((key) => {
+      groups[key] = [];
+    });
+    cats.forEach((cat) => {
+      const key = MAIN_CATEGORY_LABELS[cat.main_kind] ? cat.main_kind : 'asset';
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(cat);
+    });
+    Object.keys(groups).forEach((key) => {
+      groups[key].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
+    });
+    return groups;
+  }, [cats]);
   const tDebit = ledger?.totals?.debit_cents || 0;
   const tCredit = ledger?.totals?.credit_cents || 0;
   const balanced = tDebit === tCredit;
@@ -519,13 +644,34 @@ const LedgerTable = React.memo(function LedgerTable({ ledger, monthYM }) {
             </tr>
           </thead>
           <tbody>
-            {cats.map((c) => (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td className="text-end">{fmtMoney(c.debit_cents || 0)}</td>
-                <td className="text-end">{fmtMoney(c.credit_cents || 0)}</td>
-              </tr>
-            ))}
+            {MAIN_CATEGORY_ORDER.map((mainKey) => {
+              const items = groupedCats[mainKey] || [];
+              if (!items.length) {
+                return null;
+              }
+              const label = MAIN_CATEGORY_LABELS[mainKey] || mainKey;
+              const groupDebit = items.reduce((sum, cat) => sum + (cat.debit_cents || 0), 0);
+              const groupCredit = items.reduce((sum, cat) => sum + (cat.credit_cents || 0), 0);
+              return (
+                <React.Fragment key={mainKey}>
+                  <tr className="table-secondary">
+                    <td className="fw-semibold">
+                      {label}
+                      <span className="badge text-bg-light ms-2">{items.length}</span>
+                    </td>
+                    <td className="text-end fw-semibold">{fmtMoney(groupDebit)}</td>
+                    <td className="text-end fw-semibold">{fmtMoney(groupCredit)}</td>
+                  </tr>
+                  {items.map((c) => (
+                    <tr key={c.id}>
+                      <td className="ps-4">{c.name}</td>
+                      <td className="text-end">{fmtMoney(c.debit_cents || 0)}</td>
+                      <td className="text-end">{fmtMoney(c.credit_cents || 0)}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr className="fw-semibold">
@@ -809,7 +955,12 @@ export default function AccountingApp() {
       setSummary(j);
 
       const prevData = await fetchCashCountByMonth(prevYM);
-      if (prevData?.breakdown) {
+      const prevFondBreakdown = preloadQtyFromBreakdown(prevData?.fond?.breakdown);
+      const hasFondValues = sumFromQty(prevFondBreakdown) > 0;
+      if (hasFondValues) {
+        setQtyPrev(prevFondBreakdown);
+        setPrevLoaded(true);
+      } else if (prevData?.breakdown) {
         setQtyPrev(preloadQtyFromBreakdown(prevData.breakdown));
         setPrevLoaded(true);
       } else {
@@ -938,7 +1089,11 @@ export default function AccountingApp() {
   const [cats, setCats] = useState([]);
   const fondCategoryOptions = useMemo(() => {
     if (!cats.length) return [];
-    return [...cats].sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" }));
+    return [...cats].sort((a, b) => {
+      const mainDiff = mainKindOrder(a.main_kind) - mainKindOrder(b.main_kind);
+      if (mainDiff !== 0) return mainDiff;
+      return (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
+    });
   }, [cats]);
   const fondFromCat = useMemo(
     () => cats.find((c) => c.id === fondFromId) || null,
@@ -957,25 +1112,61 @@ export default function AccountingApp() {
   const [ledger, setLedger] = useState(null);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
+  // Category manager modal
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [catModalLoading, setCatModalLoading] = useState(false);
+  const [catModalError, setCatModalError] = useState(null);
+  const [catModalItems, setCatModalItems] = useState([]);
+  const [catModalMode, setCatModalMode] = useState('create');
+  const [catModalForm, setCatModalForm] = useState({ id: null, code: '', name: '', kind: 'bank', main_kind: 'asset' });
+
   // Rapport (income vs expense overview)
   const [report, setReport] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [reportErr, setReportErr] = useState(null);
 
+  const fetchCategories = useCallback(async () => {
+    const resp = await fetch(`/api/accounting/categories`);
+    const data = await resp.json().catch(() => []);
+    if (!resp.ok) {
+      throw new Error(data?.error || `HTTP ${resp.status}`);
+    }
+    const items = Array.isArray(data) ? data : data?.items || [];
+    const normalized = normalizeCategories(items);
+    setCats(normalized);
+    return normalized;
+  }, []);
+
   useEffect(() => {
     if (cats.length) return;
-    (async () => {
-      try {
-        const resp = await fetch(`/api/accounting/categories`);
-        if (resp.ok) {
-          const data = await resp.json();
-          setCats(Array.isArray(data) ? data : data?.items || []);
-        }
-      } catch {
-        // ignore prefetch errors
+    fetchCategories().catch(() => {});
+  }, [cats.length, fetchCategories]);
+
+  useEffect(() => {
+    if (!catModalOpen) return;
+    setCatModalItems(cats);
+  }, [catModalOpen, cats]);
+
+  const catModalGrouped = useMemo(() => {
+    const groups = {};
+    MAIN_CATEGORY_ORDER.forEach((key) => {
+      groups[key] = [];
+    });
+
+    catModalItems.forEach((cat) => {
+      const key = MAIN_CATEGORY_LABELS[cat.main_kind] ? cat.main_kind : 'asset';
+      if (!groups[key]) {
+        groups[key] = [];
       }
-    })();
-  }, [cats.length]);
+      groups[key].push(cat);
+    });
+
+    Object.keys(groups).forEach((key) => {
+      groups[key].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
+    });
+
+    return groups;
+  }, [catModalItems]);
 
   const bankCats = useMemo(() => cats.filter((c) => c.kind === "bank"), [cats]);
   const expenseCats = useMemo(() => cats.filter((c) => c.kind === "expense"), [cats]);
@@ -1033,42 +1224,212 @@ export default function AccountingApp() {
     }
   }, [fondToId, fondDestDefaultId]);
 
-  const totals = useMemo(() => {
-    let bank = 0,
-      expense = 0;
-    for (const e of entries) {
-      const cat = cats.find((c) => c.id === e.category_id);
-      if (!cat) continue;
-      if (cat.kind === "bank") bank += e.amount_cents || 0;
-      else if (cat.kind === "expense") expense += e.amount_cents || 0;
+  const mainCategoryTotals = useMemo(() => {
+    const base = {};
+    MAIN_CATEGORY_ORDER.forEach((key) => {
+      base[key] = { debit: 0, credit: 0, net: 0 };
+    });
+
+    const ledgerCats = Array.isArray(ledger?.categories) ? ledger.categories : [];
+    if (ledgerCats.length) {
+      ledgerCats.forEach((cat) => {
+        const normalized = normalizeCategory(cat);
+        const key = MAIN_CATEGORY_LABELS[normalized.main_kind] ? normalized.main_kind : 'asset';
+        if (!base[key]) {
+          base[key] = { debit: 0, credit: 0, net: 0 };
+        }
+        const debit = Math.max(0, Number(cat.debit_cents || 0));
+        const credit = Math.max(0, Number(cat.credit_cents || 0));
+        base[key].debit += debit;
+        base[key].credit += credit;
+      });
+    } else {
+      entries.forEach((entry) => {
+        const cat = cats.find((c) => c.id === entry.category_id);
+        if (!cat) {
+          return;
+        }
+        const normalized = normalizeCategory(cat);
+        const key = MAIN_CATEGORY_LABELS[normalized.main_kind] ? normalized.main_kind : 'asset';
+        if (!base[key]) {
+          base[key] = { debit: 0, credit: 0, net: 0 };
+        }
+        const amount = Number(entry.amount_cents || 0);
+        if (amount < 0) {
+          base[key].debit += -amount;
+        } else {
+          base[key].credit += amount;
+        }
+      });
     }
-    return { bank, expense };
-  }, [entries, cats]);
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+    Object.values(base).forEach((item) => {
+      item.net = item.credit - item.debit;
+      totalDebit += item.debit;
+      totalCredit += item.credit;
+    });
+
+    return {
+      byMain: base,
+      totalDebit,
+      totalCredit,
+      net: totalCredit - totalDebit,
+    };
+  }, [ledger, entries, cats]);
 
   const reportIncomeTotal = report?.incomes_total_cents || 0;
   const reportExpenseTotal = report?.expenses_total_cents || 0;
-  const reportNetTotal =
-    report?.net_cents !== undefined ? report.net_cents : reportIncomeTotal - reportExpenseTotal;
+  const reportTipsTotal = report?.tips_total_cents || 0;
+  const reportReductionTotal = report?.reductions_total_cents || 0;
+  const reportReductionDisplayCents = reportReductionTotal ? -reportReductionTotal : 0;
   const reportIncomes = report?.incomes || [];
+  const reportLoyaltyTotal = useMemo(() => {
+    return reportIncomes.reduce((sum, inc) => {
+      const method = typeof inc?.payment_method === "string" ? inc.payment_method.toLowerCase() : "";
+      const amount = Number(inc?.total_cents) || 0;
+      return method === "loyalty" ? sum + amount : sum;
+    }, 0);
+  }, [reportIncomes]);
+  const reportIncomeNonLoyalty = Math.max(0, reportIncomeTotal - reportLoyaltyTotal);
+  const reportNetTotal = reportIncomeNonLoyalty - reportExpenseTotal;
   const reportExpenses = report?.expenses || [];
   const reportNetClass =
     reportNetTotal === 0 ? "text-muted" : reportNetTotal > 0 ? "text-success" : "text-danger";
+  const catFormValid =
+    catModalForm.code.trim() !== '' &&
+    catModalForm.name.trim() !== '' &&
+    Boolean(MAIN_CATEGORY_LABELS[catModalForm.main_kind]);
+  const catFormIsEdit = catModalMode === 'edit';
 
   const loadCompta = async () => {
     setLoadingCompta(true);
     try {
-      const [rc, re] = await Promise.all([
-        fetch(`/api/accounting/categories`),
+      const [_, re] = await Promise.all([
+        fetchCategories(),
         fetch(`/api/accounting/entries?ym=${encodeURIComponent(monthYM)}`),
       ]);
-      const jc = rc.ok ? await rc.json() : [];
       const je = re.ok ? await re.json() : [];
-      setCats(Array.isArray(jc) ? jc : jc?.items || []);
       setEntries(Array.isArray(je) ? je : je?.items || []);
     } catch {
       // ignore
     } finally {
       setLoadingCompta(false);
+    }
+  };
+
+  const resetCategoryForm = () => {
+    setCatModalMode('create');
+    setCatModalForm({ id: null, code: '', name: '', kind: 'bank', main_kind: 'asset' });
+  };
+
+  const refreshCategoriesList = async () => {
+    const items = await fetchCategories();
+    setCatModalItems(items);
+    if (catModalMode === 'edit') {
+      const current = items.find((it) => it.id === catModalForm.id);
+      if (current) {
+        setCatModalForm({ id: current.id, code: current.code, name: current.name, kind: current.kind, main_kind: current.main_kind });
+      } else {
+        resetCategoryForm();
+      }
+    }
+    return items;
+  };
+
+  const openCategoryManager = async () => {
+    setCatModalOpen(true);
+    setCatModalError(null);
+    setCatModalLoading(true);
+    resetCategoryForm();
+    try {
+      await refreshCategoriesList();
+    } catch (e) {
+      setCatModalItems([]);
+      setCatModalError(e.message || "Impossible de charger les catégories.");
+    } finally {
+      setCatModalLoading(false);
+    }
+  };
+
+  const closeCategoryManager = () => {
+    setCatModalOpen(false);
+    setCatModalError(null);
+  };
+
+  const onCatFormChange = (field, value) => {
+    setCatModalForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'kind' && catModalMode === 'create') {
+        if (value === 'expense' && next.main_kind === 'asset') {
+          next.main_kind = 'expense';
+        } else if (value === 'bank' && next.main_kind === 'expense') {
+          next.main_kind = 'asset';
+        }
+      }
+      return next;
+    });
+  };
+
+  const submitCategoryForm = async (evt) => {
+    evt?.preventDefault?.();
+    const code = catModalForm.code.trim();
+    const name = catModalForm.name.trim();
+    if (!code || !name) {
+      setCatModalError('Code et nom sont requis.');
+      return;
+    }
+
+    const payload = { code, name, kind: catModalForm.kind, main_kind: catModalForm.main_kind };
+    setCatModalLoading(true);
+    setCatModalError(null);
+    try {
+      const isEdit = catModalMode === 'edit' && catModalForm.id != null;
+      const resp = await fetch(
+        isEdit ? `/api/accounting/categories/${catModalForm.id}` : `/api/accounting/categories`,
+        {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data?.ok === false) {
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      await refreshCategoriesList();
+      resetCategoryForm();
+    } catch (e) {
+      setCatModalError(e.message || "Impossible d'enregistrer la catégorie.");
+    } finally {
+      setCatModalLoading(false);
+    }
+  };
+
+  const startEditCategory = (cat) => {
+    setCatModalMode('edit');
+    setCatModalForm({ id: cat.id, code: cat.code, name: cat.name, kind: cat.kind, main_kind: cat.main_kind });
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    if (!window.confirm(`Supprimer la catégorie "${cat.name}" ?`)) return;
+    setCatModalLoading(true);
+    setCatModalError(null);
+    try {
+      const resp = await fetch(`/api/accounting/categories/${cat.id}`, { method: 'DELETE' });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data?.ok === false) {
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      await refreshCategoriesList();
+      if (catModalMode === 'edit' && catModalForm.id === cat.id) {
+        resetCategoryForm();
+      }
+    } catch (e) {
+      setCatModalError(e.message || "Impossible de supprimer la catégorie.");
+    } finally {
+      setCatModalLoading(false);
     }
   };
 
@@ -1688,24 +2049,60 @@ export default function AccountingApp() {
                 <strong>Résumé {monthYM}</strong>
               </div>
               <div className="card-body">
-                <div className="d-flex justify-content-between">
-                  <span>Total Banque</span>
-                  <strong>{fmtMoney(totals.bank || 0)}</strong>
-                </div>
-                <div className="d-flex justify-content-between">
-                  <span>Total Dépenses</span>
-                  <strong>{fmtMoney(totals.expense || 0)}</strong>
-                </div>
+                {MAIN_CATEGORY_ORDER.map((mainKey) => {
+                  const data = mainCategoryTotals.byMain[mainKey];
+                  if (!data) {
+                    return null;
+                  }
+                  const label = MAIN_CATEGORY_LABELS[mainKey] || mainKey;
+                  return (
+                    <div key={mainKey} className="mb-2">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span>{label}</span>
+                        <strong>{fmtMoney(data.net)}</strong>
+                      </div>
+                      <div className="d-flex justify-content-between text-muted small">
+                        <span>Crédit</span>
+                        <span>{fmtMoney(data.credit)}</span>
+                      </div>
+                      <div className="d-flex justify-content-between text-muted small">
+                        <span>Débit</span>
+                        <span>{fmtMoney(data.debit)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
                 <hr />
                 <div className="d-flex justify-content-between">
-                  <span>Solde (Banque − Dépenses)</span>
-                  <strong>
-                    {fmtMoney((totals.bank || 0) - (totals.expense || 0))}
-                  </strong>
+                  <span>Crédit total</span>
+                  <strong>{fmtMoney(mainCategoryTotals.totalCredit)}</strong>
                 </div>
-                <div className="form-text mt-2">
-                  Les catégories sont modifiables dans la base.
+                <div className="d-flex justify-content-between">
+                  <span>Débit total</span>
+                  <strong>{fmtMoney(mainCategoryTotals.totalDebit)}</strong>
                 </div>
+                <div
+                  className={`d-flex justify-content-between ${
+                    mainCategoryTotals.net === 0
+                      ? 'text-muted'
+                      : mainCategoryTotals.net > 0
+                      ? 'text-success'
+                      : 'text-danger'
+                  }`}
+                >
+                  <span>Solde (Crédit − Débit)</span>
+                  <strong>{fmtMoney(mainCategoryTotals.net)}</strong>
+                </div>
+                    <div className="d-flex justify-content-between align-items-start mt-2 gap-2">
+                      <div className="form-text">Les catégories sont modifiables dans la base.</div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={openCategoryManager}
+                      >
+                        Éditer
+                      </button>
+                    </div>
               </div>
             </div>
 
@@ -1731,7 +2128,19 @@ export default function AccountingApp() {
                   <div className="card-body">
                     <div className="d-flex justify-content-between">
                       <span>Recettes (clients)</span>
-                      <strong>{fmtMoney(reportIncomeTotal)}</strong>
+                      <strong>{fmtMoney(reportIncomeNonLoyalty)}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                      <span>Carte de fidélité</span>
+                      <strong>{fmtMoney(reportLoyaltyTotal)}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                      <span>Réductions</span>
+                      <strong>{fmtMoney(reportReductionDisplayCents)}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                      <span>Pourboires</span>
+                      <strong>{fmtMoney(reportTipsTotal)}</strong>
                     </div>
                     <div className="d-flex justify-content-between">
                       <span>Dépenses</span>
@@ -2025,6 +2434,190 @@ export default function AccountingApp() {
             </div>
           </div>
         </div>
+      )}
+
+      {catModalOpen && (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: 'block', zIndex: 1060 }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Catégories comptables</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={closeCategoryManager}
+                    aria-label="Fermer"
+                  />
+                </div>
+                <div className="modal-body">
+                  {catModalError && (
+                    <div className="alert alert-danger py-2 small mb-3">{catModalError}</div>
+                  )}
+                  <form className="border rounded p-3 mb-3" onSubmit={submitCategoryForm}>
+                    <div className="row g-2">
+                      <div className="col-sm-3">
+                        <label className="form-label small">Code</label>
+                        <input
+                          className="form-control form-control-sm"
+                          value={catModalForm.code}
+                          onChange={(e) => onCatFormChange('code', e.target.value)}
+                          disabled={catModalLoading}
+                        />
+                      </div>
+                      <div className="col-sm-4">
+                        <label className="form-label small">Nom</label>
+                        <input
+                          className="form-control form-control-sm"
+                          value={catModalForm.name}
+                          onChange={(e) => onCatFormChange('name', e.target.value)}
+                          disabled={catModalLoading}
+                        />
+                      </div>
+                      <div className="col-sm-3">
+                        <label className="form-label small">Catégorie principale</label>
+                        <select
+                          className="form-select form-select-sm"
+                          value={catModalForm.main_kind}
+                          onChange={(e) => onCatFormChange('main_kind', e.target.value)}
+                          disabled={catModalLoading}
+                        >
+                          {MAIN_CATEGORY_ORDER.map((key) => (
+                            <option key={key} value={key}>
+                              {MAIN_CATEGORY_LABELS[key]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-sm-2">
+                        <label className="form-label small">Type (Banque/Dépense)</label>
+                        <select
+                          className="form-select form-select-sm"
+                          value={catModalForm.kind}
+                          onChange={(e) => onCatFormChange('kind', e.target.value)}
+                          disabled={catModalLoading}
+                        >
+                          <option value="bank">Banque</option>
+                          <option value="expense">Dépense</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="d-flex justify-content-end gap-2 mt-3">
+                      {catFormIsEdit && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={resetCategoryForm}
+                          disabled={catModalLoading}
+                        >
+                          Annuler
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        className="btn btn-sm btn-primary"
+                        disabled={catModalLoading || !catFormValid}
+                      >
+                        {catModalLoading
+                          ? 'Enregistrement…'
+                          : catFormIsEdit
+                          ? 'Mettre à jour'
+                          : 'Ajouter'}
+                      </button>
+                    </div>
+                  </form>
+
+                  <div className="table-responsive" style={{ maxHeight: 360 }}>
+                    <table className="table table-sm align-middle">
+                      <thead className="table-light">
+                        <tr>
+                          <th style={{ width: 120 }}>Code</th>
+                          <th>Nom</th>
+                          <th style={{ width: 180 }}>Catégorie principale</th>
+                          <th style={{ width: 160 }}>Type</th>
+                          <th style={{ width: 160 }} className="text-end">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {catModalItems.length ? (
+                          MAIN_CATEGORY_ORDER.map((mainKey) => {
+                            const items = catModalGrouped[mainKey] || [];
+                            if (!items.length) {
+                              return null;
+                            }
+                            const label = MAIN_CATEGORY_LABELS[mainKey] || mainKey;
+                            return (
+                              <React.Fragment key={mainKey}>
+                                <tr className="table-secondary">
+                                  <td colSpan={5} className="fw-semibold">
+                                    {label}
+                                    <span className="badge text-bg-light ms-2">{items.length}</span>
+                                  </td>
+                                </tr>
+                                {items.map((cat) => (
+                                  <tr key={cat.id}>
+                                    <td>{cat.code}</td>
+                                    <td>{cat.name}</td>
+                                    <td>{MAIN_CATEGORY_LABELS[cat.main_kind] || cat.main_kind}</td>
+                                    <td>{CATEGORY_KIND_LABEL[cat.kind] || cat.kind}</td>
+                                    <td className="text-end">
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline-primary me-2"
+                                        onClick={() => startEditCategory(cat)}
+                                        disabled={catModalLoading}
+                                      >
+                                        Modifier
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline-danger"
+                                        onClick={() => handleDeleteCategory(cat)}
+                                        disabled={catModalLoading}
+                                      >
+                                        Supprimer
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="text-center text-muted py-3">
+                              Aucune catégorie définie.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {catModalLoading && (
+                    <div className="text-muted small mt-2">Opération en cours…</div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={closeCategoryManager}
+                    disabled={catModalLoading}
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" />
+        </>
       )}
     </div>
   );

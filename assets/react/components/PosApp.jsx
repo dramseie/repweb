@@ -48,6 +48,50 @@ const fmtAddrBlock = (a) => {
   const line3 = a.country || '';
   return [line1, line2, line3].filter(Boolean).join('\n');
 };
+const fmtAddrSingleLine = (a) => {
+  const block = fmtAddrBlock(a);
+  return block ? block.replace(/\s*\n\s*/g, ', ').replace(/\s{2,}/g, ' ').trim() : '';
+};
+
+const LOYALTY_MAX = 10;
+const clampLoyaltyPoints = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(LOYALTY_MAX, Math.round(n)));
+};
+
+const parsePreferences = (raw) => {
+  if (raw == null) return {};
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return {};
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    try {
+      return JSON.parse(JSON.stringify(raw));
+    } catch {
+      return { ...raw };
+    }
+  }
+  return {};
+};
+
+const formatLoyaltyTimestamp = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return d.toISOString();
+  }
+};
 
 // ---- Read realizations from the mount div (set by Twig) ----
 const initialRealisations = (() => {
@@ -152,142 +196,220 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
   const mapRef = useRef(null);
   const nodeRef = useRef(null);
   const markerRef = useRef(null);
-  const clickHandlerRef = useRef(null);
+  const reverseGeocodeRef = useRef(null);
+  const searchAbortRef = useRef(null);
+  const reverseAbortRef = useRef(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const searchAbortRef = useRef(null);
-  const reverseAbortRef = useRef(null);
+  const [selected, setSelected] = useState(null);
 
-  // init / cleanup map
+  const clearMarker = useCallback(() => {
+    if (markerRef.current && mapRef.current) {
+      mapRef.current.removeLayer(markerRef.current);
+    }
+    markerRef.current = null;
+  }, []);
+
+  const ensureMarker = useCallback((lat, lon) => {
+    if (!mapRef.current) return;
+    if (!markerRef.current) {
+      markerRef.current = L.marker([lat, lon], { draggable: true }).addTo(mapRef.current);
+      markerRef.current.on('dragend', (ev) => {
+        const { lat: nLat, lng: nLon } = ev.target.getLatLng();
+        reverseGeocodeRef.current?.(nLat, nLon);
+      });
+    } else {
+      markerRef.current.setLatLng([lat, lon]);
+    }
+  }, []);
+
+  const nominatimToAddress = useCallback((payload, lat, lon) => {
+    const a = payload?.address || {};
+    const street = a.road
+      || a.residential
+      || a.pedestrian
+      || a.cycleway
+      || a.footway
+      || a.path
+      || a.street
+      || a.suburb
+      || '';
+    const base = {
+      ...emptyAddr,
+      street,
+      house_number: a.house_number ? String(a.house_number).trim() : '',
+      postcode: a.postcode ? String(a.postcode).trim() : '',
+      city: (a.city || a.town || a.village || a.municipality || a.hamlet || a.locality || '').trim(),
+      region: (a.state || a.region || a.county || '').trim(),
+      country: (a.country_code ? a.country_code.toUpperCase() : (a.country || '')).trim(),
+      geo: { lat, lng: lon },
+      place_id: payload?.place_id ? `nominatim:${payload.place_id}` : '',
+      source: 'nominatim'
+    };
+    base.formatted = fmtAddrBlock(base);
+    base.updated_at = nowIso();
+    return base;
+  }, []);
+
+  const applySelection = useCallback((addr) => {
+    setSelected(addr);
+    setQuery(addr ? fmtAddrSingleLine(addr) : '');
+  }, []);
+
+  const reverseGeocode = useCallback(async (lat, lon) => {
+    reverseAbortRef.current?.abort();
+    const controller = new AbortController();
+    reverseAbortRef.current = controller;
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`, { signal: controller.signal });
+      if (!res.ok) throw new Error('Recherche inverse indisponible');
+      const data = await res.json();
+      if (!data?.address) throw new Error('Aucune adresse trouvée');
+      const addr = nominatimToAddress(data, lat, lon);
+      ensureMarker(lat, lon);
+      applySelection(addr);
+      if (mapRef.current) {
+        const zoom = Math.max(mapRef.current.getZoom() || 0, 17);
+        mapRef.current.setView([lat, lon], zoom);
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setError(err.message || 'Reverse geocoding échoué');
+      }
+    } finally {
+      if (reverseAbortRef.current === controller) reverseAbortRef.current = null;
+      setBusy(false);
+    }
+  }, [applySelection, ensureMarker, nominatimToAddress]);
+
+  useEffect(() => {
+    reverseGeocodeRef.current = reverseGeocode;
+  }, [reverseGeocode]);
+
   useEffect(() => {
     if (!show || !nodeRef.current) return;
 
     if (!mapRef.current) {
       mapRef.current = L.map(nodeRef.current, { zoomControl: true }).setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
       }).addTo(mapRef.current);
 
-      // click handler (kept in ref to remove cleanly)
-      clickHandlerRef.current = async (e) => {
-        setBusy(true); setError('');
-        try {
-          // abort any previous reverse
-          reverseAbortRef.current?.abort();
-          reverseAbortRef.current = new AbortController();
-
-          const lat = e.latlng.lat, lon = e.latlng.lng;
-          if (!markerRef.current) markerRef.current = L.marker(e.latlng).addTo(mapRef.current);
-          else markerRef.current.setLatLng(e.latlng);
-
-          const r = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`, { signal: reverseAbortRef.current.signal });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const j = await r.json();
-          if (!j?.address) throw new Error('Aucune adresse trouvée');
-
-          const a = j.address || {};
-          const addr = {
-            street: a.road || a.pedestrian || a.footway || '',
-            house_number: a.house_number || '',
-            postcode: a.postcode || '',
-            city: a.city || a.town || a.village || a.hamlet || '',
-            region: a.state || '',
-            country: a.country_code ? a.country_code.toUpperCase() : (a.country || ''),
-            formatted: j.display_name || '',
-            geo: { lat, lng: lon },
-            place_id: j.place_id ? `nominatim:${j.place_id}` : '',
-            source: 'nominatim',
-            updated_at: nowIso()
-          };
-          onPick(addr);
-        } catch (e2) {
-          if (e2.name !== 'AbortError') setError(e2.message || 'Reverse-geocoding indisponible');
-        } finally {
-          setBusy(false);
-        }
-      };
-
-      mapRef.current.on('click', clickHandlerRef.current);
+      mapRef.current.on('click', (e) => {
+        const { lat, lng } = e.latlng;
+        ensureMarker(lat, lng);
+        reverseGeocodeRef.current?.(lat, lng);
+      });
     }
 
-    // ensure size after modal becomes visible
-    setTimeout(() => { try { mapRef.current?.invalidateSize(); } catch {} }, 100);
+    setTimeout(() => {
+      try { mapRef.current?.invalidateSize(); } catch (_) {}
+    }, 100);
+  }, [show, ensureMarker]);
 
-    // center on existing address if any
-    if (initial?.geo) {
-      const { lat, lng } = initial.geo;
-      mapRef.current.setView([lat, lng], 17);
-      if (!markerRef.current) markerRef.current = L.marker([lat, lng]).addTo(mapRef.current);
-      else markerRef.current.setLatLng([lat, lng]);
-    } else {
-      mapRef.current.setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
-    }
-
-    // cleanup when modal closes/unmounts
-    return () => {
+  useEffect(() => {
+    if (!show) {
       searchAbortRef.current?.abort();
       reverseAbortRef.current?.abort();
-      if (mapRef.current && clickHandlerRef.current) mapRef.current.off('click', clickHandlerRef.current);
-      // keep map instance for next open to avoid re-creating tiles; don’t destroy node
-    };
-  }, [show, initial, onPick]);
+      return;
+    }
+    setBusy(false);
+    setError('');
+
+    if (initial && typeof initial === 'object') {
+      const rawGeo = initial.geo || null;
+      const rawLat = rawGeo?.lat ?? rawGeo?.latitude ?? null;
+      const rawLon = rawGeo?.lng ?? rawGeo?.lon ?? rawGeo?.longitude ?? null;
+      const lat = rawLat == null ? NaN : parseFloat(rawLat);
+      const lon = rawLon == null ? NaN : parseFloat(rawLon);
+      const geo = Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lng: lon } : null;
+      const seed = {
+        ...emptyAddr,
+        ...initial,
+        geo
+      };
+      seed.formatted = fmtAddrBlock(seed);
+      applySelection(seed);
+      if (geo && mapRef.current) {
+        ensureMarker(geo.lat, geo.lng);
+        const zoom = mapRef.current.getZoom() >= 17 ? mapRef.current.getZoom() : 17;
+        mapRef.current.setView([geo.lat, geo.lng], zoom);
+      } else if (mapRef.current) {
+        clearMarker();
+        mapRef.current.setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
+      }
+    } else {
+      applySelection(null);
+      if (mapRef.current) {
+        clearMarker();
+        mapRef.current.setView(HAGENTHAL_CENTER, HAGENTHAL_ZOOM);
+      }
+    }
+  }, [show, initial, applySelection, ensureMarker, clearMarker]);
+
+  useEffect(() => () => {
+    searchAbortRef.current?.abort();
+    reverseAbortRef.current?.abort();
+  }, []);
+
+  const fetchSearchResults = useCallback(async (term, signal) => {
+    const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(term)}&limit=8`, { signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    return Array.isArray(json) ? json : [];
+  }, []);
 
   const onSubmitSearch = async (e) => {
     e.preventDefault();
     const raw = (query || '').trim();
     if (!raw) return;
-    setBusy(true); setError('');
+    setBusy(true);
+    setError('');
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
     try {
-      // abort previous search
-      searchAbortRef.current?.abort();
-      searchAbortRef.current = new AbortController();
-
-      // Try as-is
-      let r = await fetch(`/api/geocode/search?q=${encodeURIComponent(raw)}&limit=8`, { signal: searchAbortRef.current.signal });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      let j = await r.json();
-
-      // Fallback: add ", France"
-      if (!Array.isArray(j) || j.length === 0) {
-        r = await fetch(`/api/geocode/search?q=${encodeURIComponent(`${raw}, France`)}&limit=8`, { signal: searchAbortRef.current.signal });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        j = await r.json();
-      }
-
-      if (!Array.isArray(j) || j.length === 0) { setError('Aucun résultat'); return; }
-
-      // Prefer result with city/town/village match
-      const hit = j.find(x => {
+      const attempt = async (term) => fetchSearchResults(term, controller.signal);
+      let hits = await attempt(raw);
+      if (!hits.length) hits = await attempt(`${raw}, France`);
+      if (!hits.length) throw new Error('Aucun résultat');
+      const rawLower = raw.toLowerCase();
+      const chosen = hits.find((x) => {
         const city = (x.address?.village || x.address?.town || x.address?.city || '').toLowerCase();
-        return city && raw.toLowerCase().includes(city);
-      }) || j[0];
-
-      const lat = parseFloat(hit.lat), lon = parseFloat(hit.lon);
-      mapRef.current.setView([lat, lon], 18);
-      if (!markerRef.current) markerRef.current = L.marker([lat, lon]).addTo(mapRef.current);
-      else markerRef.current.setLatLng([lat, lon]);
-
-      const a = hit.address || {};
-      const addr = {
-        street: a.road || a.pedestrian || a.footway || '',
-        house_number: a.house_number || '',
-        postcode: a.postcode || '',
-        city: a.city || a.town || a.village || '',
-        region: a.state || '',
-        country: a.country_code ? a.country_code.toUpperCase() : (a.country || ''),
-        formatted: hit.display_name || '',
-        geo: { lat, lng: lon },
-        place_id: hit.place_id ? `nominatim:${hit.place_id}` : '',
-        source: 'nominatim',
-        updated_at: nowIso()
-      };
-      onPick(addr);
-    } catch (e2) {
-      if (e2.name !== 'AbortError') setError(e2.message || 'Recherche échouée');
+        return city && rawLower.includes(city);
+      }) || hits[0];
+      const lat = parseFloat(chosen.lat);
+      const lon = parseFloat(chosen.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Coordonnées invalides');
+      const addr = nominatimToAddress(chosen, lat, lon);
+      ensureMarker(lat, lon);
+      if (mapRef.current) {
+        const zoom = mapRef.current.getZoom() >= 18 ? mapRef.current.getZoom() : 18;
+        mapRef.current.setView([lat, lon], zoom);
+      }
+      applySelection(addr);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Recherche échouée');
     } finally {
-           setBusy(false);
+      if (searchAbortRef.current === controller) searchAbortRef.current = null;
+      setBusy(false);
     }
+  };
+
+  const handleSave = () => {
+    if (!selected) return;
+    const payload = {
+      ...selected,
+      geo: selected.geo ? { ...selected.geo } : null,
+      formatted: fmtAddrBlock(selected),
+      updated_at: nowIso()
+    };
+    onPick(payload);
   };
 
   return (
@@ -317,6 +439,7 @@ function AddressPickerModal({ show, onClose, onPick, initial }) {
           </div>
           <div className="modal-footer">
             <button className="btn btn-outline-secondary" onClick={onClose}>Fermer</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={!selected || busy}>Enregistrer</button>
           </div>
         </div>
       </div>
@@ -601,6 +724,10 @@ export default function PosApp() {
   // 🔧 Auto-load detail/history on startup and when customer changes
   const [custDetail, setCustDetail] = useState(null);
   const [activeAppointmentId, setActiveAppointmentId] = useState(null);
+  const [preferences, setPreferences] = useState({});
+  const preferencesRef = useRef({});
+  const [loyaltySaving, setLoyaltySaving] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState('');
   useEffect(() => {
     if (customer?.id) {
       loadCustomerDetail(customer.id);
@@ -610,6 +737,24 @@ export default function PosApp() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customer?.id]);
+
+  useEffect(() => {
+    setInvoiceDownloadId(null);
+    setInvoiceDownloadError('');
+  }, [customer?.id]);
+
+  useEffect(() => {
+    if (!custDetail?.customer) {
+      setPreferences({});
+      preferencesRef.current = {};
+      setLoyaltyError('');
+      setLoyaltySaving(false);
+      return;
+    }
+    const parsed = parsePreferences(custDetail.customer.preferences ?? null);
+    setPreferences(parsed);
+    preferencesRef.current = parsed;
+  }, [custDetail?.customer?.preferences, custDetail?.customer?.id]);
 
   const [custTab, setCustTab] = useState('search');
   const [custQuery, setCustQuery] = useState('');
@@ -637,6 +782,8 @@ export default function PosApp() {
   // 💳 Payment dialog state
   const [payOpen, setPayOpen] = useState(false);
   const [currentOrder, setCurrentOrder] = useState(null);
+  const [invoiceDownloadId, setInvoiceDownloadId] = useState(null);
+  const [invoiceDownloadError, setInvoiceDownloadError] = useState('');
 
   // ✏️ EDIT MODAL STATE
   const [editOpen, setEditOpen] = useState(false);
@@ -678,6 +825,111 @@ export default function PosApp() {
     if (isNaN(a) || isNaN(b)) return 60;
     return Math.max(0, Math.round((b - a) / 60000));
   };
+
+  const loyaltyPoints = useMemo(() => clampLoyaltyPoints(preferences?.loyalty?.points ?? 0), [preferences]);
+  const loyaltyUpdatedAt = preferences?.loyalty?.updated_at ?? null;
+  const loyaltyUpdatedLabel = useMemo(() => formatLoyaltyTimestamp(loyaltyUpdatedAt), [loyaltyUpdatedAt]);
+  const canAddLoyaltyPoint = loyaltyPoints < LOYALTY_MAX;
+
+  const persistPreferences = useCallback(async (nextPref, options = {}) => {
+    if (!customer?.id) {
+      return preferencesRef.current;
+    }
+    setLoyaltySaving(true);
+    setLoyaltyError('');
+    try {
+      const res = await fetch(`/api/pos/customers/${customer.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: nextPref ?? null })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = data?.error || `HTTP ${res.status}`;
+        setLoyaltyError(message);
+        throw new Error(message);
+      }
+      const normalized = parsePreferences(data?.preferences ?? nextPref);
+      setPreferences(normalized);
+      preferencesRef.current = normalized;
+      setCustDetail(prev => prev ? {
+        ...prev,
+        customer: prev.customer ? { ...prev.customer, preferences: normalized } : prev.customer
+      } : prev);
+      return normalized;
+    } catch (err) {
+      if (!options?.silent) {
+        setLoyaltyError(err.message || 'Erreur lors de la mise à jour de la fidélité');
+        throw err;
+      }
+      console.error('Loyalty preferences update failed', err);
+      return preferencesRef.current;
+    } finally {
+      setLoyaltySaving(false);
+    }
+  }, [customer?.id]);
+
+  const updateLoyaltyPoints = useCallback(async (nextPoints, options = {}) => {
+    if (!customer?.id) {
+      return preferencesRef.current;
+    }
+    const { silent = false, force = false } = options;
+    const currentPrefs = preferencesRef.current && typeof preferencesRef.current === 'object'
+      ? preferencesRef.current
+      : {};
+    const currentPoints = clampLoyaltyPoints(currentPrefs?.loyalty?.points ?? 0);
+    const normalizedPoints = clampLoyaltyPoints(nextPoints);
+    if (!force && normalizedPoints === currentPoints) {
+      return currentPrefs;
+    }
+
+    const loyaltyMeta = currentPrefs.loyalty && typeof currentPrefs.loyalty === 'object'
+      ? { ...currentPrefs.loyalty }
+      : {};
+
+    const updated = {
+      ...currentPrefs,
+      loyalty: {
+        ...loyaltyMeta,
+        points: normalizedPoints,
+        updated_at: nowIso(),
+      }
+    };
+    if (normalizedPoints === 0) {
+      updated.loyalty.last_reset_at = nowIso();
+    } else if (loyaltyMeta?.last_reset_at) {
+      updated.loyalty.last_reset_at = loyaltyMeta.last_reset_at;
+    }
+
+    try {
+      return await persistPreferences(updated, { silent });
+    } catch (err) {
+      if (!silent) {
+        throw err;
+      }
+      return currentPrefs;
+    }
+  }, [customer?.id, persistPreferences]);
+
+  const handleLoyaltyAdd = useCallback(() => {
+    updateLoyaltyPoints(loyaltyPoints + 1).catch(() => {});
+  }, [loyaltyPoints, updateLoyaltyPoints]);
+
+  const handleLoyaltyRemove = useCallback(() => {
+    if (loyaltyPoints === 0) return;
+    updateLoyaltyPoints(loyaltyPoints - 1).catch(() => {});
+  }, [loyaltyPoints, updateLoyaltyPoints]);
+
+  const handleLoyaltyReset = useCallback(() => {
+    if (loyaltyPoints === 0) return;
+    updateLoyaltyPoints(0).catch(() => {});
+  }, [loyaltyPoints, updateLoyaltyPoints]);
+
+  const handleLoyaltySlotClick = useCallback((idx) => {
+    if (loyaltySaving) return;
+    const target = idx < loyaltyPoints ? idx : idx + 1;
+    updateLoyaltyPoints(target).catch(() => {});
+  }, [loyaltyPoints, loyaltySaving, updateLoyaltyPoints]);
 
   // 🔎 Order dialog state
   const [showOrderDlg, setShowOrderDlg] = useState(false);
@@ -1034,6 +1286,14 @@ export default function PosApp() {
     });
     if (!r.ok) throw new Error(await r.text());
 
+    if (customer?.id && payload?.method === 'loyalty') {
+      try {
+        await updateLoyaltyPoints(0, { silent: true });
+      } catch (err) {
+        console.error('Impossible de réinitialiser la fidélité après encaissement', err);
+      }
+    }
+
     setPayOpen(false);
     setCart([]);
     setTechNotes('');
@@ -1069,6 +1329,39 @@ export default function PosApp() {
       notes_public: a.notes_public || '',
       status: a.status || 'booked',
     });
+  };
+
+  const downloadOrderInvoice = async (orderId) => {
+    if (!orderId || invoiceDownloadId !== null) {
+      return;
+    }
+    setInvoiceDownloadError('');
+    setInvoiceDownloadId(orderId);
+    let blobUrl = null;
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}/invoice.pdf`, {
+        headers: { Accept: 'application/pdf' },
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `facture-${orderId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('Invoice download failed', err);
+      setInvoiceDownloadError(err?.message || 'Impossible de générer la facture');
+    } finally {
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+      setInvoiceDownloadId(null);
+    }
   };
 
   const orderRows = useMemo(() => {
@@ -1571,10 +1864,10 @@ export default function PosApp() {
                         value={rdv.status}
                         onChange={(e) => setR('status', e.target.value)}
                       >
-                        <option value="booked">bookée</option>
-                        <option value="done">done</option>
-                        <option value="no-show">no-show</option>
-                        <option value="cancelled">cancelled</option>
+                        <option value="booked">réservé</option>
+                        <option value="done">réalisé</option>
+                        <option value="no-show">pas venue</option>
+                        <option value="cancelled">annulé</option>
                       </select>
                     </div>
 
@@ -1672,51 +1965,73 @@ export default function PosApp() {
                     </div>
 
                     <div>
-                      <div className="fw-semibold">Commandes</div>
+                      <div className="fw-semibold">Préstations</div>
                       <div className="table-responsive">
                         <table className="table table-sm align-middle">
                           <thead>
-                            <tr><th>Date</th><th>Total</th><th>Réalisations</th><th>Temps écoulé</th><th>Note</th></tr>
+                            <tr><th>Date</th><th>Total</th><th>Réalisations</th><th>Temps écoulé</th><th>Note</th><th>Facture</th></tr>
                           </thead>
                           <tbody>
                             {orderRows.length
-                              ? orderRows.map(row => (
-                                <tr
-                                  key={row.key}
-                                  style={{ cursor: 'pointer' }}
-                                  onClick={() => {
-                                    const m = String(row.key).match(/^order-(\d+)$/);
-                                    if (m) {
-                                      openOrderDialog(Number(m[1]));
-                                    }
-                                  }}
-                                >
-                                  <td>{`${fmtDateFr(row.date)} ${fmtTimeFr(row.date)}`}</td>
-                                  <td>{row.total_cents == null ? '—' : fmtMoney(row.total_cents)}</td>
-                                  <td style={{maxWidth:220}}>
-                                    {(() => {
-                                      const reals = getOrderReals((custDetail?.orders || []).find(o =>
-                                        (`order-${o.id}` === row.key) || (`appt-${o.appointment_id}` === row.key)
-                                      ) || {});
-                                      if (!reals.length) return '—';
-                                      return (
-                                        <div className="d-flex flex-wrap gap-1">
-                                          {reals.map((r, i) => (
-                                            <span key={`${r.code || r.label || i}`} className="badge text-bg-secondary">
-                                              {r?.label || r?.code}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      );
-                                    })()}
-                                  </td>
-                                  <td>{row.elapsed_minutes == null ? '—' : `${row.elapsed_minutes} min`}</td>
-                                  <td className="text-truncate" style={{maxWidth:220}} title={row.note}>{row.note}</td>
-                                </tr>
-                              ))
-                              : <tr><td colSpan={5} className="text-muted">Aucune commande</td></tr>}
+                              ? orderRows.map(row => {
+                                const orderId = row.key.startsWith('order-') ? Number(row.key.slice(6)) : null;
+                                const downloading = invoiceDownloadId === orderId;
+                                return (
+                                  <tr
+                                    key={row.key}
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => {
+                                      const m = String(row.key).match(/^order-(\d+)$/);
+                                      if (m) {
+                                        openOrderDialog(Number(m[1]));
+                                      }
+                                    }}
+                                  >
+                                    <td>{`${fmtDateFr(row.date)} ${fmtTimeFr(row.date)}`}</td>
+                                    <td>{row.total_cents == null ? '—' : fmtMoney(row.total_cents)}</td>
+                                    <td style={{maxWidth:220}}>
+                                      {(() => {
+                                        const reals = getOrderReals((custDetail?.orders || []).find(o =>
+                                          (`order-${o.id}` === row.key) || (`appt-${o.appointment_id}` === row.key)
+                                        ) || {});
+                                        if (!reals.length) return '—';
+                                        return (
+                                          <div className="d-flex flex-wrap gap-1">
+                                            {reals.map((r, i) => (
+                                              <span key={`${r.code || r.label || i}`} className="badge text-bg-secondary">
+                                                {r?.label || r?.code}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
+                                    </td>
+                                    <td>{row.elapsed_minutes == null ? '—' : `${row.elapsed_minutes} min`}</td>
+                                    <td className="text-truncate" style={{maxWidth:220}} title={row.note}>{row.note}</td>
+                                    <td>
+                                      {orderId ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline-secondary"
+                                          onClick={evt => {
+                                            evt.stopPropagation();
+                                            downloadOrderInvoice(orderId);
+                                          }}
+                                          disabled={invoiceDownloadId !== null}
+                                        >
+                                          {downloading ? 'Génération…' : 'Facture'}
+                                        </button>
+                                      ) : '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                              : <tr><td colSpan={6} className="text-muted">Aucune prestation</td></tr>}
                           </tbody>
                         </table>
+                        {invoiceDownloadError && (
+                          <div className="text-danger small mt-1">{invoiceDownloadError}</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1725,6 +2040,40 @@ export default function PosApp() {
                 <div className="mt-4">
                   <h6 className="fw-semibold mb-2">Assistant couleur</h6>
                   <ColorInspector ideasEndpoint="/api/ai/color-ideas" />
+                </div>
+
+                <div className="mt-4">
+                  <h6 className="fw-semibold mb-2 d-flex align-items-center justify-content-between">
+                    <span>Carte de fidélité</span>
+                    {loyaltySaving && <span className="badge text-bg-secondary">Sauvegarde…</span>}
+                  </h6>
+                  {loyaltyError && <div className="alert alert-warning py-2 small mb-2">{loyaltyError}</div>}
+                  <div className="d-flex flex-wrap gap-2 mb-3">
+                    {Array.from({ length: LOYALTY_MAX }).map((_, idx) => {
+                      const filled = idx < loyaltyPoints;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          className={`btn btn-sm ${filled ? 'btn-warning text-dark' : 'btn-outline-secondary text-muted'}`}
+                          style={{ width: 42, height: 42, borderRadius: '999px', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
+                          onClick={() => handleLoyaltySlotClick(idx)}
+                          disabled={loyaltySaving}
+                          title={filled ? `Point ${idx + 1} validé` : `Valider jusqu’à ${idx + 1} points`}
+                        >
+                          {filled ? '★' : idx + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="d-flex flex-wrap gap-2">
+                    <button className="btn btn-sm btn-primary" onClick={handleLoyaltyAdd} disabled={!canAddLoyaltyPoint || loyaltySaving}>+1 point</button>
+                    <button className="btn btn-sm btn-outline-secondary" onClick={handleLoyaltyRemove} disabled={loyaltyPoints === 0 || loyaltySaving}>-1</button>
+                    <button className="btn btn-sm btn-outline-danger" onClick={handleLoyaltyReset} disabled={loyaltyPoints === 0 || loyaltySaving}>Réinitialiser</button>
+                  </div>
+                  <div className="form-text mt-2">
+                    {loyaltyPoints}/{LOYALTY_MAX} points{loyaltyUpdatedLabel ? ` • MAJ ${loyaltyUpdatedLabel}` : ''}
+                  </div>
                 </div>
               </>
             )}
@@ -1746,6 +2095,7 @@ export default function PosApp() {
         amountDueCents={currentOrder?.total_cents ?? totals.total}
         rendezVousAtIso={currentOrder?.rendezVousStartIso || rendezVousAtIso}
         elapsedMinutesInitial={currentOrder?.elapsedMinutesInitial ?? null}
+        orderId={currentOrder?.id ?? null}
       />
 
       {/* ✏️ Customer Edit Modal */}
