@@ -2391,7 +2391,7 @@ const SmartsheetPivotPage = () => {
                           {trendError}
                         </div>
                       )}
-                      {!trendLoading && !trendError && presentationEditMode && (
+                      {!trendLoading && !trendError && presentationEditMode && meta.key === '__trend_green' && (
                         <div className="table-responsive">
                           <table className="table table-sm table-bordered table-striped align-middle mb-0">
                             <colgroup>
@@ -2445,6 +2445,9 @@ const SmartsheetPivotPage = () => {
                           </table>
                         </div>
                       )}
+                      {!trendLoading && !trendError && presentationEditMode && meta.key !== '__trend_green' && (
+                        <div className="text-muted small">Edit RAG & comments in Country Trend: Green.</div>
+                      )}
                       {!trendLoading && !trendError && !presentationEditMode && (
                         (() => {
                           const group = meta.key === '__trend_green'
@@ -2464,48 +2467,49 @@ const SmartsheetPivotPage = () => {
                             );
                           }
                           return (
-                            <div className="table-responsive">
-                              <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                                <colgroup>
-                                  <col style={{ width: '30%' }} />
-                                  <col style={{ width: '15%' }} />
-                                  <col style={{ width: '55%' }} />
-                                </colgroup>
-                                <thead className="table-light">
-                                  <tr>
-                                    <th>Country</th>
-                                    <th>RAG</th>
-                                    <th>Comment</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {group.map((row) => {
-                                    const rag = normalizeRag(row.rag);
-                                    const ragLabel = rag ? rag.charAt(0).toUpperCase() + rag.slice(1) : '—';
-                                    const ragClass = rag === 'green'
-                                      ? 'success'
-                                      : rag === 'amber'
-                                        ? 'warning text-dark'
-                                        : rag === 'red'
-                                          ? 'danger'
-                                          : 'secondary';
-                                    return (
+                            <div className="d-flex flex-column flex-lg-row gap-3 align-items-stretch">
+                              <div className="table-responsive flex-grow-1">
+                                <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                                  <colgroup>
+                                    <col style={{ width: '24%' }} />
+                                    <col style={{ width: '10%' }} />
+                                    <col style={{ width: '14%' }} />
+                                    <col style={{ width: '16%' }} />
+                                    <col style={{ width: '12%' }} />
+                                    <col style={{ width: '24%' }} />
+                                  </colgroup>
+                                  <thead className="table-light">
+                                    <tr>
+                                      <th>Country</th>
+                                      <th>Total</th>
+                                      <th>Assessments</th>
+                                      <th>Ongoing Installation</th>
+                                      <th>Stores Installed</th>
+                                      <th>Comment</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {group.map((row) => (
                                       <tr key={row.country}>
                                         <td className="fw-semibold">
                                           <CountryFlag country={row.country} />
                                           {row.country}
                                         </td>
-                                        <td>
-                                          <span className={`badge bg-${ragClass}`}>
-                                            {ragLabel}
-                                          </span>
-                                        </td>
+                                        <td>{formatDisplayValue(row.stores)}</td>
+                                        <td>{formatDisplayValue(row.assessed)}</td>
+                                        <td>{formatDisplayValue(row.ongoingInstallations)}</td>
+                                        <td>{formatDisplayValue(row.storesInstalled)}</td>
                                         <td className="text-muted small">{formatDisplayValue(row.comment)}</td>
                                       </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <div className="trend-traffic-light" data-variant={meta.key}>
+                                <div className="light light-red" />
+                                <div className="light light-amber" />
+                                <div className="light light-green" />
+                              </div>
                             </div>
                           );
                         })()
