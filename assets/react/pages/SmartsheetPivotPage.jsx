@@ -2506,9 +2506,19 @@ const SmartsheetPivotPage = () => {
                                 </table>
                               </div>
                               <div className="trend-traffic-light" data-variant={meta.key}>
-                                <div className="light light-red" />
-                                <div className="light light-amber" />
-                                <div className="light light-green" />
+                                <img
+                                  src={meta.key === '__trend_green'
+                                    ? '/images/green.png'
+                                    : meta.key === '__trend_amber'
+                                      ? '/images/yellow.png'
+                                      : '/images/red.png'}
+                                  alt={meta.key === '__trend_green'
+                                    ? 'Green traffic light'
+                                    : meta.key === '__trend_amber'
+                                      ? 'Amber traffic light'
+                                      : 'Red traffic light'}
+                                  className="trend-traffic-light__image"
+                                />
                               </div>
                             </div>
                           );
