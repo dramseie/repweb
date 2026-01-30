@@ -1709,8 +1709,8 @@ const SmartsheetPivotPage = () => {
               {highlightsError}
             </div>
           )}
-          {!highlightsLoading && !highlightsError && presentationEditMode ? (
-            <>
+          {!highlightsLoading && !highlightsError && (
+            <div style={{ display: presentationEditMode ? 'block' : 'none' }}>
               <TrumboField
                 value={highlightsContent}
                 onChange={(value) => setHighlightsContent(value || '')}
@@ -1726,8 +1726,8 @@ const SmartsheetPivotPage = () => {
                   {highlightsSaving ? 'Saving…' : 'Save highlights'}
                 </button>
               </div>
-            </>
-          ) : null}
+            </div>
+          )}
           {!highlightsLoading && !highlightsError && !presentationEditMode && (
             highlightsContent ? (
               <div

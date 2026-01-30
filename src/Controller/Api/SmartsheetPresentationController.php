@@ -93,6 +93,9 @@ class SmartsheetPresentationController extends AbstractController
         'USA' => 'US',
     ];
 
+    /** @var array<string, string|null> */
+    private array $flagCache = [];
+
     public function __construct(
         private readonly Connection $connection,
         private readonly RequestStack $requestStack
@@ -1689,13 +1692,44 @@ class SmartsheetPresentationController extends AbstractController
         return sprintf('data:%s;base64,%s', $mime, base64_encode($data));
     }
 
+    private function getFlagDataUri(string $country): ?string
+    {
+        $trimmed = trim($country);
+        if ($trimmed === '') {
+            return null;
+        }
+        if (array_key_exists($trimmed, $this->flagCache)) {
+            return $this->flagCache[$trimmed];
+        }
+        $code = self::COUNTRY_FLAG_MAP[$trimmed] ?? '';
+        if ($code === '') {
+            $this->flagCache[$trimmed] = null;
+            return null;
+        }
+
+        $url = sprintf('https://flagcdn.com/24x18/%s.png', strtolower($code));
+        $context = stream_context_create([
+            'http' => ['timeout' => 5],
+            'https' => ['timeout' => 5],
+        ]);
+        $data = @file_get_contents($url, false, $context);
+        if ($data === false) {
+            $this->flagCache[$trimmed] = null;
+            return null;
+        }
+
+        $uri = sprintf('data:image/png;base64,%s', base64_encode($data));
+        $this->flagCache[$trimmed] = $uri;
+        return $uri;
+    }
+
     private function buildCountryFlag(string $country): string
     {
-        $code = self::COUNTRY_FLAG_MAP[$country] ?? '';
-        if ($code === '') {
+        $dataUri = $this->getFlagDataUri($country);
+        if ($dataUri === null) {
             return '';
         }
-        return sprintf('<img class="flag" alt="" src="https://flagcdn.com/24x18/%s.png" width="24" height="18" />', strtolower($code));
+        return sprintf('<img class="flag" alt="" src="%s" width="24" height="18" />', $dataUri);
     }
 
     private function normalizeRagValue(?string $value): string
