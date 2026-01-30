@@ -2346,7 +2346,10 @@ const SmartsheetPivotPage = () => {
 
           {filteredPresentationItems.map((countryBlock) => (
               <div key={countryBlock.country} className="card shadow-sm">
-                <div className="card-header country-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative">
+                <div
+                  className="card-header country-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative"
+                  style={{ height: 240 }}
+                >
                 <strong>
                   <CountryFlag country={countryBlock.country} />
                   {countryBlock.country}
