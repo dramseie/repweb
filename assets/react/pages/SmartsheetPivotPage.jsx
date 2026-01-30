@@ -279,7 +279,7 @@ const SmartsheetPivotPage = () => {
   const [reportMetaLoading, setReportMetaLoading] = useState(false);
   const [reportMetaError, setReportMetaError] = useState(null);
 
-  const presentationDateLabel = formatLongDate();
+  const presentationDateLabel = formatLongDate(new Date());
 
   const workspacesAbortRef = useRef(null);
   const sheetsAbortRef = useRef(null);
@@ -2046,7 +2046,15 @@ const SmartsheetPivotPage = () => {
               { key: '__issues', title: 'General Issues', body: 'Cross-country issues and blockers.' },
             ].map((meta) => (
               <div key={meta.key} className="card shadow-sm">
-                <div className="card-header fw-semibold">{meta.title}</div>
+                <div className="card-header fw-semibold position-relative">
+                  {meta.title}
+                  <span
+                    className="text-muted small"
+                    style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)' }}
+                  >
+                    {presentationDateLabel}
+                  </span>
+                </div>
                 <div className="card-body">
                   {meta.key === '__exec_highlights' ? (
                     <div className="d-flex flex-column gap-3">
@@ -2566,7 +2574,7 @@ const SmartsheetPivotPage = () => {
                 })()}
                 <span
                   className="text-muted small"
-                  style={{ position: 'absolute', right: 16, top: 12 }}
+                  style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)' }}
                 >
                   {presentationDateLabel}
                 </span>
@@ -2780,11 +2788,17 @@ const SmartsheetPivotPage = () => {
           <div className="flex-grow-1 overflow-auto p-3">
             {slideshowItem ? (
               <div className="card shadow-sm">
-                <div className="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                <div className="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative">
                   <strong>
                     <CountryFlag country={slideshowItem.country} />
                     {slideshowItem.country}
                   </strong>
+                  <span
+                    className="text-muted small"
+                    style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)' }}
+                  >
+                    {presentationDateLabel}
+                  </span>
                   {presentationMeta && (
                     <span className="text-muted small">
                       {presentationDateLabel}
@@ -2945,8 +2959,14 @@ const SmartsheetPivotPage = () => {
               }, [])
                 .map((countryBlock) => (
                 <div key={countryBlock.country} className="card shadow-sm">
-                  <div className="card-header">
+                  <div className="card-header position-relative">
                     <strong>{countryBlock.country}</strong>
+                    <span
+                      className="text-muted small"
+                      style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)' }}
+                    >
+                      {presentationDateLabel}
+                    </span>
                   </div>
                   <div className="card-body d-flex flex-column gap-3">
                     {countryBlock.sites.map((site) => (
