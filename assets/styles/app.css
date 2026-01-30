@@ -403,9 +403,9 @@
    to contain the centered progress blocks (Assessment / Installation / Store Signoff). */
 @media (min-width: 992px) {
   .country-header {
-    min-height: 150px; /* increased to fit progress blocks */
-    padding-top: 0.6rem;
-    padding-bottom: 0.6rem;
+    min-height: 200px; /* increased to fit progress blocks */
+    padding-top: 0.9rem;
+    padding-bottom: 0.9rem;
   }
 }
 
