@@ -13,11 +13,16 @@ const formatValue = (value) => {
   return String(value);
 };
 
-const formatLongDate = (value) => {
+const formatYmd = (value) => {
   const date = value instanceof Date ? value : parseDateValue(value);
   if (!date) return '—';
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
+
+const formatLongDate = (value) => formatYmd(value);
 
 const resolveCellValue = (row, key) => {
   if (!row || !key) return null;
@@ -28,7 +33,7 @@ const formatDateTimeDisplay = (value) => {
   if (!value) return '—';
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString();
+  return formatYmd(date);
 };
 
 const getRowField = (row, keys) => {
@@ -54,17 +59,9 @@ const parseDateValue = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const formatShortDate = (value) => {
-  const date = parseDateValue(value);
-  if (!date) return '—';
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-};
+const formatShortDate = (value) => formatYmd(value);
 
-const formatDateDisplay = (value) => {
-  const date = parseDateValue(value);
-  if (!date) return '—';
-  return date.toLocaleDateString();
-};
+const formatDateDisplay = (value) => formatYmd(value);
 
 const formatDisplayValue = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
