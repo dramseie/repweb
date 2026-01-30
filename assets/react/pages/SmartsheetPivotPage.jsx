@@ -3151,8 +3151,8 @@ const SmartsheetPivotPage = () => {
                     </span>
                   </div>
                   <div className="card-body d-flex flex-column gap-3">
-                    {countryBlock.sites.map((site) => (
-                      <div key={`${site.country}-${site.siteId}`} className="border rounded p-3">
+                    {countryBlock.sites.map((site, siteIndex) => (
+                      <div key={`${site.country}-${site.siteId}-${siteIndex}`} className="border rounded p-3">
                         <div className="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-2">
                           <div className="fw-semibold">{site.siteName || 'Site'} {site.siteId ? `(${site.siteId})` : ''}</div>
                         </div>
