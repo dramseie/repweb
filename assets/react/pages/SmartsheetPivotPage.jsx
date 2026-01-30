@@ -256,6 +256,13 @@ const SmartsheetPivotPage = () => {
   const [highlightsError, setHighlightsError] = useState(null);
   const [highlightsLoaded, setHighlightsLoaded] = useState(false);
 
+  const [trendOverrides, setTrendOverrides] = useState({});
+  const [trendDrafts, setTrendDrafts] = useState({});
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendSaving, setTrendSaving] = useState(false);
+  const [trendError, setTrendError] = useState(null);
+  const [trendLoaded, setTrendLoaded] = useState(false);
+
   const [statusData, setStatusData] = useState({ categories: [], items: [] });
   const [statusError, setStatusError] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -416,6 +423,28 @@ const SmartsheetPivotPage = () => {
       setHighlightsLoading(false);
     }
   }, [highlightsLoaded, highlightsLoading]);
+
+  const fetchTrendOverrides = useCallback(async () => {
+    if (trendLoaded || trendLoading) return;
+    setTrendLoading(true);
+    setTrendError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/content?section=trend_overrides');
+      if (!response.ok) {
+        throw new Error(`Failed to load trend overrides (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const rawContent = payload?.content || '';
+      const parsed = rawContent ? JSON.parse(rawContent) : {};
+      setTrendOverrides(parsed && typeof parsed === 'object' ? parsed : {});
+      setTrendLoaded(true);
+    } catch (error) {
+      setTrendError(error.message || 'Unable to load trend overrides.');
+      setTrendLoaded(true);
+    } finally {
+      setTrendLoading(false);
+    }
+  }, [trendLoaded, trendLoading]);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -1080,43 +1109,78 @@ const SmartsheetPivotPage = () => {
 
   const savePresentationEdits = async () => {
     const edits = Object.values(presentationEdits);
-    if (edits.length === 0) {
+    const trendDraftEntries = Object.entries(trendDrafts);
+    if (edits.length === 0 && trendDraftEntries.length === 0) {
       setPresentationSaveError('No changes to save.');
       return;
     }
 
     setPresentationSaving(true);
+    setTrendSaving(true);
     setPresentationSaveError(null);
 
     try {
-      await Promise.all(
-        edits.map((edit) =>
-          fetch('/api/smartsheet/presentation/status/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              country: edit.country,
-              siteId: edit.siteId,
-              siteName: edit.siteName || null,
-              category: edit.category,
-              ragConfidence: edit.confidence || null,
-              statusText: edit.status || '',
-            }),
-          }).then(async (response) => {
-            if (!response.ok) {
-              const payload = await response.json().catch(() => ({}));
-              throw new Error(payload?.message || `HTTP ${response.status}`);
-            }
-          })
-        )
-      );
-      setPresentationEdits({});
+      if (edits.length > 0) {
+        await Promise.all(
+          edits.map((edit) =>
+            fetch('/api/smartsheet/presentation/status/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                country: edit.country,
+                siteId: edit.siteId,
+                siteName: edit.siteName || null,
+                category: edit.category,
+                ragConfidence: edit.confidence || null,
+                statusText: edit.status || '',
+              }),
+            }).then(async (response) => {
+              if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload?.message || `HTTP ${response.status}`);
+              }
+            })
+          )
+        );
+        setPresentationEdits({});
+      }
+
+      if (trendDraftEntries.length > 0) {
+        const nextOverrides = { ...trendOverrides };
+        trendDraftEntries.forEach(([country, draft]) => {
+          nextOverrides[country] = {
+            rag: draft?.rag ?? null,
+            comment: draft?.comment ?? '',
+          };
+        });
+
+        const response = await fetch('/api/smartsheet/presentation/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section: 'trend_overrides',
+            content: JSON.stringify(nextOverrides),
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.message || `HTTP ${response.status}`);
+        }
+
+        setTrendOverrides(nextOverrides);
+        setTrendDrafts({});
+      }
+
       setPresentationEditMode(false);
-      fetchPresentation();
+      if (edits.length > 0) {
+        fetchPresentation();
+      }
     } catch (error) {
-      setPresentationSaveError(error.message || 'Failed to save presentation updates.');
+      setPresentationSaveError(error.message || 'Failed to save presentation edits.');
     } finally {
       setPresentationSaving(false);
+      setTrendSaving(false);
     }
   };
 
@@ -1456,7 +1520,16 @@ const SmartsheetPivotPage = () => {
     return '';
   };
 
-  const trendGroups = filteredOverviewItems.reduce(
+  const trendItems = filteredOverviewItems.map((row) => {
+    const override = trendOverrides?.[row.country] || {};
+    return {
+      ...row,
+      rag: override.rag ?? row.rag,
+      comment: override.comment ?? row.comment,
+    };
+  });
+
+  const trendGroups = trendItems.reduce(
     (acc, row) => {
       const rag = normalizeRag(row.rag);
       if (rag && acc[rag]) {
@@ -1482,8 +1555,9 @@ const SmartsheetPivotPage = () => {
   useEffect(() => {
     if (activeTab === 'presentation') {
       fetchHighlights();
+      fetchTrendOverrides();
     }
-  }, [activeTab, fetchHighlights]);
+  }, [activeTab, fetchHighlights, fetchTrendOverrides]);
 
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
