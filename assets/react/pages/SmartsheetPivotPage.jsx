@@ -2348,7 +2348,7 @@ const SmartsheetPivotPage = () => {
               <div key={countryBlock.country} className="card shadow-sm">
                 <div
                   className="card-header country-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 position-relative"
-                  style={{ height: 200 }}
+                  style={{ height: 180 }}
                 >
                 <strong>
                   <CountryFlag country={countryBlock.country} />
@@ -2376,7 +2376,10 @@ const SmartsheetPivotPage = () => {
                     </>
                   );
                 })()}
-                <span className="text-muted small ms-lg-auto">
+                <span
+                  className="text-muted small"
+                  style={{ position: 'absolute', right: 16, top: 12 }}
+                >
                   {presentationDateLabel}
                 </span>
               </div>
