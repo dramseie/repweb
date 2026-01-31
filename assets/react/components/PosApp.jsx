@@ -43,7 +43,7 @@ const emptyAddr = {
 };
 const fmtAddrBlock = (a) => {
   if (!a) return '';
-  if (a.formatted) return String(a.formatted).trim();
+  if (a.formatted !== null && a.formatted !== undefined) return String(a.formatted);
   const line1 = [a.house_number, a.street].filter(Boolean).join(' ').trim();
   const line2 = [a.postcode, a.city].filter(Boolean).join(' ').trim();
   const line3 = a.country || '';
