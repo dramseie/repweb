@@ -43,6 +43,7 @@ const emptyAddr = {
 };
 const fmtAddrBlock = (a) => {
   if (!a) return '';
+  if (a.formatted) return String(a.formatted).trim();
   const line1 = [a.house_number, a.street].filter(Boolean).join(' ').trim();
   const line2 = [a.postcode, a.city].filter(Boolean).join(' ').trim();
   const line3 = a.country || '';
@@ -2151,8 +2152,15 @@ export default function PosApp() {
                   <textarea
                     className="form-control"
                     rows={3}
-                    readOnly
                     value={fmtAddrBlock(editForm.address) || ''}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      EF('address', {
+                        ...(editForm.address || emptyAddr),
+                        formatted: text,
+                        updated_at: nowIso(),
+                      });
+                    }}
                     placeholder="— aucune adresse —"
                   />
                 </div>
