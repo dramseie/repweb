@@ -132,37 +132,7 @@
       {% endfor %}
 
       <div class="row g-3">
-        <div class="col-12 col-xl-3">
-          <div class="card shadow-sm">
-            <div class="card-header fw-semibold">Contracts</div>
-            <div class="card-body p-0">
-              {% if contracts is empty %}
-                <div class="p-3 text-muted">No contracts yet.</div>
-              {% else %}
-                <div class="table-responsive">
-                  <table class="table table-sm table-striped align-middle mb-0">
-                    <thead class="table-light">
-                      <tr>
-                        <th>Project</th>
-                        <th>Supplier</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for contract in contracts %}
-                        <tr>
-                          <td class="fw-semibold">{{ contract.projectName }}</td>
-                          <td>{{ contract.supplier }}</td>
-                        </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-
-        <div class="col-12 col-xl-6">
+        <div class="col-12 col-xl-8">
           <div class="card shadow-sm">
             <div class="card-header fw-semibold">Calendar</div>
             <div class="card-body">
@@ -175,7 +145,7 @@
           </div>
         </div>
 
-        <div class="col-12 col-xl-3">
+        <div class="col-12 col-xl-4">
           <div class="card shadow-sm">
             <div class="card-header fw-semibold">Log Hours</div>
             <div class="card-body">
