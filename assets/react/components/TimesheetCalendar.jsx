@@ -12,6 +12,15 @@ const toYmd = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const toDateTimeLocal = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${toYmd(d)}T${hours}:${minutes}`;
+};
+
 const parseTime = (value) => {
   const [h, m] = String(value).split(':').map((part) => parseInt(part, 10));
   if (Number.isNaN(h) || Number.isNaN(m)) return 0;
@@ -402,12 +411,8 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
 
     const contractId = event.extendedProps?.contractId ? String(event.extendedProps.contractId) : '';
     const workDate = event.start ? toYmd(event.start) : '';
-    const startTime = event.start
-      ? `${String(event.start.getHours()).padStart(2, '0')}:${String(event.start.getMinutes()).padStart(2, '0')}`
-      : '';
-    const endTime = event.end
-      ? `${String(event.end.getHours()).padStart(2, '0')}:${String(event.end.getMinutes()).padStart(2, '0')}`
-      : '';
+    const startDateTime = event.start ? toDateTimeLocal(event.start) : '';
+    const endDateTime = event.end ? toDateTimeLocal(event.end) : '';
 
     const setValue = (name, value) => {
       const field = form.querySelector(`[name="${name}"]`);
@@ -415,10 +420,18 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
     };
 
     setValue('contractId', contractId);
-    setValue('workDate', workDate);
-    setValue('startTime', event.allDay ? '' : startTime);
-    setValue('endTime', event.allDay ? '' : endTime);
-    setValue('hours', event.extendedProps?.hours || '');
+    if (event.allDay && workDate) {
+      const hoursValue = parseFloat(event.extendedProps?.hours || '0');
+      const startBase = new Date(`${workDate}T08:00:00`);
+      const endBase = Number.isFinite(hoursValue)
+        ? new Date(startBase.getTime() + hoursValue * 3600 * 1000)
+        : startBase;
+      setValue('startDateTime', toDateTimeLocal(startBase));
+      setValue('endDateTime', toDateTimeLocal(endBase));
+    } else {
+      setValue('startDateTime', startDateTime);
+      setValue('endDateTime', endDateTime);
+    }
     setValue('category', event.extendedProps?.category || '');
     setValue('comment', event.extendedProps?.comment || '');
     setValue('entryId', event.id || '');
