@@ -254,6 +254,8 @@ class TimesheetController extends AbstractController
     public function createHours(Request $request, EntityManagerInterface $entityManager): Response
     {
         $contractId = (int) $request->request->get('contractId', 0);
+        $startDateTimeRaw = trim((string) $request->request->get('startDateTime', ''));
+        $endDateTimeRaw = trim((string) $request->request->get('endDateTime', ''));
         $workDateRaw = trim((string) $request->request->get('workDate', ''));
         $hoursRaw = trim((string) $request->request->get('hours', ''));
         $startTimeRaw = trim((string) $request->request->get('startTime', ''));
@@ -266,22 +268,18 @@ class TimesheetController extends AbstractController
         $globalCategories = ['Vacation', 'Sickness'];
         $isGlobalCategory = in_array($category, $globalCategories, true);
 
-        if (($contractId > 0 && !$contract) || $workDateRaw === '' || (!$contract && !$isGlobalCategory)) {
-            return $this->redirectToRoute('timesheet_index');
-        }
-
-        try {
-            $workDate = new \DateTimeImmutable($workDateRaw);
-        } catch (\Throwable) {
+        if (($contractId > 0 && !$contract) || (!$contract && !$isGlobalCategory)) {
             return $this->redirectToRoute('timesheet_index');
         }
 
         $startTime = null;
         $endTime = null;
-        if ($startTimeRaw !== '' && $endTimeRaw !== '') {
+        $workDate = null;
+
+        if ($startDateTimeRaw !== '' && $endDateTimeRaw !== '') {
             try {
-                $startTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $startTimeRaw);
-                $endTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $endTimeRaw);
+                $startTime = new \DateTimeImmutable($startDateTimeRaw);
+                $endTime = new \DateTimeImmutable($endDateTimeRaw);
             } catch (\Throwable) {
                 return $this->redirectToRoute('timesheet_index');
             }
@@ -290,12 +288,39 @@ class TimesheetController extends AbstractController
             if ($diffSeconds <= 0) {
                 return $this->redirectToRoute('timesheet_index');
             }
+
+            $workDate = $startTime->setTime(0, 0, 0);
             $hoursFormatted = number_format($diffSeconds / 3600, 2, '.', '');
         } else {
-            if ($hoursValue === '' || !is_numeric($hoursValue)) {
+            if ($workDateRaw === '') {
                 return $this->redirectToRoute('timesheet_index');
             }
-            $hoursFormatted = number_format((float) $hoursValue, 2, '.', '');
+
+            try {
+                $workDate = new \DateTimeImmutable($workDateRaw);
+            } catch (\Throwable) {
+                return $this->redirectToRoute('timesheet_index');
+            }
+
+            if ($startTimeRaw !== '' && $endTimeRaw !== '') {
+                try {
+                    $startTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $startTimeRaw);
+                    $endTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $endTimeRaw);
+                } catch (\Throwable) {
+                    return $this->redirectToRoute('timesheet_index');
+                }
+
+                $diffSeconds = $endTime->getTimestamp() - $startTime->getTimestamp();
+                if ($diffSeconds <= 0) {
+                    return $this->redirectToRoute('timesheet_index');
+                }
+                $hoursFormatted = number_format($diffSeconds / 3600, 2, '.', '');
+            } else {
+                if ($hoursValue === '' || !is_numeric($hoursValue)) {
+                    return $this->redirectToRoute('timesheet_index');
+                }
+                $hoursFormatted = number_format((float) $hoursValue, 2, '.', '');
+            }
         }
 
         $entry = new TimesheetHour();
@@ -337,6 +362,8 @@ class TimesheetController extends AbstractController
             return new JsonResponse(['message' => 'Not found'], Response::HTTP_NOT_FOUND);
         }
 
+        $startDateTimeRaw = trim((string) $request->request->get('startDateTime', ''));
+        $endDateTimeRaw = trim((string) $request->request->get('endDateTime', ''));
         $workDateRaw = trim((string) $request->request->get('workDate', ''));
         $hoursRaw = trim((string) $request->request->get('hours', ''));
         $startTimeRaw = trim((string) $request->request->get('startTime', ''));
@@ -344,16 +371,10 @@ class TimesheetController extends AbstractController
         $comment = trim((string) $request->request->get('comment', ''));
         $category = trim((string) $request->request->get('category', ''));
 
-        try {
-            $workDate = $workDateRaw !== '' ? new \DateTimeImmutable($workDateRaw) : $entry->getWorkDate();
-        } catch (\Throwable) {
-            return new JsonResponse(['message' => 'Invalid date'], Response::HTTP_BAD_REQUEST);
-        }
-
-        if ($startTimeRaw !== '' && $endTimeRaw !== '') {
+        if ($startDateTimeRaw !== '' && $endDateTimeRaw !== '') {
             try {
-                $startTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $startTimeRaw);
-                $endTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $endTimeRaw);
+                $startTime = new \DateTimeImmutable($startDateTimeRaw);
+                $endTime = new \DateTimeImmutable($endDateTimeRaw);
             } catch (\Throwable) {
                 return new JsonResponse(['message' => 'Invalid time'], Response::HTTP_BAD_REQUEST);
             }
@@ -362,9 +383,10 @@ class TimesheetController extends AbstractController
             if ($diffSeconds <= 0) {
                 return new JsonResponse(['message' => 'End time must be after start time'], Response::HTTP_BAD_REQUEST);
             }
+
             $hoursFormatted = number_format($diffSeconds / 3600, 2, '.', '');
             $entry
-                ->setWorkDate($workDate)
+                ->setWorkDate($startTime->setTime(0, 0, 0))
                 ->setStartTime($startTime)
                 ->setEndTime($endTime)
                 ->setHours($hoursFormatted)
@@ -372,23 +394,52 @@ class TimesheetController extends AbstractController
                 ->setCategory($category !== '' ? $category : $entry->getCategory())
                 ->setUpdatedAt(new \DateTimeImmutable());
         } else {
-            $hoursValue = str_replace(',', '.', $hoursRaw);
-            if ($hoursValue !== '' && is_numeric($hoursValue)) {
-                $hoursFormatted = number_format((float) $hoursValue, 2, '.', '');
+            try {
+                $workDate = $workDateRaw !== '' ? new \DateTimeImmutable($workDateRaw) : $entry->getWorkDate();
+            } catch (\Throwable) {
+                return new JsonResponse(['message' => 'Invalid date'], Response::HTTP_BAD_REQUEST);
+            }
+
+            if ($startTimeRaw !== '' && $endTimeRaw !== '') {
+                try {
+                    $startTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $startTimeRaw);
+                    $endTime = new \DateTimeImmutable($workDate->format('Y-m-d') . ' ' . $endTimeRaw);
+                } catch (\Throwable) {
+                    return new JsonResponse(['message' => 'Invalid time'], Response::HTTP_BAD_REQUEST);
+                }
+
+                $diffSeconds = $endTime->getTimestamp() - $startTime->getTimestamp();
+                if ($diffSeconds <= 0) {
+                    return new JsonResponse(['message' => 'End time must be after start time'], Response::HTTP_BAD_REQUEST);
+                }
+                $hoursFormatted = number_format($diffSeconds / 3600, 2, '.', '');
                 $entry
                     ->setWorkDate($workDate)
-                    ->setStartTime(null)
-                    ->setEndTime(null)
+                    ->setStartTime($startTime)
+                    ->setEndTime($endTime)
                     ->setHours($hoursFormatted)
                     ->setComment($comment !== '' ? $comment : null)
                     ->setCategory($category !== '' ? $category : $entry->getCategory())
                     ->setUpdatedAt(new \DateTimeImmutable());
             } else {
-                $entry
-                    ->setWorkDate($workDate)
-                    ->setComment($comment !== '' ? $comment : null)
-                    ->setCategory($category !== '' ? $category : $entry->getCategory())
-                    ->setUpdatedAt(new \DateTimeImmutable());
+                $hoursValue = str_replace(',', '.', $hoursRaw);
+                if ($hoursValue !== '' && is_numeric($hoursValue)) {
+                    $hoursFormatted = number_format((float) $hoursValue, 2, '.', '');
+                    $entry
+                        ->setWorkDate($workDate)
+                        ->setStartTime(null)
+                        ->setEndTime(null)
+                        ->setHours($hoursFormatted)
+                        ->setComment($comment !== '' ? $comment : null)
+                        ->setCategory($category !== '' ? $category : $entry->getCategory())
+                        ->setUpdatedAt(new \DateTimeImmutable());
+                } else {
+                    $entry
+                        ->setWorkDate($workDate)
+                        ->setComment($comment !== '' ? $comment : null)
+                        ->setCategory($category !== '' ? $category : $entry->getCategory())
+                        ->setUpdatedAt(new \DateTimeImmutable());
+                }
             }
         }
 

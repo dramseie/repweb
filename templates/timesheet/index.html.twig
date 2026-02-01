@@ -227,21 +227,12 @@
                     </select>
                   </div>
                   <div class="col-12">
-                    <label class="form-label">Work date</label>
-                    <input type="date" name="workDate" class="form-control" required />
-                  </div>
-                  <div class="col-12 col-lg-6">
-                    <label class="form-label">Start time</label>
-                    <input type="time" name="startTime" class="form-control" />
-                  </div>
-                  <div class="col-12 col-lg-6">
-                    <label class="form-label">End time</label>
-                    <input type="time" name="endTime" class="form-control" />
+                    <label class="form-label">Start datetime</label>
+                    <input type="datetime-local" name="startDateTime" class="form-control" required />
                   </div>
                   <div class="col-12">
-                    <label class="form-label">Hours</label>
-                    <input type="number" step="0.25" min="0" name="hours" class="form-control" />
-                    <div class="form-text">If start/end time are set, hours are calculated automatically.</div>
+                    <label class="form-label">End datetime</label>
+                    <input type="datetime-local" name="endDateTime" class="form-control" required />
                   </div>
                   <div class="col-12">
                     <label class="form-label">Category</label>
