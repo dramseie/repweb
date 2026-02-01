@@ -305,6 +305,12 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay',
           }}
+          firstDay={1}
+          locale="en-GB"
+          titleFormat={{ year: 'numeric', month: '2-digit', day: '2-digit' }}
+          dayHeaderFormat={{ weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit' }}
+          slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
+          eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           height="auto"
           editable
           droppable
