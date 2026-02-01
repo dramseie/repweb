@@ -396,11 +396,10 @@
               <table class="table table-sm table-bordered align-middle mb-0">
                 <thead class="table-light">
                   <tr>
+                    <th>Weekday</th>
                     <th>Date</th>
-                    <th>Time</th>
                     <th class="text-end">Hours</th>
-                    <th>Category</th>
-                    <th>Comment</th>
+                    <th>Details</th>
                   </tr>
                 </thead>
                 <tbody id="reportDetailsRows"></tbody>
@@ -647,31 +646,68 @@
         el.textContent = value || '—';
       };
 
-      const buildRows = (entries) => {
+      const buildRows = (entries, reportMonth) => {
         if (!rowsEl) return;
         rowsEl.innerHTML = '';
-        if (!entries || entries.length === 0) {
+        const monthValue = (reportMonth || '').trim();
+        if (!monthValue) {
           const emptyRow = document.createElement('tr');
-          emptyRow.innerHTML = '<td colspan="5" class="text-muted text-center">No entries found.</td>';
+          emptyRow.innerHTML = '<td colspan="4" class="text-muted text-center">Select a month.</td>';
           rowsEl.appendChild(emptyRow);
           return;
         }
-        entries.forEach((entry) => {
+
+        const [yearStr, monthStr] = monthValue.split('-');
+        const year = Number(yearStr);
+        const monthIndex = Number(monthStr) - 1;
+        if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) {
+          const emptyRow = document.createElement('tr');
+          emptyRow.innerHTML = '<td colspan="4" class="text-muted text-center">Invalid month.</td>';
+          rowsEl.appendChild(emptyRow);
+          return;
+        }
+
+        const entriesByDate = new Map();
+        (entries || []).forEach((entry) => {
+          if (!entry.workDate) return;
+          const bucket = entriesByDate.get(entry.workDate) || [];
+          bucket.push(entry);
+          entriesByDate.set(entry.workDate, bucket);
+        });
+
+        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const weekdayFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
+
+        for (let day = 1; day <= daysInMonth; day += 1) {
+          const dateObj = new Date(Date.UTC(year, monthIndex, day));
+          const dateLabel = dateObj.toISOString().slice(0, 10);
+          const weekday = weekdayFormatter.format(dateObj);
+          const isWeekend = dateObj.getUTCDay() === 0 || dateObj.getUTCDay() === 6;
+          const dayEntries = entriesByDate.get(dateLabel) || [];
+          const totalHours = dayEntries.reduce((sum, item) => sum + Number(item.hours || 0), 0);
+
+          const details = dayEntries.length
+            ? dayEntries.map((item) => {
+                const time = item.startTime || item.endTime
+                  ? `${item.startTime || ''}${item.startTime && item.endTime ? ' - ' : ''}${item.endTime || ''}`
+                  : '';
+                const parts = [time, item.category, item.comment].filter(Boolean);
+                return parts.join(' · ');
+              }).join('<br>')
+            : '<span class="text-muted">—</span>';
+
           const tr = document.createElement('tr');
-          const date = entry.workDate || '';
-          const start = entry.startTime || '';
-          const end = entry.endTime || '';
-          const time = start || end ? `${start || ''}${start && end ? ' - ' : ''}${end || ''}` : '—';
-          const hours = entry.hours ? `${Number(entry.hours).toFixed(2)} h` : '—';
+          if (isWeekend) {
+            tr.classList.add('table-secondary');
+          }
           tr.innerHTML = `
-            <td>${date || '—'}</td>
-            <td>${time}</td>
-            <td class="text-end">${hours}</td>
-            <td>${entry.category || '—'}</td>
-            <td>${entry.comment || '—'}</td>
+            <td>${weekday}</td>
+            <td>${dateLabel}</td>
+            <td class="text-end">${totalHours ? `${totalHours.toFixed(2)} h` : '—'}</td>
+            <td>${details}</td>
           `;
           rowsEl.appendChild(tr);
-        });
+        }
       };
 
       document.querySelectorAll('[data-report-show]').forEach((button) => {
@@ -702,7 +738,7 @@
             approvedEl.textContent = '—';
           }
 
-          buildRows(entries);
+          buildRows(entries, reportMonth);
 
           if (commentForm) {
             const contractInput = commentForm.querySelector('input[name="contractId"]');
