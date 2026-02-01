@@ -53,6 +53,19 @@ class TimesheetController extends AbstractController
         $monthlyReportable = [];
         $monthlyBillable = [];
         $billableCategories = ['RemoteOffice', 'OnSite'];
+        $contractStartTs = null;
+        $contractEndTs = null;
+        if ($statsContract && $statsContract->getFromDate()) {
+            $contractStartTs = $statsContract->getFromDate()
+                ->setTime(0, 0, 0)
+                ->getTimestamp();
+        }
+        if ($statsContract && $statsContract->getToDate()) {
+            $contractEndTs = $statsContract->getToDate()
+                ->setTime(23, 59, 59)
+                ->getTimestamp();
+        }
+
         foreach ($hours as $entry) {
             $entryContract = $entry->getContract();
             if ($statsContractId && (!$entryContract || $entryContract->getId() !== $statsContractId)) {
@@ -60,6 +73,12 @@ class TimesheetController extends AbstractController
             }
             $workDate = $entry->getWorkDate();
             $workTimestamp = $workDate->getTimestamp();
+            if ($contractStartTs !== null && $workTimestamp < $contractStartTs) {
+                continue;
+            }
+            if ($contractEndTs !== null && $workTimestamp > $contractEndTs) {
+                continue;
+            }
             $category = $entry->getCategory() ?: 'Uncategorized';
             $monthKey = $workDate->format('Y-m');
             $monthlyReportable[$monthKey] = ($monthlyReportable[$monthKey] ?? 0.0) + (float) $entry->getHours();
