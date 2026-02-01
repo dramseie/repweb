@@ -241,9 +241,87 @@ class TimesheetController extends AbstractController
             return $this->redirectToRoute('timesheet_index');
         }
 
+        $signatureName = $this->getSignatureName();
+
+        $pdfPayload = $this->buildReportPdf($entityManager, $contract, $reportMonth, $comment, $detailsRaw, $signatureName);
+        if (!$pdfPayload) {
+            return $this->redirectToRoute('timesheet_index');
+        }
+        $recipients = ['david.ramseier-ext@hpe.com'];
+
+        if ($recipients) {
+            $monthLabel = $pdfPayload['monthLabel'];
+            $subject = sprintf('Timesheet report for %s (%s)', $contract->getProjectName(), $monthLabel);
+            $bodyText = "Please find the signed timesheet report attached.";
+            if ($comment !== '') {
+                $bodyText .= "\n\nComment:\n" . $comment;
+            }
+            $mailService->sendMail(
+                $recipients,
+                $subject,
+                null,
+                $bodyText,
+                [[ $pdfPayload['filename'], 'application/pdf', $pdfPayload['output'] ]]
+            );
+        }
+
+        return $this->redirectToRoute('timesheet_index', ['reportMonth' => $reportMonth]);
+    }
+
+    #[Route('/timesheet/report/pdf', name: 'timesheet_report_pdf', methods: ['POST'])]
+    public function showReportPdf(Request $request, EntityManagerInterface $entityManager): Response
+    {
+        $contractId = (int) $request->request->get('contractId', 0);
+        $reportMonth = trim((string) $request->request->get('reportMonth', ''));
+        $comment = trim((string) $request->request->get('comment', ''));
+        $detailsRaw = (string) $request->request->get('details', '');
+        if ($contractId <= 0 || $reportMonth === '') {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $contract = $entityManager->find(TimesheetContract::class, $contractId);
+        if (!$contract) {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $signatureName = $this->getSignatureName();
+        $pdfPayload = $this->buildReportPdf($entityManager, $contract, $reportMonth, $comment, $detailsRaw, $signatureName);
+        if (!$pdfPayload) {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        return new Response($pdfPayload['output'], 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => sprintf('inline; filename="%s"', $pdfPayload['filename']),
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+        ]);
+    }
+
+    private function getSignatureName(): string
+    {
+        $user = $this->getUser();
+        if ($user && method_exists($user, 'getUserIdentifier')) {
+            $value = (string) $user->getUserIdentifier();
+        } elseif ($user && method_exists($user, 'getUsername')) {
+            $value = (string) $user->getUsername();
+        } else {
+            $value = '';
+        }
+
+        return $value !== '' ? $value : '—';
+    }
+
+    private function buildReportPdf(
+        EntityManagerInterface $entityManager,
+        TimesheetContract $contract,
+        string $reportMonth,
+        string $comment,
+        string $detailsRaw,
+        string $signatureName
+    ): ?array {
         $reportMonthStart = \DateTimeImmutable::createFromFormat('Y-m', $reportMonth);
         if (!$reportMonthStart instanceof \DateTimeImmutable) {
-            return $this->redirectToRoute('timesheet_index');
+            return null;
         }
         $reportMonthStart = $reportMonthStart->setDate(
             (int) $reportMonthStart->format('Y'),
@@ -308,17 +386,6 @@ class TimesheetController extends AbstractController
             ];
         }
 
-        $user = $this->getUser();
-        $signatureName = null;
-        if ($user && method_exists($user, 'getUserIdentifier')) {
-            $signatureName = (string) $user->getUserIdentifier();
-        } elseif ($user && method_exists($user, 'getUsername')) {
-            $signatureName = (string) $user->getUsername();
-        }
-        if ($signatureName === '' || $signatureName === null) {
-            $signatureName = '—';
-        }
-
         $html = $this->renderView('timesheet/report_pdf.html.twig', [
             'contract' => $contract,
             'reportMonth' => $reportMonthStart,
@@ -338,29 +405,15 @@ class TimesheetController extends AbstractController
         $dompdf->loadHtml($html, 'UTF-8');
         $dompdf->setPaper('A4', 'portrait');
         $dompdf->render();
-        $pdfOutput = $dompdf->output();
 
-        $recipients = ['david.ramseier-ext@hpe.com'];
+        $filename = sprintf('timesheet-%s-%s.pdf', $contract->getProjectName(), $reportMonthStart->format('Y-m'));
+        $filename = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $filename);
 
-        if ($recipients) {
-            $monthLabel = $reportMonthStart->format('F Y');
-            $subject = sprintf('Timesheet report for %s (%s)', $contract->getProjectName(), $monthLabel);
-            $bodyText = "Please find the signed timesheet report attached.";
-            if ($comment !== '') {
-                $bodyText .= "\n\nComment:\n" . $comment;
-            }
-            $filename = sprintf('timesheet-%s-%s.pdf', $contract->getProjectName(), $reportMonthStart->format('Y-m'));
-            $filename = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $filename);
-            $mailService->sendMail(
-                $recipients,
-                $subject,
-                null,
-                $bodyText,
-                [[ $filename, 'application/pdf', $pdfOutput ]]
-            );
-        }
-
-        return $this->redirectToRoute('timesheet_index', ['reportMonth' => $reportMonth]);
+        return [
+            'output' => $dompdf->output(),
+            'filename' => $filename,
+            'monthLabel' => $reportMonthStart->format('F Y'),
+        ];
     }
 
     #[Route('/timesheet/contract', name: 'timesheet_contract_create', methods: ['POST'])]
