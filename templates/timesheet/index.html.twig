@@ -184,20 +184,6 @@
                     value="{{ statsMonthLabel }}"
                   />
                 </div>
-                <div>
-                  <label class="form-label small mb-1">Contract</label>
-                  <select name="statsContract" class="form-select form-select-sm">
-                    <option value="">All contracts</option>
-                    {% for contract in contracts %}
-                      <option value="{{ contract.id }}" {{ statsContractId == contract.id ? 'selected' : '' }}>
-                        {{ contract.projectName }} · {{ contract.supplier }}
-                      </option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div>
-                  <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
-                </div>
               </form>
               {% if statsByCategory is empty %}
                 <div class="text-muted">No hours logged this month.</div>
@@ -214,13 +200,7 @@
 
               <hr />
               <div class="fw-semibold mb-2">Monthly hours</div>
-              <div class="text-muted small mb-2">
-                {% if statsContractLabel %}
-                  Contract: {{ statsContractLabel }}{% if statsContractRange %} · {{ statsContractRange }}{% endif %}
-                {% else %}
-                  All contracts
-                {% endif %}
-              </div>
+              <div class="text-muted small mb-2">All contracts</div>
               <div class="text-muted small mb-2">Billable = RemoteOffice + OnSite · Reportable = all categories</div>
               <canvas id="statsMonthlyChart" height="250" style="max-height: 250px;"></canvas>
             </div>
