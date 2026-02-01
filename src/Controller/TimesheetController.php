@@ -62,11 +62,13 @@ class TimesheetController extends AbstractController
         $reportMonthEnd = $reportMonthStart->modify('+1 month');
         $reportMonthLabel = $reportMonthStart->format('Y-m');
         $reportTotals = [];
+        $reportEntries = [];
         foreach ($contracts as $contract) {
             $reportTotals[$contract->getId()] = [
                 'reportable' => 0.0,
                 'billable' => 0.0,
             ];
+            $reportEntries[$contract->getId()] = [];
         }
         foreach ($hours as $entry) {
             $workDate = $entry->getWorkDate();
@@ -88,6 +90,17 @@ class TimesheetController extends AbstractController
                     if (in_array($category, $billableCategories, true)) {
                         $reportTotals[$contractId]['billable'] += (float) $entry->getHours();
                     }
+                    if (!isset($reportEntries[$contractId])) {
+                        $reportEntries[$contractId] = [];
+                    }
+                    $reportEntries[$contractId][] = [
+                        'workDate' => $workDate->format('Y-m-d'),
+                        'startTime' => $entry->getStartTime()?->format('H:i'),
+                        'endTime' => $entry->getEndTime()?->format('H:i'),
+                        'hours' => $entry->getHours(),
+                        'category' => $entry->getCategory() ?: 'Uncategorized',
+                        'comment' => $entry->getComment(),
+                    ];
                 }
             }
             if ($workTimestamp < $monthStart->getTimestamp() || $workTimestamp >= $monthEnd->getTimestamp()) {
@@ -126,6 +139,7 @@ class TimesheetController extends AbstractController
             'statsMonthLabel' => $monthStart->format('Y-m'),
             'reportMonthLabel' => $reportMonthLabel,
             'reportTotals' => $reportTotals,
+            'reportEntries' => $reportEntries,
             'reportApprovals' => $reportApprovals,
             'statsMonthlyLabels' => $monthlyLabels,
             'statsMonthlyReportable' => $monthlyReportableData,
@@ -139,6 +153,7 @@ class TimesheetController extends AbstractController
     {
         $contractId = (int) $request->request->get('contractId', 0);
         $reportMonth = trim((string) $request->request->get('reportMonth', ''));
+        $comment = trim((string) $request->request->get('comment', ''));
         if ($contractId <= 0 || $reportMonth === '') {
             return $this->redirectToRoute('timesheet_index');
         }
@@ -167,8 +182,40 @@ class TimesheetController extends AbstractController
 
         $approval
             ->setApprovedAt(new \DateTimeImmutable())
-            ->setApprovedBy($approvedBy !== '' ? $approvedBy : null);
+            ->setApprovedBy($approvedBy !== '' ? $approvedBy : null)
+            ->setComment($comment !== '' ? $comment : $approval->getComment());
 
+        $entityManager->persist($approval);
+        $entityManager->flush();
+
+        return $this->redirectToRoute('timesheet_index', ['reportMonth' => $reportMonth]);
+    }
+
+    #[Route('/timesheet/report/comment', name: 'timesheet_report_comment', methods: ['POST'])]
+    public function saveReportComment(Request $request, EntityManagerInterface $entityManager): Response
+    {
+        $contractId = (int) $request->request->get('contractId', 0);
+        $reportMonth = trim((string) $request->request->get('reportMonth', ''));
+        $comment = trim((string) $request->request->get('comment', ''));
+        if ($contractId <= 0 || $reportMonth === '') {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $contract = $entityManager->find(TimesheetContract::class, $contractId);
+        if (!$contract) {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $approval = $entityManager
+            ->getRepository(TimesheetContractApproval::class)
+            ->findOneBy(['contract' => $contract, 'reportMonth' => $reportMonth]);
+
+        if (!$approval) {
+            $approval = new TimesheetContractApproval();
+            $approval->setContract($contract)->setReportMonth($reportMonth);
+        }
+
+        $approval->setComment($comment !== '' ? $comment : null);
         $entityManager->persist($approval);
         $entityManager->flush();
 

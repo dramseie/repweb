@@ -317,19 +317,42 @@
                           <td class="text-end">{{ totals.billable|number_format(2, '.', '') }} h</td>
                           <td class="text-muted small">
                             {% if approval %}
-                              {{ approval.approvedAt|date('Y-m-d H:i') }}{% if approval.approvedBy %} · {{ approval.approvedBy }}{% endif %}
+                              {% if approval.approvedAt %}
+                                {{ approval.approvedAt|date('Y-m-d H:i') }}{% if approval.approvedBy %} · {{ approval.approvedBy }}{% endif %}
+                              {% else %}
+                                —
+                              {% endif %}
                             {% else %}
                               —
                             {% endif %}
                           </td>
                           <td class="text-end">
-                            <form method="post" action="{{ path('timesheet_report_approve') }}">
-                              <input type="hidden" name="contractId" value="{{ contract.id }}" />
-                              <input type="hidden" name="reportMonth" value="{{ reportMonthLabel }}" />
-                              <button type="submit" class="btn btn-sm btn-outline-primary">
-                                {{ approval ? 'Re-approve' : 'Approve' }}
+                            <div class="d-flex justify-content-end gap-2">
+                              <button
+                                type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-report-show
+                                data-contract-id="{{ contract.id }}"
+                                data-contract-label="{{ contract.projectName|e('html_attr') }} · {{ contract.supplier|e('html_attr') }}"
+                                data-report-month="{{ reportMonthLabel }}"
+                                data-reportable="{{ totals.reportable|number_format(2, '.', '') }}"
+                                data-billable="{{ totals.billable|number_format(2, '.', '') }}"
+                                data-approved-at="{{ approval and approval.approvedAt ? approval.approvedAt|date('Y-m-d H:i') : '' }}"
+                                data-approved-by="{{ approval and approval.approvedBy ? approval.approvedBy|e('html_attr') : '' }}"
+                                data-comment="{{ approval and approval.comment ? approval.comment|e('html_attr') : '' }}"
+                                data-entries="{{ (reportEntries[contract.id] ?? [])|json_encode|e('html_attr') }}"
+                              >
+                                Show
                               </button>
-                            </form>
+                              <form method="post" action="{{ path('timesheet_report_approve') }}">
+                                <input type="hidden" name="contractId" value="{{ contract.id }}" />
+                                <input type="hidden" name="reportMonth" value="{{ reportMonthLabel }}" />
+                                <input type="hidden" name="comment" value="{{ approval and approval.comment ? approval.comment : '' }}" />
+                                <button type="submit" class="btn btn-sm btn-outline-primary">
+                                  {{ approval and approval.approvedAt ? 'Re-approve' : 'Approve' }}
+                                </button>
+                              </form>
+                            </div>
                           </td>
                         </tr>
                       {% endfor %}
@@ -338,6 +361,63 @@
                 </div>
               {% endif %}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="reportDetailsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Monthly report details</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <div class="fw-semibold" id="reportDetailsContract">—</div>
+              <div class="text-muted small" id="reportDetailsMonth">—</div>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-lg-3">
+                <div class="text-muted small">Reportable</div>
+                <div class="fw-semibold" id="reportDetailsReportable">0.00 h</div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="text-muted small">Billable</div>
+                <div class="fw-semibold" id="reportDetailsBillable">0.00 h</div>
+              </div>
+              <div class="col-12 col-lg-6">
+                <div class="text-muted small">Approved</div>
+                <div id="reportDetailsApproved">—</div>
+              </div>
+            </div>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th class="text-end">Hours</th>
+                    <th>Category</th>
+                    <th>Comment</th>
+                  </tr>
+                </thead>
+                <tbody id="reportDetailsRows"></tbody>
+              </table>
+            </div>
+            <form id="reportCommentForm" method="post" action="{{ path('timesheet_report_comment') }}">
+              <input type="hidden" name="contractId" value="" />
+              <input type="hidden" name="reportMonth" value="" />
+              <div class="mb-3">
+                <label class="form-label">Comment</label>
+                <textarea name="comment" class="form-control" rows="3"></textarea>
+              </div>
+              <div class="d-flex justify-content-end gap-2">
+                <button type="submit" class="btn btn-outline-secondary">Save comment</button>
+                <button type="submit" class="btn btn-primary" formaction="{{ path('timesheet_report_approve') }}">Approve</button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -549,6 +629,95 @@
           },
         });
       }
+    }
+
+    const reportModalEl = document.getElementById('reportDetailsModal');
+    if (reportModalEl) {
+      const reportModal = window.bootstrap ? new bootstrap.Modal(reportModalEl) : null;
+      const titleContract = document.getElementById('reportDetailsContract');
+      const titleMonth = document.getElementById('reportDetailsMonth');
+      const reportableEl = document.getElementById('reportDetailsReportable');
+      const billableEl = document.getElementById('reportDetailsBillable');
+      const approvedEl = document.getElementById('reportDetailsApproved');
+      const rowsEl = document.getElementById('reportDetailsRows');
+      const commentForm = document.getElementById('reportCommentForm');
+
+      const setText = (el, value) => {
+        if (!el) return;
+        el.textContent = value || '—';
+      };
+
+      const buildRows = (entries) => {
+        if (!rowsEl) return;
+        rowsEl.innerHTML = '';
+        if (!entries || entries.length === 0) {
+          const emptyRow = document.createElement('tr');
+          emptyRow.innerHTML = '<td colspan="5" class="text-muted text-center">No entries found.</td>';
+          rowsEl.appendChild(emptyRow);
+          return;
+        }
+        entries.forEach((entry) => {
+          const tr = document.createElement('tr');
+          const date = entry.workDate || '';
+          const start = entry.startTime || '';
+          const end = entry.endTime || '';
+          const time = start || end ? `${start || ''}${start && end ? ' - ' : ''}${end || ''}` : '—';
+          const hours = entry.hours ? `${Number(entry.hours).toFixed(2)} h` : '—';
+          tr.innerHTML = `
+            <td>${date || '—'}</td>
+            <td>${time}</td>
+            <td class="text-end">${hours}</td>
+            <td>${entry.category || '—'}</td>
+            <td>${entry.comment || '—'}</td>
+          `;
+          rowsEl.appendChild(tr);
+        });
+      };
+
+      document.querySelectorAll('[data-report-show]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const contractLabel = button.getAttribute('data-contract-label') || '';
+          const reportMonth = button.getAttribute('data-report-month') || '';
+          const reportable = button.getAttribute('data-reportable') || '0.00';
+          const billable = button.getAttribute('data-billable') || '0.00';
+          const approvedAt = button.getAttribute('data-approved-at') || '';
+          const approvedBy = button.getAttribute('data-approved-by') || '';
+          const comment = button.getAttribute('data-comment') || '';
+          const entriesRaw = button.getAttribute('data-entries') || '[]';
+          let entries = [];
+
+          try {
+            entries = JSON.parse(entriesRaw);
+          } catch (e) {
+            entries = [];
+          }
+
+          setText(titleContract, contractLabel);
+          setText(titleMonth, reportMonth);
+          setText(reportableEl, `${Number(reportable).toFixed(2)} h`);
+          setText(billableEl, `${Number(billable).toFixed(2)} h`);
+          if (approvedAt) {
+            approvedEl.textContent = approvedBy ? `${approvedAt} · ${approvedBy}` : approvedAt;
+          } else {
+            approvedEl.textContent = '—';
+          }
+
+          buildRows(entries);
+
+          if (commentForm) {
+            const contractInput = commentForm.querySelector('input[name="contractId"]');
+            const monthInput = commentForm.querySelector('input[name="reportMonth"]');
+            const commentInput = commentForm.querySelector('textarea[name="comment"]');
+            if (contractInput) contractInput.value = button.getAttribute('data-contract-id') || '';
+            if (monthInput) monthInput.value = reportMonth;
+            if (commentInput) commentInput.value = comment;
+          }
+
+          if (reportModal) {
+            reportModal.show();
+          }
+        });
+      });
     }
   });
 </script>

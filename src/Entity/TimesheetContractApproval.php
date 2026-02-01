@@ -18,11 +18,14 @@ class TimesheetContractApproval
     #[ORM\Column(name: 'report_month', type: 'string', length: 7)]
     private string $reportMonth;
 
-    #[ORM\Column(name: 'approved_at', type: 'datetime_immutable')]
-    private \DateTimeInterface $approvedAt;
+    #[ORM\Column(name: 'approved_at', type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeInterface $approvedAt = null;
 
     #[ORM\Column(name: 'approved_by', type: 'string', length: 190, nullable: true)]
     private ?string $approvedBy = null;
+
+    #[ORM\Column(name: 'comment', type: 'text', nullable: true)]
+    private ?string $comment = null;
 
     public function getId(): ?int
     {
@@ -51,12 +54,12 @@ class TimesheetContractApproval
         return $this;
     }
 
-    public function getApprovedAt(): \DateTimeInterface
+    public function getApprovedAt(): ?\DateTimeInterface
     {
         return $this->approvedAt;
     }
 
-    public function setApprovedAt(\DateTimeInterface $approvedAt): self
+    public function setApprovedAt(?\DateTimeInterface $approvedAt): self
     {
         $this->approvedAt = $approvedAt;
         return $this;
@@ -70,6 +73,17 @@ class TimesheetContractApproval
     public function setApprovedBy(?string $approvedBy): self
     {
         $this->approvedBy = $approvedBy;
+        return $this;
+    }
+
+    public function getComment(): ?string
+    {
+        return $this->comment;
+    }
+
+    public function setComment(?string $comment): self
+    {
+        $this->comment = $comment;
         return $this;
     }
 }
