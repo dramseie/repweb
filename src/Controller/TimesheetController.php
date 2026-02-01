@@ -5,7 +5,10 @@ namespace App\Controller;
 use App\Entity\TimesheetContract;
 use App\Entity\TimesheetContractApproval;
 use App\Entity\TimesheetHour;
+use App\Mig\Service\MailService;
 use Doctrine\ORM\EntityManagerInterface;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\Exception\FileException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -218,6 +221,154 @@ class TimesheetController extends AbstractController
         $approval->setComment($comment !== '' ? $comment : null);
         $entityManager->persist($approval);
         $entityManager->flush();
+
+        return $this->redirectToRoute('timesheet_index', ['reportMonth' => $reportMonth]);
+    }
+
+    #[Route('/timesheet/report/send-approval', name: 'timesheet_report_send_for_approval', methods: ['POST'])]
+    public function sendReportForApproval(Request $request, EntityManagerInterface $entityManager, MailService $mailService): Response
+    {
+        $contractId = (int) $request->request->get('contractId', 0);
+        $reportMonth = trim((string) $request->request->get('reportMonth', ''));
+        $comment = trim((string) $request->request->get('comment', ''));
+        $detailsRaw = (string) $request->request->get('details', '');
+        if ($contractId <= 0 || $reportMonth === '') {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $contract = $entityManager->find(TimesheetContract::class, $contractId);
+        if (!$contract) {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $reportMonthStart = \DateTimeImmutable::createFromFormat('Y-m', $reportMonth);
+        if (!$reportMonthStart instanceof \DateTimeImmutable) {
+            return $this->redirectToRoute('timesheet_index');
+        }
+        $reportMonthStart = $reportMonthStart->setDate(
+            (int) $reportMonthStart->format('Y'),
+            (int) $reportMonthStart->format('m'),
+            1
+        )->setTime(0, 0, 0);
+        $reportMonthEnd = $reportMonthStart->modify('+1 month');
+
+        $entries = $entityManager
+            ->getRepository(TimesheetHour::class)
+            ->findBy(['contract' => $contract], ['workDate' => 'ASC', 'startTime' => 'ASC', 'createdAt' => 'ASC']);
+
+        $billableCategories = ['RemoteOffice', 'OnSite'];
+        $reportableTotal = 0.0;
+        $billableTotal = 0.0;
+        $entriesByDate = [];
+
+        foreach ($entries as $entry) {
+            $workDate = $entry->getWorkDate();
+            $workTimestamp = $workDate->getTimestamp();
+            if ($workTimestamp < $reportMonthStart->getTimestamp() || $workTimestamp >= $reportMonthEnd->getTimestamp()) {
+                continue;
+            }
+            $dateKey = $workDate->format('Y-m-d');
+            $entriesByDate[$dateKey][] = $entry;
+            $reportableTotal += (float) $entry->getHours();
+            if (in_array($entry->getCategory(), $billableCategories, true)) {
+                $billableTotal += (float) $entry->getHours();
+            }
+        }
+
+        $details = [];
+        if ($detailsRaw !== '') {
+            $decoded = json_decode($detailsRaw, true);
+            if (is_array($decoded)) {
+                $details = $decoded;
+            }
+        }
+
+        $days = [];
+        $daysInMonth = (int) $reportMonthStart->format('t');
+        for ($day = 1; $day <= $daysInMonth; $day++) {
+            $dateObj = $reportMonthStart->setDate(
+                (int) $reportMonthStart->format('Y'),
+                (int) $reportMonthStart->format('m'),
+                $day
+            );
+            $dateKey = $dateObj->format('Y-m-d');
+            $weekday = $dateObj->format('D');
+            $isWeekend = in_array((int) $dateObj->format('w'), [0, 6], true);
+            $dayEntries = $entriesByDate[$dateKey] ?? [];
+            $dayHours = 0.0;
+            foreach ($dayEntries as $entry) {
+                $dayHours += (float) $entry->getHours();
+            }
+            $days[] = [
+                'date' => $dateKey,
+                'weekday' => $weekday,
+                'isWeekend' => $isWeekend,
+                'hours' => $dayHours,
+                'details' => $details[$dateKey] ?? '',
+            ];
+        }
+
+        $user = $this->getUser();
+        $signatureName = null;
+        if ($user && method_exists($user, 'getUserIdentifier')) {
+            $signatureName = (string) $user->getUserIdentifier();
+        } elseif ($user && method_exists($user, 'getUsername')) {
+            $signatureName = (string) $user->getUsername();
+        }
+        if ($signatureName === '' || $signatureName === null) {
+            $signatureName = '—';
+        }
+
+        $html = $this->renderView('timesheet/report_pdf.html.twig', [
+            'contract' => $contract,
+            'reportMonth' => $reportMonthStart,
+            'reportableTotal' => $reportableTotal,
+            'billableTotal' => $billableTotal,
+            'days' => $days,
+            'comment' => $comment,
+            'signatureName' => $signatureName,
+            'signatureDate' => new \DateTimeImmutable(),
+        ]);
+
+        $options = new Options();
+        $options->set('isRemoteEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        $pdfOutput = $dompdf->output();
+
+        $recipients = [];
+        $customerEmails = $contract->getCustomerApprovalEmails();
+        if ($customerEmails) {
+            $split = preg_split('/[;,\s]+/', $customerEmails, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $recipients = array_merge($recipients, $split);
+        }
+        $supplierReceiver = $contract->getSupplierTimesheetReceiverEmail();
+        if ($supplierReceiver) {
+            $recipients[] = $supplierReceiver;
+        }
+        $recipients = array_values(array_unique(array_filter($recipients)));
+
+        if ($recipients) {
+            $monthLabel = $reportMonthStart->format('F Y');
+            $subject = sprintf('Timesheet report for %s (%s)', $contract->getProjectName(), $monthLabel);
+            $bodyText = "Please find the signed timesheet report attached.";
+            if ($comment !== '') {
+                $bodyText .= "\n\nComment:\n" . $comment;
+            }
+            $filename = sprintf('timesheet-%s-%s.pdf', $contract->getProjectName(), $reportMonthStart->format('Y-m'));
+            $filename = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $filename);
+            $mailService->sendMail(
+                $recipients,
+                $subject,
+                null,
+                $bodyText,
+                [[ $filename, 'application/pdf', $pdfOutput ]]
+            );
+        }
 
         return $this->redirectToRoute('timesheet_index', ['reportMonth' => $reportMonth]);
     }

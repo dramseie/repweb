@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Timesheet report</title>
+    <style>
+      body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 12px; color: #1f2933; }
+      h1 { font-size: 18px; margin: 0 0 6px; }
+      h2 { font-size: 13px; margin: 14px 0 6px; }
+      .muted { color: #6b7280; }
+      .summary { margin-bottom: 12px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid #e5e7eb; padding: 6px 8px; vertical-align: top; }
+      th { background: #f3f4f6; text-align: left; }
+      .text-right { text-align: right; }
+      .weekend { background: #f1f5f9; }
+      .signature { margin-top: 20px; }
+      .signature-line { margin-top: 12px; border-top: 1px solid #9ca3af; width: 200px; }
+    </style>
+  </head>
+  <body>
+    <h1>Timesheet report</h1>
+    <div class="summary">
+      <div><strong>{{ contract.projectName }}</strong> · {{ contract.supplier }}</div>
+      <div class="muted">Month: {{ reportMonth|date('F Y') }}</div>
+      <div class="muted">Reportable: {{ reportableTotal|number_format(2, '.', '') }} h · Billable: {{ billableTotal|number_format(2, '.', '') }} h</div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 12%">Weekday</th>
+          <th style="width: 18%">Date</th>
+          <th class="text-right" style="width: 12%">Hours</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day in days %}
+          <tr class="{{ day.isWeekend ? 'weekend' : '' }}">
+            <td>{{ day.weekday }}</td>
+            <td>{{ day.date }}</td>
+            <td class="text-right">
+              {{ day.hours > 0 ? day.hours|number_format(2, '.', '') ~ ' h' : '—' }}
+            </td>
+            <td>{{ day.details ?: '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if comment %}
+      <h2>Comment</h2>
+      <div>{{ comment }}</div>
+    {% endif %}
+
+    <div class="signature">
+      <div>Signed by: {{ signatureName }}</div>
+      <div class="muted">{{ signatureDate|date('Y-m-d H:i') }}</div>
+      <div class="signature-line"></div>
+    </div>
+  </body>
+</html>

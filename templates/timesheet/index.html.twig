@@ -408,12 +408,14 @@
             <form id="reportCommentForm" method="post" action="{{ path('timesheet_report_comment') }}">
               <input type="hidden" name="contractId" value="" />
               <input type="hidden" name="reportMonth" value="" />
+              <input type="hidden" name="details" value="" />
               <div class="mb-3">
                 <label class="form-label">Comment</label>
                 <textarea name="comment" class="form-control" rows="3"></textarea>
               </div>
               <div class="d-flex justify-content-end gap-2">
                 <button type="submit" class="btn btn-outline-secondary">Save comment</button>
+                <button type="submit" class="btn btn-outline-primary" formaction="{{ path('timesheet_report_send_for_approval') }}">Send for approval</button>
                 <button type="submit" class="btn btn-primary" formaction="{{ path('timesheet_report_approve') }}">Approve</button>
               </div>
             </form>
@@ -713,6 +715,7 @@
           detailsInput.rows = 2;
           detailsInput.value = detailsText;
           detailsInput.placeholder = 'Add details...';
+          detailsInput.dataset.date = dateLabel;
           detailsCell.appendChild(detailsInput);
 
           tr.appendChild(weekdayCell);
@@ -768,6 +771,21 @@
           }
         });
       });
+
+      if (commentForm) {
+        commentForm.addEventListener('submit', () => {
+          const detailsInput = commentForm.querySelector('input[name="details"]');
+          if (!detailsInput) return;
+          const details = {};
+          reportModalEl.querySelectorAll('#reportDetailsRows textarea[data-date]').forEach((textarea) => {
+            const date = textarea.dataset.date;
+            if (date) {
+              details[date] = textarea.value || '';
+            }
+          });
+          detailsInput.value = JSON.stringify(details);
+        });
+      }
     }
   });
 </script>
