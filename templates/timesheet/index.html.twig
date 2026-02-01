@@ -18,64 +18,34 @@
     <div class="alert alert-warning" role="alert">{{ error }}</div>
   {% endif %}
 
-  <div class="row g-3">
-    <div class="col-12 col-xl-5">
-      <div class="card shadow-sm">
-        <div class="card-header fw-semibold">New Contract</div>
-        <div class="card-body">
-          <form method="post" action="{{ path('timesheet_index') }}">
-            <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label">Project Name</label>
-                <input
-                  type="text"
-                  name="projectName"
-                  class="form-control"
-                  value="{{ formData.projectName }}"
-                  required
-                />
-              </div>
-              <div class="col-12">
-                <label class="form-label">PO</label>
-                <input
-                  type="text"
-                  name="poNumber"
-                  class="form-control"
-                  value="{{ formData.poNumber }}"
-                />
-              </div>
-              <div class="col-12">
-                <label class="form-label">Supplier</label>
-                <input
-                  type="text"
-                  name="supplier"
-                  class="form-control"
-                  value="{{ formData.supplier }}"
-                  required
-                />
-              </div>
-              <div class="col-12">
-                <label class="form-label">Workload (hours / week)</label>
-                <input
-                  type="number"
-                  step="0.25"
-                  min="0"
-                  name="workloadHoursWeek"
-                  class="form-control"
-                  value="{{ formData.workloadHoursWeek }}"
-                  required
-                />
-              </div>
-            </div>
-            <div class="d-flex justify-content-end mt-3">
-              <button type="submit" class="btn btn-primary">Save Contract</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+  <ul class="nav nav-tabs" id="timesheetTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="contracts-tab" data-bs-toggle="tab" data-bs-target="#contracts-pane" type="button" role="tab" aria-controls="contracts-pane" aria-selected="true">
+        Contracts
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="hours-tab" data-bs-toggle="tab" data-bs-target="#hours-pane" type="button" role="tab" aria-controls="hours-pane" aria-selected="false">
+        Hours
+      </button>
+    </li>
+  </ul>
 
-    <div class="col-12 col-xl-7">
+  <div class="tab-content pt-3" id="timesheetTabContent">
+    <div class="tab-pane fade show active" id="contracts-pane" role="tabpanel" aria-labelledby="contracts-tab" tabindex="0">
+      <div class="d-flex justify-content-end mb-2">
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-contract-new
+          data-bs-toggle="modal"
+          data-bs-target="#contractModal"
+          data-action-create="{{ path('timesheet_contract_create') }}"
+        >
+          New Contract
+        </button>
+      </div>
+
       <div class="card shadow-sm">
         <div class="card-header fw-semibold">Contracts</div>
         <div class="card-body p-0">
@@ -93,6 +63,7 @@
                     <th>Billing</th>
                     <th>Signed Report</th>
                     <th>Created</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -105,6 +76,22 @@
                       <td>{{ contract.billingFrequency|capitalize }}</td>
                       <td>{{ contract.requiresSignedReport ? 'Yes' : 'No' }}</td>
                       <td class="text-muted">{{ contract.createdAt|date('Y-m-d') }}</td>
+                      <td class="text-end">
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-outline-secondary"
+                          data-contract-edit
+                          data-bs-toggle="modal"
+                          data-bs-target="#contractModal"
+                          data-action-update="{{ path('timesheet_contract_update', { id: contract.id }) }}"
+                          data-project-name="{{ contract.projectName|e('html_attr') }}"
+                          data-po-number="{{ contract.poNumber|default('')|e('html_attr') }}"
+                          data-supplier="{{ contract.supplier|e('html_attr') }}"
+                          data-workload="{{ contract.workloadHoursWeek|number_format(2, '.', '') }}"
+                        >
+                          Edit
+                        </button>
+                      </td>
                     </tr>
                   {% endfor %}
                 </tbody>
@@ -114,6 +101,151 @@
         </div>
       </div>
     </div>
+
+    <div class="tab-pane fade" id="hours-pane" role="tabpanel" aria-labelledby="hours-tab" tabindex="0">
+      <div class="row g-3">
+        <div class="col-12 col-xl-5">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Log Hours</div>
+            <div class="card-body">
+              <form method="post" action="{{ path('timesheet_hours_create') }}">
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label">Contract</label>
+                    <select name="contractId" class="form-select" required>
+                      <option value="">Select contract</option>
+                      {% for contract in contracts %}
+                        <option value="{{ contract.id }}">{{ contract.projectName }} · {{ contract.supplier }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Work date</label>
+                    <input type="date" name="workDate" class="form-control" required />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Hours</label>
+                    <input type="number" step="0.25" min="0" name="hours" class="form-control" required />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Comment (optional)</label>
+                    <textarea name="comment" class="form-control" rows="3"></textarea>
+                  </div>
+                </div>
+                <div class="d-flex justify-content-end mt-3">
+                  <button type="submit" class="btn btn-primary">Save Hours</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xl-7">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Hours Entries</div>
+            <div class="card-body p-0">
+              {% if hours is empty %}
+                <div class="p-3 text-muted">No hours logged yet.</div>
+              {% else %}
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Date</th>
+                        <th>Contract</th>
+                        <th class="text-end">Hours</th>
+                        <th>Comment</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for entry in hours %}
+                        <tr>
+                          <td>{{ entry.workDate|date('Y-m-d') }}</td>
+                          <td>{{ entry.contract.projectName }} · {{ entry.contract.supplier }}</td>
+                          <td class="text-end">{{ entry.hours|number_format(2, '.', '') }}</td>
+                          <td>{{ entry.comment ?: '—' }}</td>
+                          <td class="text-muted">{{ entry.createdAt|date('Y-m-d') }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<div class="modal fade" id="contractModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="contractModalTitle">New Contract</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form method="post" id="contractModalForm" action="{{ path('timesheet_contract_create') }}">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Project Name</label>
+              <input type="text" name="projectName" class="form-control" required />
+            </div>
+            <div class="col-12">
+              <label class="form-label">PO</label>
+              <input type="text" name="poNumber" class="form-control" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Supplier</label>
+              <input type="text" name="supplier" class="form-control" required />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Workload (hours / week)</label>
+              <input type="number" step="0.25" min="0" name="workloadHoursWeek" class="form-control" required />
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mt-3">
+            <button type="submit" class="btn btn-primary">Save Contract</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('contractModalForm');
+    const title = document.getElementById('contractModalTitle');
+    const inputProject = form.querySelector('input[name="projectName"]');
+    const inputPo = form.querySelector('input[name="poNumber"]');
+    const inputSupplier = form.querySelector('input[name="supplier"]');
+    const inputWorkload = form.querySelector('input[name="workloadHoursWeek"]');
+
+    document.querySelectorAll('[data-contract-edit]').forEach((button) => {
+      button.addEventListener('click', () => {
+        title.textContent = 'Edit Contract';
+        form.setAttribute('action', button.getAttribute('data-action-update'));
+        inputProject.value = button.getAttribute('data-project-name') || '';
+        inputPo.value = button.getAttribute('data-po-number') || '';
+        inputSupplier.value = button.getAttribute('data-supplier') || '';
+        inputWorkload.value = button.getAttribute('data-workload') || '';
+      });
+    });
+
+    document.querySelectorAll('[data-contract-new]').forEach((button) => {
+      button.addEventListener('click', () => {
+        title.textContent = 'New Contract';
+        form.setAttribute('action', button.getAttribute('data-action-create'));
+        inputProject.value = '';
+        inputPo.value = '';
+        inputSupplier.value = '';
+        inputWorkload.value = '';
+      });
+    });
+  });
+</script>
 {% endblock %}
