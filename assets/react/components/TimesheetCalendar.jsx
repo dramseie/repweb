@@ -325,14 +325,18 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           firstDay={1}
           locale="en-CA"
           titleFormat={(arg) => {
-            const start = arg?.start || arg?.date;
-            const end = arg?.end;
+            const rawStart = arg?.start || arg?.date;
+            const rawEnd = arg?.end;
             const viewType = arg?.view?.type;
-            if (!start) return '';
+            if (!rawStart) return '';
+            const start = rawStart instanceof Date ? rawStart : new Date(rawStart);
+            if (Number.isNaN(start.getTime())) return '';
             if (viewType === 'timeGridDay') {
               return toYmd(start);
             }
-            if (!end) return toYmd(start);
+            if (!rawEnd) return toYmd(start);
+            const end = rawEnd instanceof Date ? rawEnd : new Date(rawEnd);
+            if (Number.isNaN(end.getTime())) return toYmd(start);
             const endInclusive = new Date(end.getTime() - 24 * 60 * 60 * 1000);
             return `${toYmd(start)} — ${toYmd(endInclusive)}`;
           }}
