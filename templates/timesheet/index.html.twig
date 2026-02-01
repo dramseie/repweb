@@ -121,8 +121,8 @@
       {% for entry in hours %}
         {% set calendarHours = calendarHours|merge([{
           id: entry.id,
-          contractId: entry.contract.id,
-          contractLabel: entry.contract.projectName ~ ' · ' ~ entry.contract.supplier,
+          contractId: entry.contract ? entry.contract.id : null,
+          contractLabel: entry.contract ? entry.contract.projectName ~ ' · ' ~ entry.contract.supplier : null,
           workDate: entry.workDate|date('Y-m-d'),
           hours: entry.hours,
           comment: entry.comment ?? '',
@@ -190,7 +190,7 @@
                   <input type="hidden" name="entryId" value="" />
                   <div class="col-12">
                     <label class="form-label">Contract</label>
-                    <select name="contractId" class="form-select" required>
+                    <select name="contractId" class="form-select">
                       <option value="">Select contract</option>
                       {% for contract in contracts %}
                         <option value="{{ contract.id }}">{{ contract.projectName }} · {{ contract.supplier }}</option>

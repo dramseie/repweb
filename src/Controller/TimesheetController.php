@@ -133,8 +133,10 @@ class TimesheetController extends AbstractController
 
         $contract = $contractId > 0 ? $entityManager->find(TimesheetContract::class, $contractId) : null;
         $hoursValue = str_replace(',', '.', $hoursRaw);
+        $globalCategories = ['Vacation', 'Sickness'];
+        $isGlobalCategory = in_array($category, $globalCategories, true);
 
-        if (!$contract || $workDateRaw === '') {
+        if (($contractId > 0 && !$contract) || $workDateRaw === '' || (!$contract && !$isGlobalCategory)) {
             return $this->redirectToRoute('timesheet_index');
         }
 
@@ -183,8 +185,8 @@ class TimesheetController extends AbstractController
         if ($request->isXmlHttpRequest()) {
             return new JsonResponse([
                 'id' => $entry->getId(),
-                'contractId' => $contract->getId(),
-                'contractLabel' => sprintf('%s · %s', $contract->getProjectName(), $contract->getSupplier()),
+            'contractId' => $contract?->getId(),
+            'contractLabel' => $contract ? sprintf('%s · %s', $contract->getProjectName(), $contract->getSupplier()) : null,
                 'workDate' => $workDate->format('Y-m-d'),
                 'hours' => $entry->getHours(),
                 'comment' => $entry->getComment(),

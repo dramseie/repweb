@@ -12,8 +12,8 @@ class TimesheetHour
     private ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: TimesheetContract::class)]
-    #[ORM\JoinColumn(name: 'contract_id', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private TimesheetContract $contract;
+    #[ORM\JoinColumn(name: 'contract_id', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    private ?TimesheetContract $contract = null;
 
     #[ORM\Column(name: 'work_date', type: 'date_immutable')]
     private \DateTimeInterface $workDate;
@@ -51,12 +51,12 @@ class TimesheetHour
         return $this->id;
     }
 
-    public function getContract(): TimesheetContract
+    public function getContract(): ?TimesheetContract
     {
         return $this->contract;
     }
 
-    public function setContract(TimesheetContract $contract): self
+    public function setContract(?TimesheetContract $contract): self
     {
         $this->contract = $contract;
         return $this;

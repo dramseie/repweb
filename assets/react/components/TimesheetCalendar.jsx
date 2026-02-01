@@ -36,14 +36,44 @@ const buildComment = (template) => `${template.label}`;
 const TimesheetCalendar = ({ contracts, initialHours }) => {
   const [templates, setTemplates] = useState(() => [
     {
-      id: 'homeoffice',
-      label: 'HomeOffice',
-      category: 'HomeOffice',
+      id: 'remoteoffice',
+      label: 'RemoteOffice',
+      category: 'RemoteOffice',
       ranges: [
         ['08:45', '12:00'],
         ['12:45', '18:00'],
       ],
       color: '#0d6efd',
+    },
+    {
+      id: 'onsite',
+      label: 'OnSite',
+      category: 'OnSite',
+      ranges: [
+        ['08:45', '12:00'],
+        ['12:45', '18:00'],
+      ],
+      color: '#fd7e14',
+    },
+    {
+      id: 'vacation',
+      label: 'Vacation',
+      category: 'Vacation',
+      allDay: true,
+      hours: '8.50',
+      ranges: [],
+      color: '#20c997',
+      requiresContract: false,
+    },
+    {
+      id: 'sickness',
+      label: 'Sickness',
+      category: 'Sickness',
+      allDay: true,
+      hours: '8.50',
+      ranges: [],
+      color: '#dc3545',
+      requiresContract: false,
     },
   ]);
 
@@ -81,11 +111,12 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
       const hasTime = entry.startTime && entry.endTime;
       const start = hasTime ? `${entry.workDate}T${entry.startTime}` : entry.workDate;
       const end = hasTime ? `${entry.workDate}T${entry.endTime}` : undefined;
+      const baseLabel = entry.contractLabel || entry.category || 'Global';
       return {
         id: String(entry.id),
         title: hasTime
-          ? `${entry.contractLabel} · ${entry.startTime}-${entry.endTime}`
-          : `${entry.hours}h — ${entry.contractLabel}${entry.comment ? ` · ${entry.comment}` : ''}`,
+          ? `${baseLabel} · ${entry.startTime}-${entry.endTime}`
+          : `${entry.hours}h — ${baseLabel}${entry.comment ? ` · ${entry.comment}` : ''}`,
         start,
         end,
         allDay: !hasTime,
@@ -149,16 +180,17 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
   }, [templates]);
 
   const handleEventReceive = async (info) => {
-    const contractId = selectedContractId;
-    if (!contractId) {
-      info.event.remove();
-      alert('Select a contract before dropping hours.');
-      return;
-    }
-
     const template = templates.find((item) => item.id === info.event.extendedProps.templateId);
     if (!template) {
       info.event.remove();
+      return;
+    }
+
+    const requiresContract = template.requiresContract !== false;
+    const contractId = selectedContractId;
+    if (!contractId && requiresContract) {
+      info.event.remove();
+      alert('Select a contract before dropping hours.');
       return;
     }
     info.event.remove();
@@ -168,59 +200,105 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
     const categoryValue = template.category || '';
 
     try {
-      const responses = await Promise.all(
-        template.ranges.map(async (range) => {
-          const payload = new URLSearchParams({
-            contractId,
-            workDate,
-            startTime: range[0],
-            endTime: range[1],
-            category: categoryValue,
-            comment: commentValue,
-          });
+      if (template.allDay) {
+        const payload = new URLSearchParams({
+          workDate,
+          hours: template.hours || '8.50',
+          category: categoryValue,
+          comment: commentValue,
+        });
+        if (contractId) payload.set('contractId', contractId);
 
-          const response = await fetch('/timesheet/hours', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: payload.toString(),
-          });
+        const response = await fetch('/timesheet/hours', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: payload.toString(),
+        });
 
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
 
-          return response.json();
-        })
-      );
+        const entry = await response.json();
+        const contract = contracts.find((item) => String(item.id) === String(contractId));
+        const contractLabel = contract?.label || entry.contractLabel || 'Global';
 
-      const contract = contracts.find((item) => String(item.id) === String(contractId));
-      const contractLabel = contract?.label || 'Contract';
-
-      setEvents((prev) => [
-        ...prev,
-        ...responses.map((entry, index) => {
-          const range = template.ranges[index];
-          return {
+        setEvents((prev) => [
+          ...prev,
+          {
             id: String(entry.id),
-            title: `${contractLabel} · ${range[0]}-${range[1]}`,
-            start: `${workDate}T${range[0]}`,
-            end: `${workDate}T${range[1]}`,
-            allDay: false,
+            title: `${template.label} · ${workDate}`,
+            start: workDate,
+            allDay: true,
             backgroundColor: template.color,
             borderColor: template.color,
             extendedProps: {
-              contractId,
-              contractLabel,
+              contractId: entry.contractId || contractId || '',
+              contractLabel: entry.contractLabel || contractLabel,
               hours: entry.hours,
               comment: entry.comment || '',
               category: entry.category || categoryValue,
             },
-          };
-        }),
-      ]);
+          },
+        ]);
+      } else {
+        const responses = await Promise.all(
+          template.ranges.map(async (range) => {
+            const payload = new URLSearchParams({
+              contractId,
+              workDate,
+              startTime: range[0],
+              endTime: range[1],
+              category: categoryValue,
+              comment: commentValue,
+            });
+
+            const response = await fetch('/timesheet/hours', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+              },
+              body: payload.toString(),
+            });
+
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+
+            return response.json();
+          })
+        );
+
+        const contract = contracts.find((item) => String(item.id) === String(contractId));
+        const contractLabel = contract?.label || 'Contract';
+
+        setEvents((prev) => [
+          ...prev,
+          ...responses.map((entry, index) => {
+            const range = template.ranges[index];
+            return {
+              id: String(entry.id),
+              title: `${contractLabel} · ${range[0]}-${range[1]}`,
+              start: `${workDate}T${range[0]}`,
+              end: `${workDate}T${range[1]}`,
+              allDay: false,
+              backgroundColor: template.color,
+              borderColor: template.color,
+              extendedProps: {
+                contractId,
+                contractLabel,
+                hours: entry.hours,
+                comment: entry.comment || '',
+                category: entry.category || categoryValue,
+              },
+            };
+          }),
+        ]);
+      }
     } catch (error) {
       alert('Failed to save hours.');
     }
@@ -365,7 +443,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           <div className="fw-semibold mb-2">Templates</div>
           <div ref={listRef} className="d-flex flex-column gap-2">
             {templates.map((template) => {
-              const hoursValue = sumHours(template.ranges);
+              const hoursValue = template.allDay ? template.hours || '8.50' : sumHours(template.ranges);
               return (
                 <div
                   key={template.id}
@@ -376,7 +454,9 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
                   <div className="d-flex justify-content-between align-items-start gap-2">
                     <div>
                       <div className="fw-semibold">{template.label}</div>
-                      <div className="text-muted small">{formatRanges(template.ranges)}</div>
+                      <div className="text-muted small">
+                        {template.allDay ? 'All day' : formatRanges(template.ranges)}
+                      </div>
                       <div className="small">{hoursValue}h</div>
                       <div className="text-muted small">Category: {template.category || '—'}</div>
                     </div>
