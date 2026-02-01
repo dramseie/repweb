@@ -27,6 +27,17 @@ class TimesheetController extends AbstractController
             ->findBy([], ['workDate' => 'DESC', 'createdAt' => 'DESC']);
 
         $statsMonthRaw = trim((string) $request->query->get('statsMonth', ''));
+        $statsContractRaw = trim((string) $request->query->get('statsContract', ''));
+        $statsContractId = $statsContractRaw !== '' ? (int) $statsContractRaw : null;
+        $statsContract = null;
+        if ($statsContractId) {
+            foreach ($contracts as $contract) {
+                if ($contract->getId() === $statsContractId) {
+                    $statsContract = $contract;
+                    break;
+                }
+            }
+        }
         $monthStart = null;
         if ($statsMonthRaw !== '') {
             $parsedMonth = \DateTimeImmutable::createFromFormat('Y-m', $statsMonthRaw);
@@ -43,25 +54,51 @@ class TimesheetController extends AbstractController
         $monthlyBillable = [];
         $billableCategories = ['RemoteOffice', 'OnSite'];
         foreach ($hours as $entry) {
-            $workDate = $entry->getWorkDate();
-            $workTimestamp = $workDate->getTimestamp();
-            if ($workTimestamp < $monthStart->getTimestamp() || $workTimestamp >= $monthEnd->getTimestamp()) {
+            $entryContract = $entry->getContract();
+            if ($statsContractId && (!$entryContract || $entryContract->getId() !== $statsContractId)) {
                 continue;
             }
+            $workDate = $entry->getWorkDate();
+            $workTimestamp = $workDate->getTimestamp();
             $category = $entry->getCategory() ?: 'Uncategorized';
-            $statsByCategory[$category] = ($statsByCategory[$category] ?? 0.0) + (float) $entry->getHours();
             $monthKey = $workDate->format('Y-m');
             $monthlyReportable[$monthKey] = ($monthlyReportable[$monthKey] ?? 0.0) + (float) $entry->getHours();
             if (in_array($category, $billableCategories, true)) {
                 $monthlyBillable[$monthKey] = ($monthlyBillable[$monthKey] ?? 0.0) + (float) $entry->getHours();
             }
+            if ($workTimestamp < $monthStart->getTimestamp() || $workTimestamp >= $monthEnd->getTimestamp()) {
+                continue;
+            }
+            $statsByCategory[$category] = ($statsByCategory[$category] ?? 0.0) + (float) $entry->getHours();
         }
         ksort($statsByCategory);
         ksort($monthlyReportable);
         ksort($monthlyBillable);
 
-        $monthlyLabels = array_values(array_unique(array_merge(array_keys($monthlyReportable), array_keys($monthlyBillable))));
-        sort($monthlyLabels);
+        $monthlyLabels = [];
+        if ($statsContract && $statsContract->getFromDate() && $statsContract->getToDate()) {
+            $startMonth = $statsContract->getFromDate()->setDate(
+                (int) $statsContract->getFromDate()->format('Y'),
+                (int) $statsContract->getFromDate()->format('m'),
+                1
+            )->setTime(0, 0, 0);
+            $endMonth = $statsContract->getToDate()->setDate(
+                (int) $statsContract->getToDate()->format('Y'),
+                (int) $statsContract->getToDate()->format('m'),
+                1
+            )->setTime(0, 0, 0);
+            if ($startMonth > $endMonth) {
+                [$startMonth, $endMonth] = [$endMonth, $startMonth];
+            }
+            $cursor = $startMonth;
+            while ($cursor <= $endMonth) {
+                $monthlyLabels[] = $cursor->format('Y-m');
+                $cursor = $cursor->modify('+1 month');
+            }
+        } else {
+            $monthlyLabels = array_values(array_unique(array_merge(array_keys($monthlyReportable), array_keys($monthlyBillable))));
+            sort($monthlyLabels);
+        }
         $monthlyReportableData = [];
         $monthlyBillableData = [];
         foreach ($monthlyLabels as $label) {
@@ -69,11 +106,26 @@ class TimesheetController extends AbstractController
             $monthlyBillableData[] = number_format((float) ($monthlyBillable[$label] ?? 0.0), 2, '.', '');
         }
 
+        $statsContractLabel = $statsContract
+            ? sprintf('%s · %s', $statsContract->getProjectName(), $statsContract->getSupplier())
+            : null;
+        $statsContractRange = null;
+        if ($statsContract && $statsContract->getFromDate() && $statsContract->getToDate()) {
+            $statsContractRange = sprintf(
+                '%s → %s',
+                $statsContract->getFromDate()->format('Y-m'),
+                $statsContract->getToDate()->format('Y-m')
+            );
+        }
+
         return $this->render('timesheet/index.html.twig', [
             'contracts' => $contracts,
             'hours' => $hours,
             'statsByCategory' => $statsByCategory,
             'statsMonthLabel' => $monthStart->format('Y-m'),
+            'statsContractId' => $statsContractId,
+            'statsContractLabel' => $statsContractLabel,
+            'statsContractRange' => $statsContractRange,
             'statsMonthlyLabels' => $monthlyLabels,
             'statsMonthlyReportable' => $monthlyReportableData,
             'statsMonthlyBillable' => $monthlyBillableData,

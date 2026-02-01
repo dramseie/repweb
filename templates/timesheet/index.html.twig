@@ -174,7 +174,7 @@
           <div class="card shadow-sm mb-3">
             <div class="card-header fw-semibold">Statistics</div>
             <div class="card-body">
-              <form method="get" class="d-flex flex-column flex-sm-row gap-2 align-items-sm-end mb-2">
+              <form method="get" class="d-flex flex-column gap-2 mb-2">
                 <div>
                   <label class="form-label small mb-1">Month</label>
                   <input
@@ -184,7 +184,20 @@
                     value="{{ statsMonthLabel }}"
                   />
                 </div>
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
+                <div>
+                  <label class="form-label small mb-1">Contract</label>
+                  <select name="statsContract" class="form-select form-select-sm">
+                    <option value="">All contracts</option>
+                    {% for contract in contracts %}
+                      <option value="{{ contract.id }}" {{ statsContractId == contract.id ? 'selected' : '' }}>
+                        {{ contract.projectName }} · {{ contract.supplier }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
+                </div>
               </form>
               {% if statsByCategory is empty %}
                 <div class="text-muted">No hours logged this month.</div>
@@ -201,8 +214,15 @@
 
               <hr />
               <div class="fw-semibold mb-2">Monthly hours</div>
+              <div class="text-muted small mb-2">
+                {% if statsContractLabel %}
+                  Contract: {{ statsContractLabel }}{% if statsContractRange %} · {{ statsContractRange }}{% endif %}
+                {% else %}
+                  All contracts
+                {% endif %}
+              </div>
               <div class="text-muted small mb-2">Billable = RemoteOffice + OnSite · Reportable = all categories</div>
-              <canvas id="statsMonthlyChart" height="140"></canvas>
+              <canvas id="statsMonthlyChart" height="90"></canvas>
             </div>
           </div>
           <div class="card shadow-sm">
@@ -457,10 +477,20 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { boxWidth: 10, boxHeight: 10 },
+              },
+            },
             scales: {
+              x: {
+                ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+              },
               y: {
                 beginAtZero: true,
-                title: { display: true, text: 'Hours' },
+                title: { display: false },
+                ticks: { maxTicksLimit: 4 },
               },
             },
           },
