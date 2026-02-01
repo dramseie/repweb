@@ -39,6 +39,9 @@ class TimesheetController extends AbstractController
         }
         $monthEnd = $monthStart->modify('+1 month');
         $statsByCategory = [];
+        $monthlyReportable = [];
+        $monthlyBillable = [];
+        $billableCategories = ['RemoteOffice', 'OnSite'];
         foreach ($hours as $entry) {
             $workDate = $entry->getWorkDate();
             $workTimestamp = $workDate->getTimestamp();
@@ -47,14 +50,33 @@ class TimesheetController extends AbstractController
             }
             $category = $entry->getCategory() ?: 'Uncategorized';
             $statsByCategory[$category] = ($statsByCategory[$category] ?? 0.0) + (float) $entry->getHours();
+            $monthKey = $workDate->format('Y-m');
+            $monthlyReportable[$monthKey] = ($monthlyReportable[$monthKey] ?? 0.0) + (float) $entry->getHours();
+            if (in_array($category, $billableCategories, true)) {
+                $monthlyBillable[$monthKey] = ($monthlyBillable[$monthKey] ?? 0.0) + (float) $entry->getHours();
+            }
         }
         ksort($statsByCategory);
+        ksort($monthlyReportable);
+        ksort($monthlyBillable);
+
+        $monthlyLabels = array_values(array_unique(array_merge(array_keys($monthlyReportable), array_keys($monthlyBillable))));
+        sort($monthlyLabels);
+        $monthlyReportableData = [];
+        $monthlyBillableData = [];
+        foreach ($monthlyLabels as $label) {
+            $monthlyReportableData[] = number_format((float) ($monthlyReportable[$label] ?? 0.0), 2, '.', '');
+            $monthlyBillableData[] = number_format((float) ($monthlyBillable[$label] ?? 0.0), 2, '.', '');
+        }
 
         return $this->render('timesheet/index.html.twig', [
             'contracts' => $contracts,
             'hours' => $hours,
             'statsByCategory' => $statsByCategory,
             'statsMonthLabel' => $monthStart->format('Y-m'),
+            'statsMonthlyLabels' => $monthlyLabels,
+            'statsMonthlyReportable' => $monthlyReportableData,
+            'statsMonthlyBillable' => $monthlyBillableData,
             'error' => null,
         ]);
     }

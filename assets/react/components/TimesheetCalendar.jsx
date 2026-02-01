@@ -566,6 +566,14 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
                     <input type="text" className="form-control" value={templateDraft.label} disabled />
                   </div>
                   <div className="mb-3">
+                    <label className="form-label">Hours</label>
+                    <div className="form-control bg-light">
+                      {templateDraft.allDay
+                        ? 'All day'
+                        : formatRanges(templateDraft.ranges || [])}
+                    </div>
+                  </div>
+                  <div className="mb-3">
                     <label className="form-label">Category</label>
                     <input
                       type="text"

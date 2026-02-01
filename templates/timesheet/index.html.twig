@@ -198,6 +198,11 @@
                   {% endfor %}
                 </ul>
               {% endif %}
+
+              <hr />
+              <div class="fw-semibold mb-2">Monthly hours</div>
+              <div class="text-muted small mb-2">Billable = RemoteOffice + OnSite · Reportable = all categories</div>
+              <canvas id="statsMonthlyChart" height="140"></canvas>
             </div>
           </div>
           <div class="card shadow-sm">
@@ -419,6 +424,50 @@
         setPdfLink('');
       });
     });
+
+    const chartEl = document.getElementById('statsMonthlyChart');
+    if (chartEl && window.Chart) {
+      const labels = {{ statsMonthlyLabels|json_encode|raw }};
+      const reportable = {{ statsMonthlyReportable|json_encode|raw }};
+      const billable = {{ statsMonthlyBillable|json_encode|raw }};
+      if (labels.length > 0) {
+        new Chart(chartEl, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Reportable hours',
+                data: reportable,
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13,110,253,0.15)',
+                fill: true,
+                tension: 0.25,
+              },
+              {
+                label: 'Billable hours',
+                data: billable,
+                borderColor: '#198754',
+                backgroundColor: 'rgba(25,135,84,0.15)',
+                fill: true,
+                tension: 0.25,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Hours' },
+              },
+            },
+          },
+        });
+      }
+    }
   });
 </script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 {% endblock %}
