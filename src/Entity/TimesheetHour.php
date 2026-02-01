@@ -30,6 +30,9 @@ class TimesheetHour
     #[ORM\Column(name: 'comment', type: 'text', nullable: true)]
     private ?string $comment = null;
 
+    #[ORM\Column(name: 'category', type: 'string', length: 64, nullable: true)]
+    private ?string $category = null;
+
     #[ORM\Column(name: 'created_at', type: 'datetime_immutable')]
     private \DateTimeInterface $createdAt;
 
@@ -111,6 +114,17 @@ class TimesheetHour
     public function setComment(?string $comment): self
     {
         $this->comment = $comment;
+        return $this;
+    }
+
+    public function getCategory(): ?string
+    {
+        return $this->category;
+    }
+
+    public function setCategory(?string $category): self
+    {
+        $this->category = $category;
         return $this;
     }
 

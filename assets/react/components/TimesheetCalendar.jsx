@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -34,20 +34,43 @@ const buildEventTitle = (template, range) => `${template.label} ${range[0]}-${ra
 const buildComment = (template) => `${template.label}`;
 
 const TimesheetCalendar = ({ contracts, initialHours }) => {
-  const templates = useMemo(
-    () => [
-      {
-        id: 'homeoffice',
-        label: 'HomeOffice',
-        ranges: [
-          ['08:45', '12:00'],
-          ['12:45', '18:00'],
-        ],
-        color: '#0d6efd',
-      },
-    ],
-    []
-  );
+  const [templates, setTemplates] = useState(() => [
+    {
+      id: 'homeoffice',
+      label: 'HomeOffice',
+      category: 'HomeOffice',
+      ranges: [
+        ['08:45', '12:00'],
+        ['12:45', '18:00'],
+      ],
+      color: '#0d6efd',
+    },
+  ]);
+
+  const [isTemplateEditorOpen, setIsTemplateEditorOpen] = useState(false);
+  const [templateDraft, setTemplateDraft] = useState(null);
+
+  const openTemplateEditor = (template) => {
+    setTemplateDraft({ ...template });
+    setIsTemplateEditorOpen(true);
+  };
+
+  const closeTemplateEditor = () => {
+    setIsTemplateEditorOpen(false);
+    setTemplateDraft(null);
+  };
+
+  const saveTemplateEditor = () => {
+    if (!templateDraft?.id) return;
+    setTemplates((prev) =>
+      prev.map((template) =>
+        template.id === templateDraft.id
+          ? { ...template, color: templateDraft.color, category: templateDraft.category }
+          : template
+      )
+    );
+    closeTemplateEditor();
+  };
 
   const [selectedContractId, setSelectedContractId] = useState(
     contracts?.[0]?.id ? String(contracts[0].id) : ''
@@ -112,6 +135,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           borderColor: template.color,
           extendedProps: {
             templateId: template.id,
+            category: template.category || '',
             comment: buildComment(template),
           },
         };
@@ -140,6 +164,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
 
     const workDate = toYmd(info.event.start || new Date());
     const commentValue = buildComment(template);
+    const categoryValue = template.category || '';
 
     try {
       const responses = await Promise.all(
@@ -149,6 +174,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
             workDate,
             startTime: range[0],
             endTime: range[1],
+            category: categoryValue,
             comment: commentValue,
           });
 
@@ -189,6 +215,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
               contractLabel,
               hours: entry.hours,
               comment: entry.comment || '',
+              category: entry.category || categoryValue,
             },
           };
         }),
@@ -296,9 +323,21 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
                   data-template-id={template.id}
                   style={{ cursor: 'grab' }}
                 >
-                  <div className="fw-semibold">{template.label}</div>
-                  <div className="text-muted small">{formatRanges(template.ranges)}</div>
-                  <div className="small">{hoursValue}h</div>
+                  <div className="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                      <div className="fw-semibold">{template.label}</div>
+                      <div className="text-muted small">{formatRanges(template.ranges)}</div>
+                      <div className="small">{hoursValue}h</div>
+                      <div className="text-muted small">Category: {template.category || '—'}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => openTemplateEditor(template)}
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -355,6 +394,57 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           slotMaxTime="21:00:00"
         />
       </div>
+      {isTemplateEditorOpen && templateDraft && (
+        <>
+          <div className="modal fade show d-block" tabIndex="-1" role="dialog" aria-modal="true">
+            <div className="modal-dialog modal-dialog-centered" role="document">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Edit Template</h5>
+                  <button type="button" className="btn-close" aria-label="Close" onClick={closeTemplateEditor} />
+                </div>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Template</label>
+                    <input type="text" className="form-control" value={templateDraft.label} disabled />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Category</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={templateDraft.category || ''}
+                      onChange={(event) =>
+                        setTemplateDraft((prev) => ({ ...prev, category: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Color</label>
+                    <input
+                      type="color"
+                      className="form-control form-control-color"
+                      value={templateDraft.color || '#0d6efd'}
+                      onChange={(event) =>
+                        setTemplateDraft((prev) => ({ ...prev, color: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-outline-secondary" onClick={closeTemplateEditor}>
+                    Cancel
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={saveTemplateEditor}>
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" />
+        </>
+      )}
     </div>
   );
 };

@@ -126,6 +126,7 @@
           workDate: entry.workDate|date('Y-m-d'),
           hours: entry.hours,
           comment: entry.comment ?? '',
+          category: entry.category ?? '',
           startTime: entry.startTime ? entry.startTime|date('H:i') : null,
           endTime: entry.endTime ? entry.endTime|date('H:i') : null
         }]) %}
@@ -146,6 +147,24 @@
         </div>
 
         <div class="col-12 col-xl-4">
+          <div class="card shadow-sm mb-3">
+            <div class="card-header fw-semibold">Statistics</div>
+            <div class="card-body">
+              <div class="text-muted small mb-2">Current month: {{ statsMonthLabel }}</div>
+              {% if statsByCategory is empty %}
+                <div class="text-muted">No hours logged this month.</div>
+              {% else %}
+                <ul class="list-unstyled mb-0">
+                  {% for category, total in statsByCategory %}
+                    <li class="d-flex justify-content-between">
+                      <span>{{ category }}</span>
+                      <span class="fw-semibold">{{ total|number_format(2, '.', '') }} h</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </div>
           <div class="card shadow-sm">
             <div class="card-header fw-semibold">Log Hours</div>
             <div class="card-body">
@@ -176,6 +195,10 @@
                     <label class="form-label">Hours</label>
                     <input type="number" step="0.25" min="0" name="hours" class="form-control" />
                     <div class="form-text">If start/end time are set, hours are calculated automatically.</div>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Category</label>
+                    <input type="text" name="category" class="form-control" />
                   </div>
                   <div class="col-12">
                     <label class="form-label">Comment (optional)</label>

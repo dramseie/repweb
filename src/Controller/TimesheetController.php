@@ -24,9 +24,25 @@ class TimesheetController extends AbstractController
             ->getRepository(TimesheetHour::class)
             ->findBy([], ['workDate' => 'DESC', 'createdAt' => 'DESC']);
 
+        $monthStart = (new \DateTimeImmutable('first day of this month'))->setTime(0, 0, 0);
+        $monthEnd = $monthStart->modify('+1 month');
+        $statsByCategory = [];
+        foreach ($hours as $entry) {
+            $workDate = $entry->getWorkDate();
+            $workTimestamp = $workDate->getTimestamp();
+            if ($workTimestamp < $monthStart->getTimestamp() || $workTimestamp >= $monthEnd->getTimestamp()) {
+                continue;
+            }
+            $category = $entry->getCategory() ?: 'Uncategorized';
+            $statsByCategory[$category] = ($statsByCategory[$category] ?? 0.0) + (float) $entry->getHours();
+        }
+        ksort($statsByCategory);
+
         return $this->render('timesheet/index.html.twig', [
             'contracts' => $contracts,
             'hours' => $hours,
+            'statsByCategory' => $statsByCategory,
+            'statsMonthLabel' => $monthStart->format('Y-m'),
             'error' => null,
         ]);
     }
@@ -103,6 +119,7 @@ class TimesheetController extends AbstractController
         $startTimeRaw = trim((string) $request->request->get('startTime', ''));
         $endTimeRaw = trim((string) $request->request->get('endTime', ''));
         $comment = trim((string) $request->request->get('comment', ''));
+        $category = trim((string) $request->request->get('category', ''));
 
         $contract = $contractId > 0 ? $entityManager->find(TimesheetContract::class, $contractId) : null;
         $hoursValue = str_replace(',', '.', $hoursRaw);
@@ -145,6 +162,7 @@ class TimesheetController extends AbstractController
             ->setWorkDate($workDate)
             ->setHours($hoursFormatted)
             ->setComment($comment !== '' ? $comment : null)
+            ->setCategory($category !== '' ? $category : null)
             ->setStartTime($startTime)
             ->setEndTime($endTime)
             ->setUpdatedAt(new \DateTimeImmutable());
@@ -160,6 +178,7 @@ class TimesheetController extends AbstractController
                 'workDate' => $workDate->format('Y-m-d'),
                 'hours' => $entry->getHours(),
                 'comment' => $entry->getComment(),
+                'category' => $entry->getCategory(),
                 'startTime' => $entry->getStartTime()?->format('H:i'),
                 'endTime' => $entry->getEndTime()?->format('H:i'),
             ], Response::HTTP_CREATED);
@@ -180,6 +199,7 @@ class TimesheetController extends AbstractController
         $startTimeRaw = trim((string) $request->request->get('startTime', ''));
         $endTimeRaw = trim((string) $request->request->get('endTime', ''));
         $comment = trim((string) $request->request->get('comment', ''));
+        $category = trim((string) $request->request->get('category', ''));
 
         try {
             $workDate = $workDateRaw !== '' ? new \DateTimeImmutable($workDateRaw) : $entry->getWorkDate();
@@ -206,6 +226,7 @@ class TimesheetController extends AbstractController
                 ->setEndTime($endTime)
                 ->setHours($hoursFormatted)
                 ->setComment($comment !== '' ? $comment : null)
+                ->setCategory($category !== '' ? $category : $entry->getCategory())
                 ->setUpdatedAt(new \DateTimeImmutable());
         }
 
@@ -216,6 +237,7 @@ class TimesheetController extends AbstractController
             'workDate' => $entry->getWorkDate()->format('Y-m-d'),
             'hours' => $entry->getHours(),
             'comment' => $entry->getComment(),
+            'category' => $entry->getCategory(),
             'startTime' => $entry->getStartTime()?->format('H:i'),
             'endTime' => $entry->getEndTime()?->format('H:i'),
         ]);
