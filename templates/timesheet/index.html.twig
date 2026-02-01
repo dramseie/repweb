@@ -686,26 +686,40 @@
           const dayEntries = entriesByDate.get(dateLabel) || [];
           const totalHours = dayEntries.reduce((sum, item) => sum + Number(item.hours || 0), 0);
 
-          const details = dayEntries.length
-            ? dayEntries.map((item) => {
-                const time = item.startTime || item.endTime
-                  ? `${item.startTime || ''}${item.startTime && item.endTime ? ' - ' : ''}${item.endTime || ''}`
-                  : '';
-                const parts = [time, item.category, item.comment].filter(Boolean);
-                return parts.join(' · ');
-              }).join('<br>')
-            : '<span class="text-muted">—</span>';
+          const commentValues = dayEntries
+            .map((item) => (item.comment || '').trim())
+            .filter((value) => value);
+          const uniqueComments = Array.from(new Set(commentValues));
+          const detailsText = uniqueComments.join('; ');
 
           const tr = document.createElement('tr');
           if (isWeekend) {
             tr.classList.add('table-secondary');
           }
-          tr.innerHTML = `
-            <td>${weekday}</td>
-            <td>${dateLabel}</td>
-            <td class="text-end">${totalHours ? `${totalHours.toFixed(2)} h` : '—'}</td>
-            <td>${details}</td>
-          `;
+
+          const weekdayCell = document.createElement('td');
+          weekdayCell.textContent = weekday;
+
+          const dateCell = document.createElement('td');
+          dateCell.textContent = dateLabel;
+
+          const hoursCell = document.createElement('td');
+          hoursCell.className = 'text-end';
+          hoursCell.textContent = totalHours ? `${totalHours.toFixed(2)} h` : '—';
+
+          const detailsCell = document.createElement('td');
+          const detailsInput = document.createElement('textarea');
+          detailsInput.className = 'form-control form-control-sm';
+          detailsInput.rows = 2;
+          detailsInput.value = detailsText;
+          detailsInput.placeholder = 'Add details...';
+          detailsCell.appendChild(detailsInput);
+
+          tr.appendChild(weekdayCell);
+          tr.appendChild(dateCell);
+          tr.appendChild(hoursCell);
+          tr.appendChild(detailsCell);
+
           rowsEl.appendChild(tr);
         }
       };
