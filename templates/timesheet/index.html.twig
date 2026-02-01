@@ -125,7 +125,9 @@
           contractLabel: entry.contract.projectName ~ ' · ' ~ entry.contract.supplier,
           workDate: entry.workDate|date('Y-m-d'),
           hours: entry.hours,
-          comment: entry.comment ?? ''
+          comment: entry.comment ?? '',
+          startTime: entry.startTime ? entry.startTime|date('H:i') : null,
+          endTime: entry.endTime ? entry.endTime|date('H:i') : null
         }]) %}
       {% endfor %}
 
@@ -160,9 +162,18 @@
                     <label class="form-label">Work date</label>
                     <input type="date" name="workDate" class="form-control" required />
                   </div>
+                  <div class="col-12 col-lg-6">
+                    <label class="form-label">Start time</label>
+                    <input type="time" name="startTime" class="form-control" />
+                  </div>
+                  <div class="col-12 col-lg-6">
+                    <label class="form-label">End time</label>
+                    <input type="time" name="endTime" class="form-control" />
+                  </div>
                   <div class="col-12">
                     <label class="form-label">Hours</label>
-                    <input type="number" step="0.25" min="0" name="hours" class="form-control" required />
+                    <input type="number" step="0.25" min="0" name="hours" class="form-control" />
+                    <div class="form-text">If start/end time are set, hours are calculated automatically.</div>
                   </div>
                   <div class="col-12">
                     <label class="form-label">Comment (optional)</label>
@@ -189,6 +200,7 @@
                     <thead class="table-light">
                       <tr>
                         <th>Date</th>
+                        <th>Time</th>
                         <th>Contract</th>
                         <th class="text-end">Hours</th>
                         <th>Comment</th>
@@ -199,6 +211,13 @@
                       {% for entry in hours %}
                         <tr>
                           <td>{{ entry.workDate|date('Y-m-d') }}</td>
+                          <td>
+                            {% if entry.startTime and entry.endTime %}
+                              {{ entry.startTime|date('H:i') }}–{{ entry.endTime|date('H:i') }}
+                            {% else %}
+                              —
+                            {% endif %}
+                          </td>
                           <td>{{ entry.contract.projectName }} · {{ entry.contract.supplier }}</td>
                           <td class="text-end">{{ entry.hours|number_format(2, '.', '') }}</td>
                           <td>{{ entry.comment ?: '—' }}</td>

@@ -21,6 +21,12 @@ class TimesheetHour
     #[ORM\Column(name: 'hours', type: 'decimal', precision: 6, scale: 2)]
     private string $hours = '0.00';
 
+    #[ORM\Column(name: 'start_time', type: 'time_immutable', nullable: true)]
+    private ?\DateTimeInterface $startTime = null;
+
+    #[ORM\Column(name: 'end_time', type: 'time_immutable', nullable: true)]
+    private ?\DateTimeInterface $endTime = null;
+
     #[ORM\Column(name: 'comment', type: 'text', nullable: true)]
     private ?string $comment = null;
 
@@ -72,6 +78,28 @@ class TimesheetHour
     public function setHours(string $hours): self
     {
         $this->hours = $hours;
+        return $this;
+    }
+
+    public function getStartTime(): ?\DateTimeInterface
+    {
+        return $this->startTime;
+    }
+
+    public function setStartTime(?\DateTimeInterface $startTime): self
+    {
+        $this->startTime = $startTime;
+        return $this;
+    }
+
+    public function getEndTime(): ?\DateTimeInterface
+    {
+        return $this->endTime;
+    }
+
+    public function setEndTime(?\DateTimeInterface $endTime): self
+    {
+        $this->endTime = $endTime;
         return $this;
     }
 
