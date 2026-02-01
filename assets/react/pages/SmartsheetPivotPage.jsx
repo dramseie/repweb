@@ -1840,10 +1840,9 @@ const SmartsheetPivotPage = () => {
                               className="form-control form-control-sm"
                               value={commentValue || ''}
                               onChange={(event) => updateOverviewDraft(row.country, { comment: event.target.value })}
-                              placeholder="Add comment"
                             />
                           ) : (
-                            formatDisplayValue(commentValue)
+                            commentValue ? formatDisplayValue(commentValue) : ''
                           )}
                         </td>
                       </tr>

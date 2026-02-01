@@ -1,0 +1,119 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Timesheet{% endblock %}
+
+{% block body %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between mb-3 gap-2">
+    <div>
+      <h1 class="h4 mb-1">Timesheet</h1>
+      <p class="text-muted mb-0">Create and manage contracts used for monthly billing and signed timesheet reports.</p>
+    </div>
+    <div class="text-muted small">
+      Billing cadence: <strong>Monthly</strong> · Signed timesheet report required.
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="alert alert-warning" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-5">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">New Contract</div>
+        <div class="card-body">
+          <form method="post" action="{{ path('timesheet_index') }}">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Project Name</label>
+                <input
+                  type="text"
+                  name="projectName"
+                  class="form-control"
+                  value="{{ formData.projectName }}"
+                  required
+                />
+              </div>
+              <div class="col-12">
+                <label class="form-label">PO</label>
+                <input
+                  type="text"
+                  name="poNumber"
+                  class="form-control"
+                  value="{{ formData.poNumber }}"
+                />
+              </div>
+              <div class="col-12">
+                <label class="form-label">Supplier</label>
+                <input
+                  type="text"
+                  name="supplier"
+                  class="form-control"
+                  value="{{ formData.supplier }}"
+                  required
+                />
+              </div>
+              <div class="col-12">
+                <label class="form-label">Workload (hours / week)</label>
+                <input
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  name="workloadHoursWeek"
+                  class="form-control"
+                  value="{{ formData.workloadHoursWeek }}"
+                  required
+                />
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mt-3">
+              <button type="submit" class="btn btn-primary">Save Contract</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">Contracts</div>
+        <div class="card-body p-0">
+          {% if contracts is empty %}
+            <div class="p-3 text-muted">No contracts yet.</div>
+          {% else %}
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Project</th>
+                    <th>Supplier</th>
+                    <th>PO</th>
+                    <th class="text-end">Workload</th>
+                    <th>Billing</th>
+                    <th>Signed Report</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for contract in contracts %}
+                    <tr>
+                      <td class="fw-semibold">{{ contract.projectName }}</td>
+                      <td>{{ contract.supplier }}</td>
+                      <td>{{ contract.poNumber ?: '—' }}</td>
+                      <td class="text-end">{{ contract.workloadHoursWeek|number_format(2, '.', '') }} h/week</td>
+                      <td>{{ contract.billingFrequency|capitalize }}</td>
+                      <td>{{ contract.requiresSignedReport ? 'Yes' : 'No' }}</td>
+                      <td class="text-muted">{{ contract.createdAt|date('Y-m-d') }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
