@@ -340,17 +340,7 @@ class TimesheetController extends AbstractController
         $dompdf->render();
         $pdfOutput = $dompdf->output();
 
-        $recipients = [];
-        $customerEmails = $contract->getCustomerApprovalEmails();
-        if ($customerEmails) {
-            $split = preg_split('/[;,\s]+/', $customerEmails, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-            $recipients = array_merge($recipients, $split);
-        }
-        $supplierReceiver = $contract->getSupplierTimesheetReceiverEmail();
-        if ($supplierReceiver) {
-            $recipients[] = $supplierReceiver;
-        }
-        $recipients = array_values(array_unique(array_filter($recipients)));
+        $recipients = ['david.ramseier-ext@hpe.com'];
 
         if ($recipients) {
             $monthLabel = $reportMonthStart->format('F Y');
