@@ -270,6 +270,21 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
     <div className="row g-3">
       <div className="col-12 col-lg-3">
         <div className="border rounded p-3 h-100">
+          <label className="form-label">Contract</label>
+          <select
+            className="form-select"
+            value={selectedContractId}
+            onChange={(event) => setSelectedContractId(event.target.value)}
+          >
+            <option value="">Select contract</option>
+            {contracts.map((contract) => (
+              <option key={contract.id} value={contract.id}>
+                {contract.label}
+              </option>
+            ))}
+          </select>
+          <div className="form-text">Drag a template onto the calendar.</div>
+          <hr />
           <div className="fw-semibold mb-2">Templates</div>
           <div ref={listRef} className="d-flex flex-column gap-2">
             {templates.map((template) => {
@@ -295,21 +310,6 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           >
             Drop here to delete
           </div>
-          <hr />
-          <label className="form-label">Contract</label>
-          <select
-            className="form-select"
-            value={selectedContractId}
-            onChange={(event) => setSelectedContractId(event.target.value)}
-          >
-            <option value="">Select contract</option>
-            {contracts.map((contract) => (
-              <option key={contract.id} value={contract.id}>
-                {contract.label}
-              </option>
-            ))}
-          </select>
-          <div className="form-text">Drag a template onto the calendar.</div>
         </div>
       </div>
       <div className="col-12 col-lg-9">
@@ -324,16 +324,19 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           }}
           firstDay={1}
           locale="en-CA"
-          titleFormat={({ start, end, view }) => {
+          titleFormat={(arg) => {
+            const start = arg?.start || arg?.date;
+            const end = arg?.end;
+            const viewType = arg?.view?.type;
             if (!start) return '';
-            if (view.type === 'timeGridDay') {
+            if (viewType === 'timeGridDay') {
               return toYmd(start);
             }
             if (!end) return toYmd(start);
             const endInclusive = new Date(end.getTime() - 24 * 60 * 60 * 1000);
             return `${toYmd(start)} — ${toYmd(endInclusive)}`;
           }}
-          dayHeaderContent={(arg) => toYmd(arg.date)}
+          dayHeaderContent={(arg) => (arg?.date ? toYmd(arg.date) : '')}
           slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           height="auto"
