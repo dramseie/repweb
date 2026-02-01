@@ -131,19 +131,51 @@
         }]) %}
       {% endfor %}
 
-      <div class="card shadow-sm mb-3">
-        <div class="card-header fw-semibold">Calendar</div>
-        <div class="card-body">
-          <div
-            id="timesheet-calendar-root"
-            data-contracts="{{ calendarContracts|json_encode|e('html_attr') }}"
-            data-hours="{{ calendarHours|json_encode|e('html_attr') }}"
-          ></div>
-        </div>
-      </div>
-
       <div class="row g-3">
-        <div class="col-12 col-xl-5">
+        <div class="col-12 col-xl-3">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Contracts</div>
+            <div class="card-body p-0">
+              {% if contracts is empty %}
+                <div class="p-3 text-muted">No contracts yet.</div>
+              {% else %}
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Project</th>
+                        <th>Supplier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for contract in contracts %}
+                        <tr>
+                          <td class="fw-semibold">{{ contract.projectName }}</td>
+                          <td>{{ contract.supplier }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Calendar</div>
+            <div class="card-body">
+              <div
+                id="timesheet-calendar-root"
+                data-contracts="{{ calendarContracts|json_encode|e('html_attr') }}"
+                data-hours="{{ calendarHours|json_encode|e('html_attr') }}"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xl-3">
           <div class="card shadow-sm">
             <div class="card-header fw-semibold">Log Hours</div>
             <div class="card-body">
@@ -184,50 +216,6 @@
                   <button type="submit" class="btn btn-primary">Save Hours</button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-12 col-xl-7">
-          <div class="card shadow-sm">
-            <div class="card-header fw-semibold">Hours Entries</div>
-            <div class="card-body p-0">
-              {% if hours is empty %}
-                <div class="p-3 text-muted">No hours logged yet.</div>
-              {% else %}
-                <div class="table-responsive">
-                  <table class="table table-sm table-striped align-middle mb-0">
-                    <thead class="table-light">
-                      <tr>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Contract</th>
-                        <th class="text-end">Hours</th>
-                        <th>Comment</th>
-                        <th>Created</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for entry in hours %}
-                        <tr>
-                          <td>{{ entry.workDate|date('Y-m-d') }}</td>
-                          <td>
-                            {% if entry.startTime and entry.endTime %}
-                              {{ entry.startTime|date('H:i') }}–{{ entry.endTime|date('H:i') }}
-                            {% else %}
-                              —
-                            {% endif %}
-                          </td>
-                          <td>{{ entry.contract.projectName }} · {{ entry.contract.supplier }}</td>
-                          <td class="text-end">{{ entry.hours|number_format(2, '.', '') }}</td>
-                          <td>{{ entry.comment ?: '—' }}</td>
-                          <td class="text-muted">{{ entry.createdAt|date('Y-m-d') }}</td>
-                        </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              {% endif %}
             </div>
           </div>
         </div>
