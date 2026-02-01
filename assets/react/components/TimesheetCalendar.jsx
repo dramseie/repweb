@@ -80,6 +80,22 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
 
   const listRef = useRef(null);
   const trashRef = useRef(null);
+  const calendarRef = useRef(null);
+
+  useEffect(() => {
+    const api = calendarRef.current?.getApi?.();
+    if (!api) return undefined;
+    let rafId = 0;
+    const refresh = () => {
+      api.updateSize();
+    };
+    rafId = requestAnimationFrame(refresh);
+    const timer = setTimeout(refresh, 150);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!listRef.current) return undefined;
@@ -298,6 +314,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
       </div>
       <div className="col-12 col-lg-9">
         <FullCalendar
+          ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="timeGridWeek"
           headerToolbar={{
@@ -307,8 +324,16 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           }}
           firstDay={1}
           locale="en-CA"
-          titleFormat={{ year: 'numeric', month: '2-digit', day: '2-digit' }}
-          dayHeaderFormat={{ weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit' }}
+          titleFormat={({ start, end, view }) => {
+            if (!start) return '';
+            if (view.type === 'timeGridDay') {
+              return toYmd(start);
+            }
+            if (!end) return toYmd(start);
+            const endInclusive = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+            return `${toYmd(start)} — ${toYmd(endInclusive)}`;
+          }}
+          dayHeaderContent={(arg) => toYmd(arg.date)}
           slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           height="auto"
