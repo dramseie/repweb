@@ -377,14 +377,20 @@ class TimesheetController extends AbstractController
             $isWeekend = in_array((int) $dateObj->format('w'), [0, 6], true);
             $dayEntries = $entriesByDate[$dateKey] ?? [];
             $dayHours = 0.0;
+            $dayCategories = [];
             foreach ($dayEntries as $entry) {
                 $dayHours += (float) $entry->getHours();
+                $category = (string) $entry->getCategory();
+                if ($category !== '' && !in_array($category, $dayCategories, true)) {
+                    $dayCategories[] = $category;
+                }
             }
             $days[] = [
                 'date' => $dateKey,
                 'weekday' => $weekday,
                 'isWeekend' => $isWeekend,
                 'hours' => $dayHours,
+                'categories' => $dayCategories,
                 'details' => $details[$dateKey] ?? '',
             ];
         }

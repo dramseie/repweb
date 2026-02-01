@@ -14,6 +14,9 @@
       th { background: #f3f4f6; text-align: left; }
       .text-right { text-align: right; }
       .weekend { background: #f1f5f9; }
+        .category-cell { text-align: center; white-space: nowrap; }
+        .category-icon { width: 12px; height: 12px; vertical-align: text-bottom; margin-right: 3px; fill: currentColor; }
+        .category-label { font-size: 9px; color: #475569; }
       .signature { margin-top: 20px; }
       .signature-line { margin-top: 12px; border-top: 1px solid #9ca3af; width: 200px; }
     </style>
@@ -34,6 +37,7 @@
           <th style="width: 12%">Weekday</th>
           <th style="width: 18%">Date</th>
           <th class="text-right" style="width: 12%">Hours</th>
+          <th style="width: 8%">Cat.</th>
           <th>Details</th>
         </tr>
       </thead>
@@ -44,6 +48,28 @@
             <td>{{ day.date }}</td>
             <td class="text-right">
               {{ day.hours > 0 ? day.hours|number_format(2, '.', '') ~ ' h' : '—' }}
+            </td>
+            <td class="category-cell">
+              {% set categories = day.categories ?? [] %}
+              {% if categories is empty %}
+                —
+              {% else %}
+                {% for category in categories %}
+                  {% if category == 'RemoteOffice' %}
+                    <svg class="category-icon" viewBox="0 0 16 16" aria-label="Remote office" role="img">
+                      <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5V11H1z" />
+                      <path d="M0 12.5A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V12H0z" />
+                    </svg>
+                  {% elseif category == 'OnSite' %}
+                    <svg class="category-icon" viewBox="0 0 16 16" aria-label="On-site" role="img">
+                      <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10" />
+                      <path d="M8 8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5" />
+                    </svg>
+                  {% else %}
+                    <span class="category-label">{{ category }}</span>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
             </td>
             <td>{{ day.details ?: '—' }}</td>
           </tr>
