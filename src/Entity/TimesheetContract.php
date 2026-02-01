@@ -23,6 +23,24 @@ class TimesheetContract
     #[ORM\Column(name: 'workload_hours_week', type: 'decimal', precision: 6, scale: 2)]
     private string $workloadHoursWeek = '0.00';
 
+    #[ORM\Column(name: 'from_date', type: 'date_immutable', nullable: true)]
+    private ?\DateTimeInterface $fromDate = null;
+
+    #[ORM\Column(name: 'to_date', type: 'date_immutable', nullable: true)]
+    private ?\DateTimeInterface $toDate = null;
+
+    #[ORM\Column(name: 'total_hours', type: 'decimal', precision: 8, scale: 2, nullable: true)]
+    private ?string $totalHours = null;
+
+    #[ORM\Column(name: 'customer_approval_emails', type: 'text', nullable: true)]
+    private ?string $customerApprovalEmails = null;
+
+    #[ORM\Column(name: 'supplier_timesheet_receiver_email', type: 'string', length: 190, nullable: true)]
+    private ?string $supplierTimesheetReceiverEmail = null;
+
+    #[ORM\Column(name: 'contract_pdf_path', type: 'string', length: 255, nullable: true)]
+    private ?string $contractPdfPath = null;
+
     #[ORM\Column(name: 'billing_frequency', type: 'string', length: 32)]
     private string $billingFrequency = 'monthly';
 
@@ -88,6 +106,72 @@ class TimesheetContract
     public function setWorkloadHoursWeek(string $workloadHoursWeek): self
     {
         $this->workloadHoursWeek = $workloadHoursWeek;
+        return $this;
+    }
+
+    public function getFromDate(): ?\DateTimeInterface
+    {
+        return $this->fromDate;
+    }
+
+    public function setFromDate(?\DateTimeInterface $fromDate): self
+    {
+        $this->fromDate = $fromDate;
+        return $this;
+    }
+
+    public function getToDate(): ?\DateTimeInterface
+    {
+        return $this->toDate;
+    }
+
+    public function setToDate(?\DateTimeInterface $toDate): self
+    {
+        $this->toDate = $toDate;
+        return $this;
+    }
+
+    public function getTotalHours(): ?string
+    {
+        return $this->totalHours;
+    }
+
+    public function setTotalHours(?string $totalHours): self
+    {
+        $this->totalHours = $totalHours;
+        return $this;
+    }
+
+    public function getCustomerApprovalEmails(): ?string
+    {
+        return $this->customerApprovalEmails;
+    }
+
+    public function setCustomerApprovalEmails(?string $customerApprovalEmails): self
+    {
+        $this->customerApprovalEmails = $customerApprovalEmails;
+        return $this;
+    }
+
+    public function getSupplierTimesheetReceiverEmail(): ?string
+    {
+        return $this->supplierTimesheetReceiverEmail;
+    }
+
+    public function setSupplierTimesheetReceiverEmail(?string $supplierTimesheetReceiverEmail): self
+    {
+        $this->supplierTimesheetReceiverEmail = $supplierTimesheetReceiverEmail;
+        return $this;
+    }
+
+    public function getContractPdfPath(): ?string
+    {
+        return $this->contractPdfPath;
+    }
+
+    public function setContractPdfPath(?string $contractPdfPath): self
+    {
+        $this->contractPdfPath = $contractPdfPath;
         return $this;
     }
 

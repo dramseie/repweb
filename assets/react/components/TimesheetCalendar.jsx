@@ -102,6 +102,27 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
     closeTemplateEditor();
   };
 
+  const createTemplate = () => {
+    const newTemplate = {
+      id: `template-${Date.now()}`,
+      label: 'New Template',
+      category: 'RemoteOffice',
+      ranges: [
+        ['08:45', '12:00'],
+        ['12:45', '18:00'],
+      ],
+      color: '#6c757d',
+    };
+    setTemplates((prev) => [...prev, newTemplate]);
+    openTemplateEditor(newTemplate);
+  };
+
+  const deleteTemplate = () => {
+    if (!templateDraft?.id) return;
+    setTemplates((prev) => prev.filter((template) => template.id !== templateDraft.id));
+    closeTemplateEditor();
+  };
+
   const [selectedContractId, setSelectedContractId] = useState(
     contracts?.[0]?.id ? String(contracts[0].id) : ''
   );
@@ -440,7 +461,12 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           </select>
           <div className="form-text">Drag a template onto the calendar.</div>
           <hr />
-          <div className="fw-semibold mb-2">Templates</div>
+          <div className="d-flex justify-content-between align-items-center mb-2">
+            <div className="fw-semibold">Templates</div>
+            <button type="button" className="btn btn-sm btn-outline-primary" onClick={createTemplate}>
+              +
+            </button>
+          </div>
           <div ref={listRef} className="d-flex flex-column gap-2">
             {templates.map((template) => {
               const hoursValue = template.allDay ? template.hours || '8.50' : sumHours(template.ranges);
@@ -563,6 +589,9 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
                   </div>
                 </div>
                 <div className="modal-footer">
+                  <button type="button" className="btn btn-outline-danger me-auto" onClick={deleteTemplate}>
+                    Delete
+                  </button>
                   <button type="button" className="btn btn-outline-secondary" onClick={closeTemplateEditor}>
                     Cancel
                   </button>

@@ -6,6 +6,8 @@ use App\Entity\TimesheetContract;
 use App\Entity\TimesheetHour;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\Exception\FileException;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -64,23 +66,52 @@ class TimesheetController extends AbstractController
         $poNumber = trim((string) $request->request->get('poNumber', ''));
         $supplier = trim((string) $request->request->get('supplier', ''));
         $workloadHoursWeek = trim((string) $request->request->get('workloadHoursWeek', ''));
+        $fromDateRaw = trim((string) $request->request->get('fromDate', ''));
+        $toDateRaw = trim((string) $request->request->get('toDate', ''));
+        $totalHoursRaw = trim((string) $request->request->get('totalHours', ''));
+        $customerApprovalEmails = trim((string) $request->request->get('customerApprovalEmails', ''));
+        $supplierTimesheetReceiverEmail = trim((string) $request->request->get('supplierTimesheetReceiverEmail', ''));
 
         $workloadValue = str_replace(',', '.', $workloadHoursWeek);
+        $totalHoursValue = str_replace(',', '.', $totalHoursRaw);
 
         if ($projectName === '' || $supplier === '' || $workloadValue === '' || !is_numeric($workloadValue)) {
             return $this->redirectToRoute('timesheet_index');
         }
 
         $workloadFormatted = number_format((float) $workloadValue, 2, '.', '');
+        $totalHoursFormatted = $totalHoursValue !== '' && is_numeric($totalHoursValue)
+            ? number_format((float) $totalHoursValue, 2, '.', '')
+            : null;
+        try {
+            $fromDate = $fromDateRaw !== '' ? new \DateTimeImmutable($fromDateRaw) : null;
+            $toDate = $toDateRaw !== '' ? new \DateTimeImmutable($toDateRaw) : null;
+        } catch (\Throwable) {
+            return $this->redirectToRoute('timesheet_index');
+        }
         $contract = new TimesheetContract();
         $contract
             ->setProjectName($projectName)
             ->setPoNumber($poNumber !== '' ? $poNumber : null)
             ->setSupplier($supplier)
             ->setWorkloadHoursWeek($workloadFormatted)
+            ->setFromDate($fromDate)
+            ->setToDate($toDate)
+            ->setTotalHours($totalHoursFormatted)
+            ->setCustomerApprovalEmails($customerApprovalEmails !== '' ? $customerApprovalEmails : null)
+            ->setSupplierTimesheetReceiverEmail($supplierTimesheetReceiverEmail !== '' ? $supplierTimesheetReceiverEmail : null)
             ->setBillingFrequency('monthly')
             ->setRequiresSignedReport(true)
             ->setUpdatedAt(new \DateTimeImmutable());
+
+        $file = $request->files->get('contractPdf');
+        if ($file instanceof UploadedFile) {
+            $storedPath = $this->storeContractPdf($file);
+            if ($storedPath === null) {
+                return $this->redirectToRoute('timesheet_index');
+            }
+            $contract->setContractPdfPath($storedPath);
+        }
 
         $entityManager->persist($contract);
         $entityManager->flush();
@@ -100,24 +131,101 @@ class TimesheetController extends AbstractController
         $poNumber = trim((string) $request->request->get('poNumber', ''));
         $supplier = trim((string) $request->request->get('supplier', ''));
         $workloadHoursWeek = trim((string) $request->request->get('workloadHoursWeek', ''));
+        $fromDateRaw = trim((string) $request->request->get('fromDate', ''));
+        $toDateRaw = trim((string) $request->request->get('toDate', ''));
+        $totalHoursRaw = trim((string) $request->request->get('totalHours', ''));
+        $customerApprovalEmails = trim((string) $request->request->get('customerApprovalEmails', ''));
+        $supplierTimesheetReceiverEmail = trim((string) $request->request->get('supplierTimesheetReceiverEmail', ''));
 
         $workloadValue = str_replace(',', '.', $workloadHoursWeek);
+        $totalHoursValue = str_replace(',', '.', $totalHoursRaw);
 
         if ($projectName === '' || $supplier === '' || $workloadValue === '' || !is_numeric($workloadValue)) {
             return $this->redirectToRoute('timesheet_index');
         }
 
         $workloadFormatted = number_format((float) $workloadValue, 2, '.', '');
+        $totalHoursFormatted = $totalHoursValue !== '' && is_numeric($totalHoursValue)
+            ? number_format((float) $totalHoursValue, 2, '.', '')
+            : null;
+        try {
+            $fromDate = $fromDateRaw !== '' ? new \DateTimeImmutable($fromDateRaw) : null;
+            $toDate = $toDateRaw !== '' ? new \DateTimeImmutable($toDateRaw) : null;
+        } catch (\Throwable) {
+            return $this->redirectToRoute('timesheet_index');
+        }
         $contract
             ->setProjectName($projectName)
             ->setPoNumber($poNumber !== '' ? $poNumber : null)
             ->setSupplier($supplier)
             ->setWorkloadHoursWeek($workloadFormatted)
+            ->setFromDate($fromDate)
+            ->setToDate($toDate)
+            ->setTotalHours($totalHoursFormatted)
+            ->setCustomerApprovalEmails($customerApprovalEmails !== '' ? $customerApprovalEmails : null)
+            ->setSupplierTimesheetReceiverEmail($supplierTimesheetReceiverEmail !== '' ? $supplierTimesheetReceiverEmail : null)
             ->setUpdatedAt(new \DateTimeImmutable());
+
+        $file = $request->files->get('contractPdf');
+        if ($file instanceof UploadedFile) {
+            $storedPath = $this->storeContractPdf($file);
+            if ($storedPath === null) {
+                return $this->redirectToRoute('timesheet_index');
+            }
+            $this->removeContractPdf($contract->getContractPdfPath());
+            $contract->setContractPdfPath($storedPath);
+        }
 
         $entityManager->flush();
 
         return $this->redirectToRoute('timesheet_index');
+    }
+
+    private function storeContractPdf(UploadedFile $file): ?string
+    {
+        if (!$file->isValid()) {
+            return null;
+        }
+
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        $mime = $file->getClientMimeType() ?: $file->getMimeType() ?: '';
+        if ($extension !== 'pdf' && $mime !== 'application/pdf') {
+            return null;
+        }
+
+        $projectDir = (string) $this->getParameter('kernel.project_dir');
+        $relativeDir = 'uploads/timesheet_contracts';
+        $targetDir = $projectDir . '/public/' . $relativeDir;
+        if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            return null;
+        }
+
+        try {
+            $storedName = sprintf('contract-%s.pdf', bin2hex(random_bytes(8)));
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $relativePath = $relativeDir . '/' . $storedName;
+        try {
+            $file->move($targetDir, $storedName);
+        } catch (FileException) {
+            return null;
+        }
+
+        return $relativePath;
+    }
+
+    private function removeContractPdf(?string $relativePath): void
+    {
+        if (!$relativePath) {
+            return;
+        }
+        $projectDir = (string) $this->getParameter('kernel.project_dir');
+        $absolutePath = $projectDir . '/public/' . ltrim($relativePath, '/');
+        if (is_file($absolutePath)) {
+            @unlink($absolutePath);
+        }
     }
 
     #[Route('/timesheet/hours', name: 'timesheet_hours_create', methods: ['POST'])]

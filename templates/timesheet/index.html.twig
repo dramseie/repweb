@@ -66,6 +66,12 @@
                     <th>Project</th>
                     <th>Supplier</th>
                     <th>PO</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th class="text-end">Total Hours</th>
+                    <th>Customer Approval Emails</th>
+                    <th>Supplier Timesheet Receiver</th>
+                    <th>Contract PDF</th>
                     <th class="text-end">Workload</th>
                     <th>Billing</th>
                     <th>Signed Report</th>
@@ -79,6 +85,18 @@
                       <td class="fw-semibold">{{ contract.projectName }}</td>
                       <td>{{ contract.supplier }}</td>
                       <td>{{ contract.poNumber ?: '—' }}</td>
+                      <td>{{ contract.fromDate ? contract.fromDate|date('Y-m-d') : '—' }}</td>
+                      <td>{{ contract.toDate ? contract.toDate|date('Y-m-d') : '—' }}</td>
+                      <td class="text-end">{{ contract.totalHours ? contract.totalHours|number_format(2, '.', '') ~ ' h' : '—' }}</td>
+                      <td class="text-muted small">{{ contract.customerApprovalEmails ?: '—' }}</td>
+                      <td class="text-muted small">{{ contract.supplierTimesheetReceiverEmail ?: '—' }}</td>
+                      <td>
+                        {% if contract.contractPdfPath %}
+                          <a href="/{{ contract.contractPdfPath }}" target="_blank" rel="noreferrer">View</a>
+                        {% else %}
+                          —
+                        {% endif %}
+                      </td>
                       <td class="text-end">{{ contract.workloadHoursWeek|number_format(2, '.', '') }} h/week</td>
                       <td>{{ contract.billingFrequency|capitalize }}</td>
                       <td>{{ contract.requiresSignedReport ? 'Yes' : 'No' }}</td>
@@ -95,6 +113,12 @@
                           data-po-number="{{ contract.poNumber|default('')|e('html_attr') }}"
                           data-supplier="{{ contract.supplier|e('html_attr') }}"
                           data-workload="{{ contract.workloadHoursWeek|number_format(2, '.', '') }}"
+                          data-from-date="{{ contract.fromDate ? contract.fromDate|date('Y-m-d') : '' }}"
+                          data-to-date="{{ contract.toDate ? contract.toDate|date('Y-m-d') : '' }}"
+                          data-total-hours="{{ contract.totalHours ? contract.totalHours|number_format(2, '.', '') : '' }}"
+                          data-customer-approval-emails="{{ contract.customerApprovalEmails|default('')|e('html_attr') }}"
+                          data-supplier-receiver-email="{{ contract.supplierTimesheetReceiverEmail|default('')|e('html_attr') }}"
+                          data-contract-pdf="{{ contract.contractPdfPath|default('')|e('html_attr') }}"
                         >
                           Edit
                         </button>
@@ -250,7 +274,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form method="post" id="contractModalForm" action="{{ path('timesheet_contract_create') }}">
+        <form method="post" id="contractModalForm" action="{{ path('timesheet_contract_create') }}" enctype="multipart/form-data">
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label">Project Name</label>
@@ -267,6 +291,34 @@
             <div class="col-12">
               <label class="form-label">Workload (hours / week)</label>
               <input type="number" step="0.25" min="0" name="workloadHoursWeek" class="form-control" required />
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label">From Date</label>
+              <input type="date" name="fromDate" class="form-control" />
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label">To Date</label>
+              <input type="date" name="toDate" class="form-control" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Total Hours</label>
+              <input type="number" step="0.25" min="0" name="totalHours" class="form-control" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Customer Approval Emails</label>
+              <textarea name="customerApprovalEmails" class="form-control" rows="2" placeholder="email1@company.com, email2@company.com"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Supplier Timesheet Receiver Email</label>
+              <input type="email" name="supplierTimesheetReceiverEmail" class="form-control" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Contract PDF</label>
+              <div id="contractPdfDropzone" class="border rounded p-3 text-center bg-light" style="cursor: pointer;">
+                <input type="file" name="contractPdf" id="contractPdfInput" class="d-none" accept="application/pdf" />
+                <div id="contractPdfHint" class="text-muted small">Drag &amp; drop PDF here or click to browse.</div>
+                <a id="contractPdfLink" href="#" target="_blank" rel="noreferrer" class="d-none">View current PDF</a>
+              </div>
             </div>
           </div>
           <div class="d-flex justify-content-end mt-3">
@@ -286,6 +338,51 @@
     const inputPo = form.querySelector('input[name="poNumber"]');
     const inputSupplier = form.querySelector('input[name="supplier"]');
     const inputWorkload = form.querySelector('input[name="workloadHoursWeek"]');
+    const inputFromDate = form.querySelector('input[name="fromDate"]');
+    const inputToDate = form.querySelector('input[name="toDate"]');
+    const inputTotalHours = form.querySelector('input[name="totalHours"]');
+    const inputCustomerEmails = form.querySelector('textarea[name="customerApprovalEmails"]');
+    const inputSupplierReceiver = form.querySelector('input[name="supplierTimesheetReceiverEmail"]');
+    const pdfInput = document.getElementById('contractPdfInput');
+    const pdfDropzone = document.getElementById('contractPdfDropzone');
+    const pdfLink = document.getElementById('contractPdfLink');
+    const pdfHint = document.getElementById('contractPdfHint');
+
+    const setPdfLink = (path) => {
+      if (!pdfLink || !pdfHint) return;
+      if (path) {
+        const href = path.startsWith('/') ? path : `/${path}`;
+        pdfLink.href = href;
+        pdfLink.classList.remove('d-none');
+        pdfHint.classList.add('d-none');
+      } else {
+        pdfLink.href = '#';
+        pdfLink.classList.add('d-none');
+        pdfHint.classList.remove('d-none');
+      }
+    };
+
+    if (pdfDropzone && pdfInput) {
+      pdfDropzone.addEventListener('click', () => pdfInput.click());
+      ['dragenter', 'dragover'].forEach((evt) => {
+        pdfDropzone.addEventListener(evt, (event) => {
+          event.preventDefault();
+          pdfDropzone.classList.add('border-primary');
+        });
+      });
+      ['dragleave', 'drop'].forEach((evt) => {
+        pdfDropzone.addEventListener(evt, (event) => {
+          event.preventDefault();
+          pdfDropzone.classList.remove('border-primary');
+        });
+      });
+      pdfDropzone.addEventListener('drop', (event) => {
+        const files = event.dataTransfer?.files;
+        if (files && files.length > 0) {
+          pdfInput.files = files;
+        }
+      });
+    }
 
     document.querySelectorAll('[data-contract-edit]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -295,6 +392,13 @@
         inputPo.value = button.getAttribute('data-po-number') || '';
         inputSupplier.value = button.getAttribute('data-supplier') || '';
         inputWorkload.value = button.getAttribute('data-workload') || '';
+        inputFromDate.value = button.getAttribute('data-from-date') || '';
+        inputToDate.value = button.getAttribute('data-to-date') || '';
+        inputTotalHours.value = button.getAttribute('data-total-hours') || '';
+        inputCustomerEmails.value = button.getAttribute('data-customer-approval-emails') || '';
+        inputSupplierReceiver.value = button.getAttribute('data-supplier-receiver-email') || '';
+        if (pdfInput) pdfInput.value = '';
+        setPdfLink(button.getAttribute('data-contract-pdf') || '');
       });
     });
 
@@ -306,6 +410,13 @@
         inputPo.value = '';
         inputSupplier.value = '';
         inputWorkload.value = '';
+        inputFromDate.value = '';
+        inputToDate.value = '';
+        inputTotalHours.value = '';
+        inputCustomerEmails.value = '';
+        inputSupplierReceiver.value = '';
+        if (pdfInput) pdfInput.value = '';
+        setPdfLink('');
       });
     });
   });
