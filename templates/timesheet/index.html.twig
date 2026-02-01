@@ -36,6 +36,11 @@
         Hours
       </button>
     </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="report-tab" data-bs-toggle="tab" data-bs-target="#report-pane" type="button" role="tab" aria-controls="report-pane" aria-selected="false">
+        Report
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content pt-3" id="timesheetTabContent">
@@ -254,6 +259,84 @@
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="report-pane" role="tabpanel" aria-labelledby="report-tab" tabindex="0">
+      <div class="row g-3">
+        <div class="col-12 col-xl-4">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Monthly report</div>
+            <div class="card-body">
+              <form method="get" class="d-flex flex-column gap-2">
+                <div>
+                  <label class="form-label small mb-1">Month</label>
+                  <input
+                    type="month"
+                    name="reportMonth"
+                    class="form-control form-control-sm"
+                    value="{{ reportMonthLabel }}"
+                  />
+                </div>
+                <div>
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
+                </div>
+              </form>
+              <div class="text-muted small">Billable = RemoteOffice + OnSite · Reportable = all categories</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-xl-8">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Approval</div>
+            <div class="card-body p-0">
+              {% if contracts is empty %}
+                <div class="p-3 text-muted">No contracts yet.</div>
+              {% else %}
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Contract</th>
+                        <th class="text-end">Reportable</th>
+                        <th class="text-end">Billable</th>
+                        <th>Approved</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for contract in contracts %}
+                        {% set totals = reportTotals[contract.id] ?? { reportable: 0, billable: 0 } %}
+                        {% set approval = reportApprovals[contract.id] ?? null %}
+                        <tr>
+                          <td class="fw-semibold">{{ contract.projectName }} · {{ contract.supplier }}</td>
+                          <td class="text-end">{{ totals.reportable|number_format(2, '.', '') }} h</td>
+                          <td class="text-end">{{ totals.billable|number_format(2, '.', '') }} h</td>
+                          <td class="text-muted small">
+                            {% if approval %}
+                              {{ approval.approvedAt|date('Y-m-d H:i') }}{% if approval.approvedBy %} · {{ approval.approvedBy }}{% endif %}
+                            {% else %}
+                              —
+                            {% endif %}
+                          </td>
+                          <td class="text-end">
+                            <form method="post" action="{{ path('timesheet_report_approve') }}">
+                              <input type="hidden" name="contractId" value="{{ contract.id }}" />
+                              <input type="hidden" name="reportMonth" value="{{ reportMonthLabel }}" />
+                              <button type="submit" class="btn btn-sm btn-outline-primary">
+                                {{ approval ? 'Re-approve' : 'Approve' }}
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% endif %}
             </div>
           </div>
         </div>

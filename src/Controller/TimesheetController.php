@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\TimesheetContract;
+use App\Entity\TimesheetContractApproval;
 use App\Entity\TimesheetHour;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -42,6 +43,31 @@ class TimesheetController extends AbstractController
         $monthlyReportable = [];
         $monthlyBillable = [];
         $billableCategories = ['RemoteOffice', 'OnSite'];
+
+        $reportMonthRaw = trim((string) $request->query->get('reportMonth', ''));
+        $reportMonthStart = null;
+        if ($reportMonthRaw !== '') {
+            $parsedReportMonth = \DateTimeImmutable::createFromFormat('Y-m', $reportMonthRaw);
+            if ($parsedReportMonth instanceof \DateTimeImmutable) {
+                $reportMonthStart = $parsedReportMonth->setDate(
+                    (int) $parsedReportMonth->format('Y'),
+                    (int) $parsedReportMonth->format('m'),
+                    1
+                )->setTime(0, 0, 0);
+            }
+        }
+        if (!$reportMonthStart) {
+            $reportMonthStart = (new \DateTimeImmutable('first day of this month'))->setTime(0, 0, 0);
+        }
+        $reportMonthEnd = $reportMonthStart->modify('+1 month');
+        $reportMonthLabel = $reportMonthStart->format('Y-m');
+        $reportTotals = [];
+        foreach ($contracts as $contract) {
+            $reportTotals[$contract->getId()] = [
+                'reportable' => 0.0,
+                'billable' => 0.0,
+            ];
+        }
         foreach ($hours as $entry) {
             $workDate = $entry->getWorkDate();
             $workTimestamp = $workDate->getTimestamp();
@@ -50,6 +76,19 @@ class TimesheetController extends AbstractController
             $monthlyReportable[$monthKey] = ($monthlyReportable[$monthKey] ?? 0.0) + (float) $entry->getHours();
             if (in_array($category, $billableCategories, true)) {
                 $monthlyBillable[$monthKey] = ($monthlyBillable[$monthKey] ?? 0.0) + (float) $entry->getHours();
+            }
+            if ($workTimestamp >= $reportMonthStart->getTimestamp() && $workTimestamp < $reportMonthEnd->getTimestamp()) {
+                $contract = $entry->getContract();
+                if ($contract) {
+                    $contractId = $contract->getId();
+                    if (!isset($reportTotals[$contractId])) {
+                        $reportTotals[$contractId] = ['reportable' => 0.0, 'billable' => 0.0];
+                    }
+                    $reportTotals[$contractId]['reportable'] += (float) $entry->getHours();
+                    if (in_array($category, $billableCategories, true)) {
+                        $reportTotals[$contractId]['billable'] += (float) $entry->getHours();
+                    }
+                }
             }
             if ($workTimestamp < $monthStart->getTimestamp() || $workTimestamp >= $monthEnd->getTimestamp()) {
                 continue;
@@ -69,16 +108,71 @@ class TimesheetController extends AbstractController
             $monthlyBillableData[] = number_format((float) ($monthlyBillable[$label] ?? 0.0), 2, '.', '');
         }
 
+        $reportApprovals = [];
+        $approvalRows = $entityManager
+            ->getRepository(TimesheetContractApproval::class)
+            ->findBy(['reportMonth' => $reportMonthLabel]);
+        foreach ($approvalRows as $approval) {
+            $contract = $approval->getContract();
+            if ($contract) {
+                $reportApprovals[$contract->getId()] = $approval;
+            }
+        }
+
         return $this->render('timesheet/index.html.twig', [
             'contracts' => $contracts,
             'hours' => $hours,
             'statsByCategory' => $statsByCategory,
             'statsMonthLabel' => $monthStart->format('Y-m'),
+            'reportMonthLabel' => $reportMonthLabel,
+            'reportTotals' => $reportTotals,
+            'reportApprovals' => $reportApprovals,
             'statsMonthlyLabels' => $monthlyLabels,
             'statsMonthlyReportable' => $monthlyReportableData,
             'statsMonthlyBillable' => $monthlyBillableData,
             'error' => null,
         ]);
+    }
+
+    #[Route('/timesheet/report/approve', name: 'timesheet_report_approve', methods: ['POST'])]
+    public function approveReport(Request $request, EntityManagerInterface $entityManager): Response
+    {
+        $contractId = (int) $request->request->get('contractId', 0);
+        $reportMonth = trim((string) $request->request->get('reportMonth', ''));
+        if ($contractId <= 0 || $reportMonth === '') {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $contract = $entityManager->find(TimesheetContract::class, $contractId);
+        if (!$contract) {
+            return $this->redirectToRoute('timesheet_index');
+        }
+
+        $approval = $entityManager
+            ->getRepository(TimesheetContractApproval::class)
+            ->findOneBy(['contract' => $contract, 'reportMonth' => $reportMonth]);
+
+        if (!$approval) {
+            $approval = new TimesheetContractApproval();
+            $approval->setContract($contract)->setReportMonth($reportMonth);
+        }
+
+        $user = $this->getUser();
+        $approvedBy = null;
+        if ($user && method_exists($user, 'getUserIdentifier')) {
+            $approvedBy = (string) $user->getUserIdentifier();
+        } elseif ($user && method_exists($user, 'getUsername')) {
+            $approvedBy = (string) $user->getUsername();
+        }
+
+        $approval
+            ->setApprovedAt(new \DateTimeImmutable())
+            ->setApprovedBy($approvedBy !== '' ? $approvedBy : null);
+
+        $entityManager->persist($approval);
+        $entityManager->flush();
+
+        return $this->redirectToRoute('timesheet_index', ['reportMonth' => $reportMonth]);
     }
 
     #[Route('/timesheet/contract', name: 'timesheet_contract_create', methods: ['POST'])]
