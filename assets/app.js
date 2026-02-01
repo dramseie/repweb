@@ -167,6 +167,7 @@ import './styles/widget-zoom.css';
 // Service Catalog
 import ServiceCatalogApp from './react/ServiceCatalogApp.jsx';
 import SmartsheetPivotPage from './react/pages/SmartsheetPivotPage.jsx';
+import TimesheetCalendar from './react/components/TimesheetCalendar.jsx';
 
 // POS apps
 import PosApp from './react/components/PosApp.jsx';
@@ -413,6 +414,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const smartsheetPivotRoot = document.getElementById('smartsheet-pivot-root');
   if (smartsheetPivotRoot) {
     createRoot(smartsheetPivotRoot).render(<SmartsheetPivotPage />);
+  }
+
+  const timesheetCalendarRoot = document.getElementById('timesheet-calendar-root');
+  if (timesheetCalendarRoot) {
+    const contracts = JSON.parse(timesheetCalendarRoot.dataset.contracts || '[]');
+    const hours = JSON.parse(timesheetCalendarRoot.dataset.hours || '[]');
+    createRoot(timesheetCalendarRoot).render(
+      <TimesheetCalendar contracts={contracts} initialHours={hours} />
+    );
   }
 
   // Rest API Explorer

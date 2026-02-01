@@ -2,6 +2,13 @@
 
 {% block title %}Timesheet{% endblock %}
 
+{% block stylesheets %}
+  {{ parent() }}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.19/index.global.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.19/index.global.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.19/index.global.min.css">
+{% endblock %}
+
 {% block body %}
 <div class="container-fluid py-3">
   <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between mb-3 gap-2">
@@ -103,6 +110,36 @@
     </div>
 
     <div class="tab-pane fade" id="hours-pane" role="tabpanel" aria-labelledby="hours-tab" tabindex="0">
+      {% set calendarContracts = [] %}
+      {% for contract in contracts %}
+        {% set calendarContracts = calendarContracts|merge([{
+          id: contract.id,
+          label: contract.projectName ~ ' · ' ~ contract.supplier
+        }]) %}
+      {% endfor %}
+      {% set calendarHours = [] %}
+      {% for entry in hours %}
+        {% set calendarHours = calendarHours|merge([{
+          id: entry.id,
+          contractId: entry.contract.id,
+          contractLabel: entry.contract.projectName ~ ' · ' ~ entry.contract.supplier,
+          workDate: entry.workDate|date('Y-m-d'),
+          hours: entry.hours,
+          comment: entry.comment ?? ''
+        }]) %}
+      {% endfor %}
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header fw-semibold">Calendar</div>
+        <div class="card-body">
+          <div
+            id="timesheet-calendar-root"
+            data-contracts="{{ calendarContracts|json_encode|e('html_attr') }}"
+            data-hours="{{ calendarHours|json_encode|e('html_attr') }}"
+          ></div>
+        </div>
+      </div>
+
       <div class="row g-3">
         <div class="col-12 col-xl-5">
           <div class="card shadow-sm">
