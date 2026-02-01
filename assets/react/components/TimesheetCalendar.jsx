@@ -96,6 +96,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           contractLabel: entry.contractLabel,
           hours: entry.hours,
           comment: entry.comment || '',
+          category: entry.category || '',
         },
       };
     })
@@ -293,6 +294,55 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
     }
   };
 
+  const handleEventClick = (info) => {
+    const event = info?.event;
+    if (!event) return;
+
+    const form = document.getElementById('timesheet-hours-form');
+    if (!form) return;
+
+    const contractId = event.extendedProps?.contractId ? String(event.extendedProps.contractId) : '';
+    const workDate = event.start ? toYmd(event.start) : '';
+    const startTime = event.start
+      ? `${String(event.start.getHours()).padStart(2, '0')}:${String(event.start.getMinutes()).padStart(2, '0')}`
+      : '';
+    const endTime = event.end
+      ? `${String(event.end.getHours()).padStart(2, '0')}:${String(event.end.getMinutes()).padStart(2, '0')}`
+      : '';
+
+    const setValue = (name, value) => {
+      const field = form.querySelector(`[name="${name}"]`);
+      if (field) field.value = value ?? '';
+    };
+
+    setValue('contractId', contractId);
+    setValue('workDate', workDate);
+    setValue('startTime', event.allDay ? '' : startTime);
+    setValue('endTime', event.allDay ? '' : endTime);
+    setValue('hours', event.extendedProps?.hours || '');
+    setValue('category', event.extendedProps?.category || '');
+    setValue('comment', event.extendedProps?.comment || '');
+    setValue('entryId', event.id || '');
+
+    if (contractId) {
+      setSelectedContractId(contractId);
+    }
+
+    const updateBase = form.getAttribute('data-update-base') || '';
+    const createAction = form.getAttribute('data-create-action') || form.getAttribute('action') || '';
+    if (event.id && updateBase) {
+      form.setAttribute('action', `${updateBase}/${encodeURIComponent(event.id)}`);
+    } else if (createAction) {
+      form.setAttribute('action', createAction);
+    }
+
+    const submitButton = document.getElementById('timesheet-hours-submit');
+    if (submitButton) {
+      const editLabel = submitButton.getAttribute('data-edit-label') || 'Update Hours';
+      submitButton.textContent = editLabel;
+    }
+  };
+
   return (
     <div className="row g-3">
       <div className="col-12 col-lg-3">
@@ -389,6 +439,7 @@ const TimesheetCalendar = ({ contracts, initialHours }) => {
           eventDrop={(info) => handleEventChange(info.event)}
           eventResize={(info) => handleEventChange(info.event)}
           eventDragStop={handleEventDragStop}
+          eventClick={handleEventClick}
           events={events}
           slotMinTime="06:00:00"
           slotMaxTime="21:00:00"

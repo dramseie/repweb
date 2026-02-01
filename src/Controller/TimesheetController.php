@@ -14,7 +14,7 @@ use Symfony\Component\Routing\Annotation\Route;
 class TimesheetController extends AbstractController
 {
     #[Route('/timesheet', name: 'timesheet_index', methods: ['GET'])]
-    public function index(EntityManagerInterface $entityManager): Response
+    public function index(Request $request, EntityManagerInterface $entityManager): Response
     {
         $contracts = $entityManager
             ->getRepository(TimesheetContract::class)
@@ -24,7 +24,17 @@ class TimesheetController extends AbstractController
             ->getRepository(TimesheetHour::class)
             ->findBy([], ['workDate' => 'DESC', 'createdAt' => 'DESC']);
 
-        $monthStart = (new \DateTimeImmutable('first day of this month'))->setTime(0, 0, 0);
+        $statsMonthRaw = trim((string) $request->query->get('statsMonth', ''));
+        $monthStart = null;
+        if ($statsMonthRaw !== '') {
+            $parsedMonth = \DateTimeImmutable::createFromFormat('Y-m', $statsMonthRaw);
+            if ($parsedMonth instanceof \DateTimeImmutable) {
+                $monthStart = $parsedMonth->setDate((int) $parsedMonth->format('Y'), (int) $parsedMonth->format('m'), 1)->setTime(0, 0, 0);
+            }
+        }
+        if (!$monthStart) {
+            $monthStart = (new \DateTimeImmutable('first day of this month'))->setTime(0, 0, 0);
+        }
         $monthEnd = $monthStart->modify('+1 month');
         $statsByCategory = [];
         foreach ($hours as $entry) {
@@ -196,6 +206,7 @@ class TimesheetController extends AbstractController
         }
 
         $workDateRaw = trim((string) $request->request->get('workDate', ''));
+        $hoursRaw = trim((string) $request->request->get('hours', ''));
         $startTimeRaw = trim((string) $request->request->get('startTime', ''));
         $endTimeRaw = trim((string) $request->request->get('endTime', ''));
         $comment = trim((string) $request->request->get('comment', ''));
@@ -228,6 +239,25 @@ class TimesheetController extends AbstractController
                 ->setComment($comment !== '' ? $comment : null)
                 ->setCategory($category !== '' ? $category : $entry->getCategory())
                 ->setUpdatedAt(new \DateTimeImmutable());
+        } else {
+            $hoursValue = str_replace(',', '.', $hoursRaw);
+            if ($hoursValue !== '' && is_numeric($hoursValue)) {
+                $hoursFormatted = number_format((float) $hoursValue, 2, '.', '');
+                $entry
+                    ->setWorkDate($workDate)
+                    ->setStartTime(null)
+                    ->setEndTime(null)
+                    ->setHours($hoursFormatted)
+                    ->setComment($comment !== '' ? $comment : null)
+                    ->setCategory($category !== '' ? $category : $entry->getCategory())
+                    ->setUpdatedAt(new \DateTimeImmutable());
+            } else {
+                $entry
+                    ->setWorkDate($workDate)
+                    ->setComment($comment !== '' ? $comment : null)
+                    ->setCategory($category !== '' ? $category : $entry->getCategory())
+                    ->setUpdatedAt(new \DateTimeImmutable());
+            }
         }
 
         $entityManager->flush();
