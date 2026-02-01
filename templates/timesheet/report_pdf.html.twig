@@ -19,11 +19,13 @@
     </style>
   </head>
   <body>
-    <h1>Timesheet report</h1>
+    <h1>Reportable &amp; Billable Hours Timesheet</h1>
     <div class="summary">
-      <div><strong>{{ contract.projectName }}</strong> · {{ contract.supplier }}</div>
+      <div><strong>Customer:</strong> HPE</div>
+      <div><strong>Project:</strong> {{ contract.projectName }}</div>
+      <div><strong>Head hunter:</strong> {{ contract.supplier }}</div>
       <div class="muted">Month: {{ reportMonth|date('F Y') }}</div>
-      <div class="muted">Reportable: {{ reportableTotal|number_format(2, '.', '') }} h · Billable: {{ billableTotal|number_format(2, '.', '') }} h</div>
+      <div class="muted"><strong>Reportable:</strong> {{ reportableTotal|number_format(2, '.', '') }} h · <strong>Billable:</strong> {{ billableTotal|number_format(2, '.', '') }} h</div>
     </div>
 
     <table>

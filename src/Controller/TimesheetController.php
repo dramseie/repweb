@@ -251,8 +251,11 @@ class TimesheetController extends AbstractController
 
         if ($recipients) {
             $monthLabel = $pdfPayload['monthLabel'];
-            $subject = sprintf('Timesheet report for %s (%s)', $contract->getProjectName(), $monthLabel);
-            $bodyText = "Please find the signed timesheet report attached.";
+            $subject = sprintf('Reportable & Billable Hours – %s (%s)', $contract->getProjectName(), $monthLabel);
+            $bodyText = "Customer: HPE\n";
+            $bodyText .= "Project: " . $contract->getProjectName() . "\n";
+            $bodyText .= "Head hunter: " . $contract->getSupplier() . "\n\n";
+            $bodyText .= "Please find the signed reportable and billable hours timesheet attached.";
             if ($comment !== '') {
                 $bodyText .= "\n\nComment:\n" . $comment;
             }
