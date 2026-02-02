@@ -911,24 +911,38 @@ class SmartsheetPresentationController extends AbstractController
         $installStartByCountry = [];
         $installEndByCountry = [];
         $sitesByCountry = [];
+        $siteAliasesByCountry = [];
         $addTimelineSite = function (
             string $country,
             array $row,
             array $columns,
             string $kind
-        ) use (&$sitesByCountry): void {
+        ) use (&$sitesByCountry, &$siteAliasesByCountry): void {
             $siteIdColumn = $columns['siteId'] ?? null;
             $siteNameColumn = $columns['siteName'] ?? null;
             $startColumn = $columns['startDate'] ?? null;
             $endColumn = $columns['endDate'] ?? null;
             $siteId = $siteIdColumn ? trim((string) ($row[$siteIdColumn] ?? '')) : '';
             $siteName = $siteNameColumn ? $this->normalizeSiteName($row[$siteNameColumn] ?? null) : null;
+            $normalizedName = $siteName ? mb_strtolower($siteName) : null;
             if ($siteId === '' && (!$siteName || $siteName === '')) {
                 return;
             }
-            $key = $siteId !== '' ? $siteId : (string) $siteName;
             if (!isset($sitesByCountry[$country])) {
                 $sitesByCountry[$country] = [];
+            }
+            if (!isset($siteAliasesByCountry[$country])) {
+                $siteAliasesByCountry[$country] = ['id' => [], 'name' => []];
+            }
+
+            $key = null;
+            if ($siteId !== '' && isset($siteAliasesByCountry[$country]['id'][$siteId])) {
+                $key = $siteAliasesByCountry[$country]['id'][$siteId];
+            } elseif ($normalizedName && isset($siteAliasesByCountry[$country]['name'][$normalizedName])) {
+                $key = $siteAliasesByCountry[$country]['name'][$normalizedName];
+            }
+            if ($key === null) {
+                $key = $siteId !== '' ? $siteId : (string) $siteName;
             }
             if (!isset($sitesByCountry[$country][$key])) {
                 $sitesByCountry[$country][$key] = [
@@ -938,6 +952,19 @@ class SmartsheetPresentationController extends AbstractController
                     'installEndDate' => null,
                     'endDate' => null,
                 ];
+            }
+
+            if ($siteId !== '') {
+                $siteAliasesByCountry[$country]['id'][$siteId] = $key;
+                if (!$sitesByCountry[$country][$key]['siteId']) {
+                    $sitesByCountry[$country][$key]['siteId'] = $siteId;
+                }
+            }
+            if ($normalizedName) {
+                $siteAliasesByCountry[$country]['name'][$normalizedName] = $key;
+                if (!$sitesByCountry[$country][$key]['siteName']) {
+                    $sitesByCountry[$country][$key]['siteName'] = $siteName;
+                }
             }
 
             $entry = &$sitesByCountry[$country][$key];
