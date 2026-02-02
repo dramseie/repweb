@@ -7,7 +7,10 @@ import DataTablesReport from '../../components/DataTablesReport.jsx';
 import TrumboField from '../components/common/TrumboField.jsx';
 
 if (typeof Highcharts === 'object') {
-  HighchartsXRange(Highcharts);
+  const initXRange = HighchartsXRange?.default || HighchartsXRange;
+  if (typeof initXRange === 'function') {
+    initXRange(Highcharts);
+  }
   Highcharts.setOptions({ time: { useUTC: false } });
 }
 
