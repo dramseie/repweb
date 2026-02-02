@@ -911,9 +911,16 @@ class SmartsheetPresentationController extends AbstractController
         $installStartByCountry = [];
         $installEndByCountry = [];
         $sitesByCountry = [];
-        $addTimelineSite = function (string $country, array $row, array $columns) use (&$sitesByCountry): void {
+        $addTimelineSite = function (
+            string $country,
+            array $row,
+            array $columns,
+            string $kind
+        ) use (&$sitesByCountry): void {
             $siteIdColumn = $columns['siteId'] ?? null;
             $siteNameColumn = $columns['siteName'] ?? null;
+            $startColumn = $columns['startDate'] ?? null;
+            $endColumn = $columns['endDate'] ?? null;
             $siteId = $siteIdColumn ? trim((string) ($row[$siteIdColumn] ?? '')) : '';
             $siteName = $siteNameColumn ? $this->normalizeSiteName($row[$siteNameColumn] ?? null) : null;
             if ($siteId === '' && (!$siteName || $siteName === '')) {
@@ -927,8 +934,30 @@ class SmartsheetPresentationController extends AbstractController
                 $sitesByCountry[$country][$key] = [
                     'siteId' => $siteId !== '' ? $siteId : null,
                     'siteName' => $siteName,
+                    'startDate' => null,
+                    'installEndDate' => null,
+                    'endDate' => null,
                 ];
             }
+
+            $entry = &$sitesByCountry[$country][$key];
+            if ($kind === 'install') {
+                $startDate = $this->parseDate($startColumn ? $row[$startColumn] ?? null : null);
+                $endDate = $this->parseDate($endColumn ? $row[$endColumn] ?? null : null);
+                if ($startDate !== null && ($entry['startDate'] === null || $startDate < $entry['startDate'])) {
+                    $entry['startDate'] = $startDate;
+                }
+                if ($endDate !== null && ($entry['installEndDate'] === null || $endDate > $entry['installEndDate'])) {
+                    $entry['installEndDate'] = $endDate;
+                }
+            }
+            if ($kind === 'signoff') {
+                $endDate = $this->parseDate($endColumn ? $row[$endColumn] ?? null : null);
+                if ($endDate !== null && ($entry['endDate'] === null || $endDate > $entry['endDate'])) {
+                    $entry['endDate'] = $endDate;
+                }
+            }
+            unset($entry);
         };
         foreach ($installRows as $row) {
             $countryColumn = $installColumns['country'] ?? null;
@@ -948,7 +977,7 @@ class SmartsheetPresentationController extends AbstractController
                 $installEndByCountry[$country] = $endDate;
             }
 
-            $addTimelineSite($country, $row, $installColumns);
+            $addTimelineSite($country, $row, $installColumns, 'install');
         }
 
         $signoffCompletedByCountry = [];
@@ -968,7 +997,7 @@ class SmartsheetPresentationController extends AbstractController
                 $signoffCompletedByCountry[$country] = $endDate;
             }
 
-            $addTimelineSite($country, $row, $signoffColumns);
+            $addTimelineSite($country, $row, $signoffColumns, 'signoff');
         }
 
         $countryList = array_unique(array_merge(
@@ -980,7 +1009,17 @@ class SmartsheetPresentationController extends AbstractController
 
         $items = [];
         foreach ($countryList as $country) {
-            $sites = array_values($sitesByCountry[$country] ?? []);
+            $rawSites = $sitesByCountry[$country] ?? [];
+            $sites = [];
+            foreach ($rawSites as $site) {
+                $sites[] = [
+                    'siteId' => $site['siteId'] ?? null,
+                    'siteName' => $site['siteName'] ?? null,
+                    'startDate' => $this->formatDate($site['startDate'] ?? null),
+                    'installEndDate' => $this->formatDate($site['installEndDate'] ?? null),
+                    'endDate' => $this->formatDate($site['endDate'] ?? null),
+                ];
+            }
             usort($sites, static function (array $a, array $b): int {
                 $labelA = (string) ($a['siteName'] ?? $a['siteId'] ?? '');
                 $labelB = (string) ($b['siteName'] ?? $b['siteId'] ?? '');

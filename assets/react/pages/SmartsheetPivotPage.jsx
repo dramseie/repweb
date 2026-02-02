@@ -1998,6 +1998,7 @@ const SmartsheetPivotPage = () => {
                   const siteList = Array.isArray(item.sites) ? item.sites : [];
                   const siteCount = siteList.length;
                   const isExpanded = timelineExpanded.includes(country);
+                  const canToggle = siteCount > 0;
                   const start = parseDateValue(item.startDate);
                   const installEnd = parseDateValue(item.installEndDate || item.endDate);
                   const end = parseDateValue(item.endDate);
@@ -2006,6 +2007,9 @@ const SmartsheetPivotPage = () => {
                       <div key={country} className="d-flex align-items-center gap-2">
                         <div className="text-truncate fw-semibold" style={{ width: 160 }}>
                           <CountryAnchor country={country} />
+                          {siteCount > 0 && (
+                            <span className="badge text-bg-light ms-2">{siteCount}</span>
+                          )}
                         </div>
                         <div className="flex-grow-1">
                           <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
@@ -2027,22 +2031,36 @@ const SmartsheetPivotPage = () => {
                         <div className="text-truncate fw-semibold d-flex align-items-center gap-1" style={{ width: 160 }}>
                           <CountryAnchor country={country} />
                           {siteCount > 0 && (
-                            <button
-                              type="button"
-                              className="btn btn-link btn-sm p-0 text-decoration-none"
-                              onClick={() => toggleTimelineCountry(country)}
-                              aria-expanded={isExpanded}
-                              aria-controls={`timeline-sites-${countryAnchorId(country)}`}
-                              title={isExpanded ? 'Hide sites' : 'Show sites'}
-                            >
-                              <span className="badge text-bg-light">
-                                {siteCount}
-                              </span>
-                            </button>
+                            <span className="badge text-bg-light ms-2">{siteCount}</span>
                           )}
                         </div>
                         <div className="flex-grow-1" style={{ minWidth: 240 }}>
-                          <div style={{ position: 'relative', height: 22, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+                          <div
+                            role={canToggle ? 'button' : undefined}
+                            tabIndex={canToggle ? 0 : undefined}
+                            aria-expanded={canToggle ? isExpanded : undefined}
+                            aria-controls={canToggle ? `timeline-sites-${countryAnchorId(country)}` : undefined}
+                            onClick={() => {
+                              if (canToggle) {
+                                toggleTimelineCountry(country);
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (!canToggle) return;
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                toggleTimelineCountry(country);
+                              }
+                            }}
+                            style={{
+                              position: 'relative',
+                              height: 22,
+                              background: '#f3f4f6',
+                              borderRadius: 6,
+                              overflow: 'hidden',
+                              cursor: canToggle ? 'pointer' : 'default',
+                            }}
+                          >
                             <div
                               style={{
                                 position: 'absolute',
@@ -2105,14 +2123,102 @@ const SmartsheetPivotPage = () => {
                       {isExpanded && siteCount > 0 && (
                         <div
                           id={`timeline-sites-${countryAnchorId(country)}`}
-                          className="d-flex flex-wrap gap-2 ps-2"
+                          className="d-flex flex-column gap-2 ps-2"
                           style={{ marginLeft: 160 }}
                         >
-                          {siteList.map((site) => (
-                            <span key={`${country}-${site.siteId || site.siteName}`} className="badge text-bg-secondary">
-                              {formatSiteLabel(site)}
-                            </span>
-                          ))}
+                          {siteList.map((site) => {
+                            const siteStart = parseDateValue(site.startDate);
+                            const siteInstallEnd = parseDateValue(site.installEndDate || site.endDate);
+                            const siteEnd = parseDateValue(site.endDate);
+                            if (!siteStart || !siteEnd || !timelineDomain) {
+                              return (
+                                <div key={`${country}-${site.siteId || site.siteName}`} className="d-flex align-items-center gap-2">
+                                  <div className="text-truncate" style={{ width: 200 }}>
+                                    {formatSiteLabel(site)}
+                                  </div>
+                                  <div className="flex-grow-1">
+                                    <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
+                                  </div>
+                                  <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
+                                    —
+                                  </div>
+                                </div>
+                              );
+                            }
+                            const siteLeft = ((siteStart.getTime() - timelineDomain.min) / timelineDomain.span) * 100;
+                            const siteInstallWidth = siteInstallEnd
+                              ? Math.max(0.5, ((siteInstallEnd.getTime() - siteStart.getTime()) / timelineDomain.span) * 100)
+                              : 0;
+                            const siteTotalWidth = Math.max(0.5, ((siteEnd.getTime() - siteStart.getTime()) / timelineDomain.span) * 100);
+                            const siteRestWidth = Math.max(0, siteTotalWidth - siteInstallWidth);
+                            return (
+                              <div key={`${country}-${site.siteId || site.siteName}`} className="d-flex align-items-center gap-2">
+                                <div className="text-truncate" style={{ width: 200 }}>
+                                  {formatSiteLabel(site)}
+                                </div>
+                                <div className="flex-grow-1" style={{ minWidth: 240 }}>
+                                  <div style={{ position: 'relative', height: 18, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        left: `${siteLeft}%`,
+                                        width: `${siteInstallWidth}%`,
+                                        top: 1,
+                                        bottom: 1,
+                                        background: '#0f9d88',
+                                        borderRadius: 6,
+                                        boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
+                                      }}
+                                    />
+                                    {siteRestWidth > 0 && (
+                                      <div
+                                        style={{
+                                          position: 'absolute',
+                                          left: `${siteLeft + siteInstallWidth}%`,
+                                          width: `${siteRestWidth}%`,
+                                          top: 1,
+                                          bottom: 1,
+                                          background: '#7fd9c9',
+                                          borderRadius: 6,
+                                          boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
+                                        }}
+                                      />
+                                    )}
+                                    {siteInstallEnd && (
+                                      <div
+                                        className="small text-muted"
+                                        style={{
+                                          position: 'absolute',
+                                          left: `${siteLeft + siteInstallWidth}%`,
+                                          top: '50%',
+                                          transform: 'translate(-50%, -50%)',
+                                          fontSize: 10,
+                                          whiteSpace: 'nowrap',
+                                          color: '#3c5f56',
+                                        }}
+                                      >
+                                        {formatShortDate(siteInstallEnd)}
+                                      </div>
+                                    )}
+                                    <div
+                                      className="small text-muted"
+                                      style={{
+                                        position: 'absolute',
+                                        left: `${siteLeft + siteTotalWidth}%`,
+                                        top: '50%',
+                                        transform: 'translate(-50%, -50%)',
+                                        fontSize: 10,
+                                        whiteSpace: 'nowrap',
+                                        color: '#5b6670',
+                                      }}
+                                    >
+                                      {formatShortDate(siteEnd)}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
