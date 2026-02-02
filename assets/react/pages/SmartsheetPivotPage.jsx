@@ -1,7 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import $ from 'jquery';
+import Highcharts from 'highcharts';
+import HighchartsReact from 'highcharts-react-official';
+import HighchartsXRange from 'highcharts/modules/xrange';
 import DataTablesReport from '../../components/DataTablesReport.jsx';
 import TrumboField from '../components/common/TrumboField.jsx';
+
+if (typeof Highcharts === 'object') {
+  HighchartsXRange(Highcharts);
+  Highcharts.setOptions({ time: { useUTC: false } });
+}
 
 const formatValue = (value) => {
   if (value === null || value === undefined) {
@@ -1949,6 +1957,143 @@ const SmartsheetPivotPage = () => {
     }
 
     if (meta.key === '__exec_timeline') {
+      const buildCountryTimelineOptions = () => {
+        if (!timelineDomain) return null;
+        const categories = timelineItems.map((item) => item.country || 'Unspecified');
+        const installData = [];
+        const signoffData = [];
+
+        timelineItems.forEach((item, index) => {
+          const country = item.country || 'Unspecified';
+          const start = parseDateValue(item.startDate);
+          const installEnd = parseDateValue(item.installEndDate || item.endDate);
+          const end = parseDateValue(item.endDate);
+          if (!start || !end) return;
+          const installEndDate = installEnd && installEnd > start ? installEnd : end;
+          installData.push({ x: start.getTime(), x2: installEndDate.getTime(), y: index, country });
+          if (end.getTime() > installEndDate.getTime()) {
+            signoffData.push({ x: installEndDate.getTime(), x2: end.getTime(), y: index, country });
+          }
+        });
+
+        return {
+          chart: {
+            type: 'xrange',
+            height: Math.max(320, categories.length * 32 + 120),
+            spacingLeft: 10,
+            spacingRight: 10,
+          },
+          title: { text: null },
+          credits: { enabled: false },
+          legend: { enabled: true },
+          xAxis: {
+            type: 'datetime',
+            min: timelineDomain.min,
+            max: timelineDomain.max,
+            plotLines: timelineDomain.now !== null
+              ? [{ color: '#1f3b64', width: 2, value: timelineDomain.now, zIndex: 5 }]
+              : [],
+          },
+          yAxis: {
+            categories,
+            reversed: true,
+            title: { text: null },
+          },
+          tooltip: {
+            formatter() {
+              const category = categories[this.point.y] || this.point.country || 'Unspecified';
+              const startLabel = formatYmd(new Date(this.point.x));
+              const endLabel = formatYmd(new Date(this.point.x2));
+              return `<b>${category}</b><br/>${this.series.name}: ${startLabel} → ${endLabel}`;
+            },
+          },
+          plotOptions: {
+            series: {
+              borderRadius: 4,
+              pointPadding: 0.15,
+              groupPadding: 0.12,
+              point: {
+                events: {
+                  click() {
+                    const target = this.country || categories[this.y] || 'Unspecified';
+                    toggleTimelineCountry(target);
+                  },
+                },
+              },
+            },
+          },
+          series: [
+            { name: 'Installation', color: '#0f9d88', data: installData },
+            { name: 'Sign-off', color: '#7fd9c9', data: signoffData },
+          ],
+        };
+      };
+
+      const buildSiteTimelineOptions = (country, sites) => {
+        if (!timelineDomain) return null;
+        const categories = sites.map((site) => formatSiteLabel(site));
+        const installData = [];
+        const signoffData = [];
+
+        sites.forEach((site, index) => {
+          const start = parseDateValue(site.startDate);
+          const installEnd = parseDateValue(site.installEndDate || site.endDate);
+          const end = parseDateValue(site.endDate);
+          if (!start || !end) return;
+          const installEndDate = installEnd && installEnd > start ? installEnd : end;
+          installData.push({ x: start.getTime(), x2: installEndDate.getTime(), y: index, site });
+          if (end.getTime() > installEndDate.getTime()) {
+            signoffData.push({ x: installEndDate.getTime(), x2: end.getTime(), y: index, site });
+          }
+        });
+
+        return {
+          chart: {
+            type: 'xrange',
+            height: Math.max(260, categories.length * 26 + 90),
+            spacingLeft: 10,
+            spacingRight: 10,
+          },
+          title: { text: null },
+          credits: { enabled: false },
+          legend: { enabled: false },
+          xAxis: {
+            type: 'datetime',
+            min: timelineDomain.min,
+            max: timelineDomain.max,
+            plotLines: timelineDomain.now !== null
+              ? [{ color: '#1f3b64', width: 2, value: timelineDomain.now, zIndex: 5 }]
+              : [],
+          },
+          yAxis: {
+            categories,
+            reversed: true,
+            title: { text: null },
+          },
+          tooltip: {
+            formatter() {
+              const label = categories[this.point.y] || formatSiteLabel(this.point.site) || 'Site';
+              const startLabel = formatYmd(new Date(this.point.x));
+              const endLabel = formatYmd(new Date(this.point.x2));
+              return `<b>${label}</b><br/>${this.series.name}: ${startLabel} → ${endLabel}`;
+            },
+          },
+          plotOptions: {
+            series: {
+              borderRadius: 4,
+              pointPadding: 0.2,
+              groupPadding: 0.1,
+            },
+          },
+          series: [
+            { name: 'Installation', color: '#0f9d88', data: installData },
+            { name: 'Sign-off', color: '#7fd9c9', data: signoffData },
+          ],
+        };
+      };
+
+      const countryTimelineOptions = buildCountryTimelineOptions();
+
       return (
         <div className="d-flex flex-column gap-3">
           {!timelineItems.length && (
@@ -1959,272 +2104,27 @@ const SmartsheetPivotPage = () => {
           )}
           {timelineItems.length > 0 && timelineDomain && (
             <>
-              <div className="timeline-year-header" style={{ position: 'relative', height: 36 }}>
-                {(() => {
-                  const years = [];
-                  const minYear = new Date(timelineDomain.min).getUTCFullYear();
-                  const maxYear = new Date(timelineDomain.max).getUTCFullYear();
-                  for (let y = minYear; y <= maxYear; y++) {
-                    const yearStart = Date.UTC(y, 0, 1);
-                    const left = ((yearStart - timelineDomain.min) / timelineDomain.span) * 100;
-                    years.push(
-                      <div
-                        key={y}
-                        style={{ position: 'absolute', left: `${left}%`, transform: 'translateX(-50%)', top: 8, fontSize: 16, fontWeight: 700, color: '#222' }}
-                      >
-                        {y}
-                      </div>
-                    );
-                  }
-                  return years;
-                })()}
-              </div>
-              <div className="d-flex flex-column gap-2" style={{ position: 'relative' }}>
-                {timelineDomain.now !== null && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${((timelineDomain.now - timelineDomain.min) / timelineDomain.span) * 100}%`,
-                      top: 0,
-                      bottom: 0,
-                      width: 2,
-                      background: '#1f3b64',
-                      boxShadow: '0 0 0 1px rgba(31,59,100,0.25)',
-                    }}
-                  />
-                )}
-                {timelineItems.map((item) => {
-                  const country = item.country || 'Unspecified';
-                  const siteList = Array.isArray(item.sites) ? item.sites : [];
-                  const siteCount = siteList.length;
-                  const isExpanded = timelineExpanded.includes(country);
-                  const canToggle = siteCount > 0;
-                  const start = parseDateValue(item.startDate);
-                  const installEnd = parseDateValue(item.installEndDate || item.endDate);
-                  const end = parseDateValue(item.endDate);
-                  if (!start || !end || !timelineDomain) {
-                    return (
-                      <div key={country} className="d-flex align-items-center gap-2">
-                        <div className="text-truncate fw-semibold" style={{ width: 160 }}>
-                          <CountryAnchor country={country} />
-                          {siteCount > 0 && (
-                            <span className="badge text-bg-light ms-2">{siteCount}</span>
-                          )}
-                        </div>
-                        <div className="flex-grow-1">
-                          <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
-                        </div>
-                        <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
-                          —
-                        </div>
-                      </div>
-                    );
-                  }
-                  const left = ((start.getTime() - timelineDomain.min) / timelineDomain.span) * 100;
-                  const installWidth = installEnd ? Math.max(0.5, ((installEnd.getTime() - start.getTime()) / timelineDomain.span) * 100) : 0;
-                  const totalWidth = Math.max(0.5, ((end.getTime() - start.getTime()) / timelineDomain.span) * 100);
-                  const restWidth = Math.max(0, totalWidth - installWidth);
-
-                  return (
-                    <div key={country} className="d-flex flex-column gap-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <div className="text-truncate fw-semibold d-flex align-items-center gap-1" style={{ width: 160 }}>
-                          <CountryAnchor country={country} />
-                          {siteCount > 0 && (
-                            <span className="badge text-bg-light ms-2">{siteCount}</span>
-                          )}
-                        </div>
-                        <div className="flex-grow-1" style={{ minWidth: 240 }}>
-                          <div
-                            role={canToggle ? 'button' : undefined}
-                            tabIndex={canToggle ? 0 : undefined}
-                            aria-expanded={canToggle ? isExpanded : undefined}
-                            aria-controls={canToggle ? `timeline-sites-${countryAnchorId(country)}` : undefined}
-                            onClick={() => {
-                              if (canToggle) {
-                                toggleTimelineCountry(country);
-                              }
-                            }}
-                            onKeyDown={(event) => {
-                              if (!canToggle) return;
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                toggleTimelineCountry(country);
-                              }
-                            }}
-                            style={{
-                              position: 'relative',
-                              height: 22,
-                              background: '#f3f4f6',
-                              borderRadius: 6,
-                              overflow: 'hidden',
-                              cursor: canToggle ? 'pointer' : 'default',
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: 'absolute',
-                                left: `${left}%`,
-                                width: `${installWidth}%`,
-                                top: 1,
-                                bottom: 1,
-                                background: '#0f9d88',
-                                borderRadius: 6,
-                                boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
-                              }}
-                            />
-                            {restWidth > 0 && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: `${left + installWidth}%`,
-                                  width: `${restWidth}%`,
-                                  top: 1,
-                                  bottom: 1,
-                                  background: '#7fd9c9',
-                                  borderRadius: 6,
-                                  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
-                                }}
-                              />
-                            )}
-                            {installEnd && (
-                              <div
-                                className="small text-muted"
-                                style={{
-                                  position: 'absolute',
-                                  left: `${left + installWidth}%`,
-                                  top: '50%',
-                                  transform: 'translate(-50%, -50%)',
-                                  fontSize: 11,
-                                  whiteSpace: 'nowrap',
-                                  color: '#3c5f56',
-                                }}
-                              >
-                                {formatShortDate(installEnd)}
-                              </div>
-                            )}
-                            <div
-                              className="small text-muted"
-                              style={{
-                                position: 'absolute',
-                                left: `${left + totalWidth}%`,
-                                top: '50%',
-                                transform: 'translate(-50%, -50%)',
-                                fontSize: 11,
-                                whiteSpace: 'nowrap',
-                                color: '#5b6670',
-                              }}
-                            >
-                              {formatShortDate(end)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {isExpanded && siteCount > 0 && (
-                        <div
-                          id={`timeline-sites-${countryAnchorId(country)}`}
-                          className="d-flex flex-column gap-2 ps-2"
-                          style={{ marginLeft: 160 }}
-                        >
-                          {siteList.map((site) => {
-                            const siteStart = parseDateValue(site.startDate);
-                            const siteInstallEnd = parseDateValue(site.installEndDate || site.endDate);
-                            const siteEnd = parseDateValue(site.endDate);
-                            if (!siteStart || !siteEnd || !timelineDomain) {
-                              return (
-                                <div key={`${country}-${site.siteId || site.siteName}`} className="d-flex align-items-center gap-2">
-                                  <div className="text-truncate" style={{ width: 200 }}>
-                                    {formatSiteLabel(site)}
-                                  </div>
-                                  <div className="flex-grow-1">
-                                    <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
-                                  </div>
-                                  <div className="small text-muted" style={{ minWidth: 120, textAlign: 'right' }}>
-                                    —
-                                  </div>
-                                </div>
-                              );
-                            }
-                            const siteLeft = ((siteStart.getTime() - timelineDomain.min) / timelineDomain.span) * 100;
-                            const siteInstallWidth = siteInstallEnd
-                              ? Math.max(0.5, ((siteInstallEnd.getTime() - siteStart.getTime()) / timelineDomain.span) * 100)
-                              : 0;
-                            const siteTotalWidth = Math.max(0.5, ((siteEnd.getTime() - siteStart.getTime()) / timelineDomain.span) * 100);
-                            const siteRestWidth = Math.max(0, siteTotalWidth - siteInstallWidth);
-                            return (
-                              <div key={`${country}-${site.siteId || site.siteName}`} className="d-flex align-items-center gap-2">
-                                <div className="text-truncate" style={{ width: 200 }}>
-                                  {formatSiteLabel(site)}
-                                </div>
-                                <div className="flex-grow-1" style={{ minWidth: 240 }}>
-                                  <div style={{ position: 'relative', height: 18, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
-                                    <div
-                                      style={{
-                                        position: 'absolute',
-                                        left: `${siteLeft}%`,
-                                        width: `${siteInstallWidth}%`,
-                                        top: 1,
-                                        bottom: 1,
-                                        background: '#0f9d88',
-                                        borderRadius: 6,
-                                        boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
-                                      }}
-                                    />
-                                    {siteRestWidth > 0 && (
-                                      <div
-                                        style={{
-                                          position: 'absolute',
-                                          left: `${siteLeft + siteInstallWidth}%`,
-                                          width: `${siteRestWidth}%`,
-                                          top: 1,
-                                          bottom: 1,
-                                          background: '#7fd9c9',
-                                          borderRadius: 6,
-                                          boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
-                                        }}
-                                      />
-                                    )}
-                                    {siteInstallEnd && (
-                                      <div
-                                        className="small text-muted"
-                                        style={{
-                                          position: 'absolute',
-                                          left: `${siteLeft + siteInstallWidth}%`,
-                                          top: '50%',
-                                          transform: 'translate(-50%, -50%)',
-                                          fontSize: 10,
-                                          whiteSpace: 'nowrap',
-                                          color: '#3c5f56',
-                                        }}
-                                      >
-                                        {formatShortDate(siteInstallEnd)}
-                                      </div>
-                                    )}
-                                    <div
-                                      className="small text-muted"
-                                      style={{
-                                        position: 'absolute',
-                                        left: `${siteLeft + siteTotalWidth}%`,
-                                        top: '50%',
-                                        transform: 'translate(-50%, -50%)',
-                                        fontSize: 10,
-                                        whiteSpace: 'nowrap',
-                                        color: '#5b6670',
-                                      }}
-                                    >
-                                      {formatShortDate(siteEnd)}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+              {countryTimelineOptions && (
+                <HighchartsReact highcharts={Highcharts} options={countryTimelineOptions} />
+              )}
+              {timelineItems.map((item) => {
+                const country = item.country || 'Unspecified';
+                const siteList = Array.isArray(item.sites) ? item.sites : [];
+                const siteCount = siteList.length;
+                const isExpanded = timelineExpanded.includes(country);
+                if (!isExpanded || siteCount === 0) return null;
+                const options = buildSiteTimelineOptions(country, siteList);
+                if (!options) return null;
+                return (
+                  <div key={`timeline-sites-${country}`} className="mt-3">
+                    <div className="fw-semibold mb-2 d-flex align-items-center gap-2">
+                      <CountryAnchor country={country} />
+                      <span className="badge text-bg-light">{siteCount}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <HighchartsReact highcharts={Highcharts} options={options} />
+                  </div>
+                );
+              })}
             </>
           )}
         </div>
