@@ -910,6 +910,26 @@ class SmartsheetPresentationController extends AbstractController
 
         $installStartByCountry = [];
         $installEndByCountry = [];
+        $sitesByCountry = [];
+        $addTimelineSite = function (string $country, array $row, array $columns) use (&$sitesByCountry): void {
+            $siteIdColumn = $columns['siteId'] ?? null;
+            $siteNameColumn = $columns['siteName'] ?? null;
+            $siteId = $siteIdColumn ? trim((string) ($row[$siteIdColumn] ?? '')) : '';
+            $siteName = $siteNameColumn ? $this->normalizeSiteName($row[$siteNameColumn] ?? null) : null;
+            if ($siteId === '' && (!$siteName || $siteName === '')) {
+                return;
+            }
+            $key = $siteId !== '' ? $siteId : (string) $siteName;
+            if (!isset($sitesByCountry[$country])) {
+                $sitesByCountry[$country] = [];
+            }
+            if (!isset($sitesByCountry[$country][$key])) {
+                $sitesByCountry[$country][$key] = [
+                    'siteId' => $siteId !== '' ? $siteId : null,
+                    'siteName' => $siteName,
+                ];
+            }
+        };
         foreach ($installRows as $row) {
             $countryColumn = $installColumns['country'] ?? null;
             $startColumn = $installColumns['startDate'] ?? null;
@@ -927,6 +947,8 @@ class SmartsheetPresentationController extends AbstractController
             if ($endDate !== null && (!isset($installEndByCountry[$country]) || $endDate > $installEndByCountry[$country])) {
                 $installEndByCountry[$country] = $endDate;
             }
+
+            $addTimelineSite($country, $row, $installColumns);
         }
 
         $signoffCompletedByCountry = [];
@@ -945,6 +967,8 @@ class SmartsheetPresentationController extends AbstractController
             if (!isset($signoffCompletedByCountry[$country]) || $endDate > $signoffCompletedByCountry[$country]) {
                 $signoffCompletedByCountry[$country] = $endDate;
             }
+
+            $addTimelineSite($country, $row, $signoffColumns);
         }
 
         $countryList = array_unique(array_merge(
@@ -956,11 +980,18 @@ class SmartsheetPresentationController extends AbstractController
 
         $items = [];
         foreach ($countryList as $country) {
+            $sites = array_values($sitesByCountry[$country] ?? []);
+            usort($sites, static function (array $a, array $b): int {
+                $labelA = (string) ($a['siteName'] ?? $a['siteId'] ?? '');
+                $labelB = (string) ($b['siteName'] ?? $b['siteId'] ?? '');
+                return strcasecmp($labelA, $labelB);
+            });
             $items[] = [
                 'country' => $country,
                 'startDate' => $this->formatDate($installStartByCountry[$country] ?? null),
                 'installEndDate' => $this->formatDate($installEndByCountry[$country] ?? null),
                 'endDate' => $this->formatDate($signoffCompletedByCountry[$country] ?? null),
+                'sites' => $sites,
             ];
         }
 

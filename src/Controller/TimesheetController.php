@@ -418,8 +418,11 @@ class TimesheetController extends AbstractController
         $dompdf->setPaper('A4', 'portrait');
         $dompdf->render();
 
-        $filename = sprintf('timesheet-%s-%s.pdf', $contract->getProjectName(), $reportMonthStart->format('Y-m'));
-        $filename = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $filename);
+        $signatureSlug = preg_replace('/[^A-Za-z0-9]+/', '_', $signatureName);
+        $projectSlug = preg_replace('/[^A-Za-z0-9]+/', '_', $contract->getProjectName());
+        $signatureSlug = trim((string) $signatureSlug, '_') ?: 'Signed';
+        $projectSlug = trim((string) $projectSlug, '_') ?: 'Project';
+        $filename = sprintf('timesheet-%s-%s-%s.pdf', $signatureSlug, $projectSlug, $reportMonthStart->format('Y-m'));
 
         return [
             'output' => $dompdf->output(),

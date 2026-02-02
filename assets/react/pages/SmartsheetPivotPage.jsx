@@ -52,6 +52,16 @@ const cleanSiteName = (value) => {
   return String(value).replace(/^IKEAStore\s*-\s*/i, '').trim();
 };
 
+const formatSiteLabel = (site) => {
+  if (!site) return '—';
+  const cleanedName = cleanSiteName(site.siteName || '') || site.siteName || '';
+  const siteId = site.siteId || '';
+  if (cleanedName && siteId) {
+    return `${cleanedName} (${siteId})`;
+  }
+  return cleanedName || siteId || '—';
+};
+
 const parseDateValue = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -256,6 +266,7 @@ const SmartsheetPivotPage = () => {
   const [presentationInstallations, setPresentationInstallations] = useState({ meta: null, items: [] });
   const [presentationPostDeployment, setPresentationPostDeployment] = useState({ meta: null, items: [] });
   const [presentationTimeline, setPresentationTimeline] = useState({ items: [] });
+  const [timelineExpanded, setTimelineExpanded] = useState([]);
   const [presentationIssues, setPresentationIssues] = useState({ items: [] });
   const [presentationProgress, setPresentationProgress] = useState({ items: [] });
   const [presentationOverview, setPresentationOverview] = useState({ items: [] });
@@ -1698,6 +1709,14 @@ const SmartsheetPivotPage = () => {
     setPresentationCountryFilter(selected);
   };
 
+  const toggleTimelineCountry = (country) => {
+    setTimelineExpanded((prev) => (
+      prev.includes(country)
+        ? prev.filter((item) => item !== country)
+        : [...prev, country]
+    ));
+  };
+
   const renderExecCardBody = (meta) => {
     if (meta.key === '__exec_highlights') {
       return (
@@ -1975,14 +1994,18 @@ const SmartsheetPivotPage = () => {
                   />
                 )}
                 {timelineItems.map((item) => {
+                  const country = item.country || 'Unspecified';
+                  const siteList = Array.isArray(item.sites) ? item.sites : [];
+                  const siteCount = siteList.length;
+                  const isExpanded = timelineExpanded.includes(country);
                   const start = parseDateValue(item.startDate);
                   const installEnd = parseDateValue(item.installEndDate || item.endDate);
                   const end = parseDateValue(item.endDate);
                   if (!start || !end || !timelineDomain) {
                     return (
-                      <div key={item.country} className="d-flex align-items-center gap-2">
+                      <div key={country} className="d-flex align-items-center gap-2">
                         <div className="text-truncate fw-semibold" style={{ width: 160 }}>
-                          <CountryAnchor country={item.country} />
+                          <CountryAnchor country={country} />
                         </div>
                         <div className="flex-grow-1">
                           <div style={{ height: 18, background: '#eef1f4', borderRadius: 999 }} />
@@ -1999,70 +2022,99 @@ const SmartsheetPivotPage = () => {
                   const restWidth = Math.max(0, totalWidth - installWidth);
 
                   return (
-                    <div key={item.country} className="d-flex align-items-center gap-2">
-                      <div className="text-truncate fw-semibold" style={{ width: 160 }}>
-                        <CountryAnchor country={item.country} />
-                      </div>
-                      <div className="flex-grow-1" style={{ minWidth: 240 }}>
-                        <div style={{ position: 'relative', height: 22, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: `${left}%`,
-                              width: `${installWidth}%`,
-                              top: 1,
-                              bottom: 1,
-                              background: '#0f9d88',
-                              borderRadius: 6,
-                              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
-                            }}
-                          />
-                          {restWidth > 0 && (
+                    <div key={country} className="d-flex flex-column gap-2">
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="text-truncate fw-semibold d-flex align-items-center gap-1" style={{ width: 160 }}>
+                          <CountryAnchor country={country} />
+                          {siteCount > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-link btn-sm p-0 text-decoration-none"
+                              onClick={() => toggleTimelineCountry(country)}
+                              aria-expanded={isExpanded}
+                              aria-controls={`timeline-sites-${countryAnchorId(country)}`}
+                              title={isExpanded ? 'Hide sites' : 'Show sites'}
+                            >
+                              <span className="badge text-bg-light">
+                                {siteCount}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex-grow-1" style={{ minWidth: 240 }}>
+                          <div style={{ position: 'relative', height: 22, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
                             <div
                               style={{
                                 position: 'absolute',
-                                left: `${left + installWidth}%`,
-                                width: `${restWidth}%`,
+                                left: `${left}%`,
+                                width: `${installWidth}%`,
                                 top: 1,
                                 bottom: 1,
-                                background: '#7fd9c9',
+                                background: '#0f9d88',
                                 borderRadius: 6,
-                                boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
+                                boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
                               }}
                             />
-                          )}
-                          {installEnd && (
+                            {restWidth > 0 && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: `${left + installWidth}%`,
+                                  width: `${restWidth}%`,
+                                  top: 1,
+                                  bottom: 1,
+                                  background: '#7fd9c9',
+                                  borderRadius: 6,
+                                  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)',
+                                }}
+                              />
+                            )}
+                            {installEnd && (
+                              <div
+                                className="small text-muted"
+                                style={{
+                                  position: 'absolute',
+                                  left: `${left + installWidth}%`,
+                                  top: '50%',
+                                  transform: 'translate(-50%, -50%)',
+                                  fontSize: 11,
+                                  whiteSpace: 'nowrap',
+                                  color: '#3c5f56',
+                                }}
+                              >
+                                {formatShortDate(installEnd)}
+                              </div>
+                            )}
                             <div
                               className="small text-muted"
                               style={{
                                 position: 'absolute',
-                                left: `${left + installWidth}%`,
+                                left: `${left + totalWidth}%`,
                                 top: '50%',
                                 transform: 'translate(-50%, -50%)',
                                 fontSize: 11,
                                 whiteSpace: 'nowrap',
-                                color: '#3c5f56',
+                                color: '#5b6670',
                               }}
                             >
-                              {formatShortDate(installEnd)}
+                              {formatShortDate(end)}
                             </div>
-                          )}
-                          <div
-                            className="small text-muted"
-                            style={{
-                              position: 'absolute',
-                              left: `${left + totalWidth}%`,
-                              top: '50%',
-                              transform: 'translate(-50%, -50%)',
-                              fontSize: 11,
-                              whiteSpace: 'nowrap',
-                              color: '#5b6670',
-                            }}
-                          >
-                            {formatShortDate(end)}
                           </div>
                         </div>
                       </div>
+                      {isExpanded && siteCount > 0 && (
+                        <div
+                          id={`timeline-sites-${countryAnchorId(country)}`}
+                          className="d-flex flex-wrap gap-2 ps-2"
+                          style={{ marginLeft: 160 }}
+                        >
+                          {siteList.map((site) => (
+                            <span key={`${country}-${site.siteId || site.siteName}`} className="badge text-bg-secondary">
+                              {formatSiteLabel(site)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
