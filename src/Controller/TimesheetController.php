@@ -278,6 +278,7 @@ class TimesheetController extends AbstractController
         $reportMonth = trim((string) $request->request->get('reportMonth', ''));
         $comment = trim((string) $request->request->get('comment', ''));
         $detailsRaw = (string) $request->request->get('details', '');
+        $download = (bool) $request->request->get('download', false);
         if ($contractId <= 0 || $reportMonth === '') {
             return $this->redirectToRoute('timesheet_index');
         }
@@ -293,9 +294,11 @@ class TimesheetController extends AbstractController
             return $this->redirectToRoute('timesheet_index');
         }
 
+        $disposition = $download ? 'attachment' : 'inline';
+
         return new Response($pdfPayload['output'], 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => sprintf('inline; filename="%s"', $pdfPayload['filename']),
+            'Content-Disposition' => sprintf('%s; filename="%s"', $disposition, $pdfPayload['filename']),
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
         ]);
     }

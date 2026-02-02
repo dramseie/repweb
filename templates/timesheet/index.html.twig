@@ -416,6 +416,7 @@
               <div class="d-flex justify-content-end gap-2">
                 <button type="submit" class="btn btn-outline-secondary">Save comment</button>
                 <button type="submit" class="btn btn-outline-dark" formaction="{{ path('timesheet_report_pdf') }}" formmethod="post" formtarget="_blank">Show PDF</button>
+                <button type="submit" class="btn btn-outline-dark" name="download" value="1" formaction="{{ path('timesheet_report_pdf') }}" formmethod="post">Save PDF</button>
                 <button type="submit" class="btn btn-outline-primary" formaction="{{ path('timesheet_report_send_for_approval') }}">Send for approval</button>
                 <button type="submit" class="btn btn-primary" formaction="{{ path('timesheet_report_approve') }}">Approve</button>
               </div>
