@@ -277,7 +277,7 @@ const SmartsheetPivotPage = () => {
   const [presentationInstallations, setPresentationInstallations] = useState({ meta: null, items: [] });
   const [presentationPostDeployment, setPresentationPostDeployment] = useState({ meta: null, items: [] });
   const [presentationTimeline, setPresentationTimeline] = useState({ items: [] });
-  const [timelineExpanded, setTimelineExpanded] = useState([]);
+  const [timelineDrilldownCountry, setTimelineDrilldownCountry] = useState(null);
   const [presentationIssues, setPresentationIssues] = useState({ items: [] });
   const [presentationProgress, setPresentationProgress] = useState({ items: [] });
   const [presentationOverview, setPresentationOverview] = useState({ items: [] });
@@ -1720,13 +1720,7 @@ const SmartsheetPivotPage = () => {
     setPresentationCountryFilter(selected);
   };
 
-  const toggleTimelineCountry = (country) => {
-    setTimelineExpanded((prev) => (
-      prev.includes(country)
-        ? prev.filter((item) => item !== country)
-        : [...prev, country]
-    ));
-  };
+  const clearTimelineDrilldown = () => setTimelineDrilldownCountry(null);
 
   const renderExecCardBody = (meta) => {
     if (meta.key === '__exec_highlights') {
@@ -1960,6 +1954,15 @@ const SmartsheetPivotPage = () => {
     }
 
     if (meta.key === '__exec_timeline') {
+      const timelineSiteMap = React.useMemo(() => {
+        const map = new Map();
+        timelineItems.forEach((item) => {
+          const country = item.country || 'Unspecified';
+          map.set(country, Array.isArray(item.sites) ? item.sites : []);
+        });
+        return map;
+      }, [timelineItems]);
+
       const buildCountryTimelineOptions = () => {
         if (!timelineDomain) return null;
         const categories = timelineItems.map((item) => item.country || 'Unspecified');
@@ -2019,7 +2022,10 @@ const SmartsheetPivotPage = () => {
                 events: {
                   click() {
                     const target = this.country || categories[this.y] || 'Unspecified';
-                    toggleTimelineCountry(target);
+                    const sites = timelineSiteMap.get(target) || [];
+                    if (sites.length > 0) {
+                      setTimelineDrilldownCountry(target);
+                    }
                   },
                 },
               },
@@ -2096,6 +2102,11 @@ const SmartsheetPivotPage = () => {
       };
 
       const countryTimelineOptions = buildCountryTimelineOptions();
+      const activeDrilldownCountry = timelineDrilldownCountry || null;
+      const activeSites = activeDrilldownCountry ? (timelineSiteMap.get(activeDrilldownCountry) || []) : [];
+      const siteTimelineOptions = activeDrilldownCountry && activeSites.length > 0
+        ? buildSiteTimelineOptions(activeDrilldownCountry, activeSites)
+        : null;
 
       return (
         <div className="d-flex flex-column gap-3">
@@ -2107,27 +2118,28 @@ const SmartsheetPivotPage = () => {
           )}
           {timelineItems.length > 0 && timelineDomain && (
             <>
-              {countryTimelineOptions && (
-                <HighchartsReact highcharts={Highcharts} options={countryTimelineOptions} />
-              )}
-              {timelineItems.map((item) => {
-                const country = item.country || 'Unspecified';
-                const siteList = Array.isArray(item.sites) ? item.sites : [];
-                const siteCount = siteList.length;
-                const isExpanded = timelineExpanded.includes(country);
-                if (!isExpanded || siteCount === 0) return null;
-                const options = buildSiteTimelineOptions(country, siteList);
-                if (!options) return null;
-                return (
-                  <div key={`timeline-sites-${country}`} className="mt-3">
-                    <div className="fw-semibold mb-2 d-flex align-items-center gap-2">
-                      <CountryAnchor country={country} />
-                      <span className="badge text-bg-light">{siteCount}</span>
+              {activeDrilldownCountry ? (
+                <div className="d-flex flex-column gap-2">
+                  <div className="d-flex align-items-center justify-content-between">
+                    <div className="fw-semibold">
+                      <CountryAnchor country={activeDrilldownCountry} />
+                      <span className="badge text-bg-light ms-2">{activeSites.length}</span>
                     </div>
-                    <HighchartsReact highcharts={Highcharts} options={options} />
+                    <button type="button" className="btn btn-sm btn-outline-secondary" onClick={clearTimelineDrilldown}>
+                      Back to countries
+                    </button>
                   </div>
-                );
-              })}
+                  {siteTimelineOptions ? (
+                    <HighchartsReact highcharts={Highcharts} options={siteTimelineOptions} />
+                  ) : (
+                    <div className="text-muted small">No site timeline data available.</div>
+                  )}
+                </div>
+              ) : (
+                countryTimelineOptions && (
+                  <HighchartsReact highcharts={Highcharts} options={countryTimelineOptions} />
+                )
+              )}
             </>
           )}
         </div>
