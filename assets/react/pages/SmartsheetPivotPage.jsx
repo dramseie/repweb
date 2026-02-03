@@ -1429,7 +1429,7 @@ const SmartsheetPivotPage = () => {
     return raw;
   };
 
-  const normalizeTaskTrackerTasks = (tasks) => {
+  function normalizeTaskTrackerTasks(tasks) {
     if (!Array.isArray(tasks)) return [];
     return tasks.map((task) => {
       if (task && typeof task === 'object') {
@@ -1449,7 +1449,7 @@ const SmartsheetPivotPage = () => {
       }
       return { taskId: null, label: String(task) };
     }).filter((item) => item.label);
-  };
+  }
 
   const getTaskTrackerTaskKey = (task) => {
     if (!task) return '';
