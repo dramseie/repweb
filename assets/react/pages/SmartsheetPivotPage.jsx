@@ -335,6 +335,12 @@ const SmartsheetPivotPage = () => {
   const [overviewOverridesError, setOverviewOverridesError] = useState(null);
   const [overviewOverridesLoaded, setOverviewOverridesLoaded] = useState(false);
 
+  const [plannedWeekCommentOverrides, setPlannedWeekCommentOverrides] = useState({});
+  const [plannedWeekCommentDrafts, setPlannedWeekCommentDrafts] = useState({});
+  const [plannedWeekCommentOverridesLoading, setPlannedWeekCommentOverridesLoading] = useState(false);
+  const [plannedWeekCommentOverridesError, setPlannedWeekCommentOverridesError] = useState(null);
+  const [plannedWeekCommentOverridesLoaded, setPlannedWeekCommentOverridesLoaded] = useState(false);
+
   const [statusData, setStatusData] = useState({ categories: [], items: [] });
   const [statusError, setStatusError] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -550,6 +556,28 @@ const SmartsheetPivotPage = () => {
       setOverviewOverridesLoading(false);
     }
   }, [overviewOverridesLoaded, overviewOverridesLoading]);
+
+  const fetchPlannedWeekCommentOverrides = useCallback(async () => {
+    if (plannedWeekCommentOverridesLoaded || plannedWeekCommentOverridesLoading) return;
+    setPlannedWeekCommentOverridesLoading(true);
+    setPlannedWeekCommentOverridesError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/content?section=planned_week_comments');
+      if (!response.ok) {
+        throw new Error(`Failed to load planned week comment overrides (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const rawContent = payload?.content || '';
+      const parsed = rawContent ? JSON.parse(rawContent) : {};
+      setPlannedWeekCommentOverrides(parsed && typeof parsed === 'object' ? parsed : {});
+      setPlannedWeekCommentOverridesLoaded(true);
+    } catch (error) {
+      setPlannedWeekCommentOverridesError(error.message || 'Unable to load planned week comment overrides.');
+      setPlannedWeekCommentOverridesLoaded(true);
+    } finally {
+      setPlannedWeekCommentOverridesLoading(false);
+    }
+  }, [plannedWeekCommentOverridesLoaded, plannedWeekCommentOverridesLoading]);
 
   const fetchGeneralIssuesOverrides = useCallback(async () => {
     if (generalIssuesOverridesLoaded || generalIssuesOverridesLoading) return;
@@ -1248,7 +1276,8 @@ const SmartsheetPivotPage = () => {
     const trendDraftEntries = Object.entries(trendDrafts);
     const overviewDraftEntries = Object.entries(overviewDrafts);
     const generalIssueDraftEntries = Object.entries(generalIssuesDrafts);
-    if (edits.length === 0 && trendDraftEntries.length === 0 && overviewDraftEntries.length === 0 && generalIssueDraftEntries.length === 0) {
+    const plannedWeekDraftEntries = Object.entries(plannedWeekCommentDrafts);
+    if (edits.length === 0 && trendDraftEntries.length === 0 && overviewDraftEntries.length === 0 && generalIssueDraftEntries.length === 0 && plannedWeekDraftEntries.length === 0) {
       setPresentationSaveError('No changes to save.');
       return;
     }
@@ -1360,6 +1389,30 @@ const SmartsheetPivotPage = () => {
 
         setGeneralIssuesOverrides(nextOverrides);
         setGeneralIssuesDrafts({});
+      }
+
+      if (plannedWeekDraftEntries.length > 0) {
+        const nextOverrides = { ...plannedWeekCommentOverrides };
+        plannedWeekDraftEntries.forEach(([key, value]) => {
+          nextOverrides[key] = value;
+        });
+
+        const response = await fetch('/api/smartsheet/presentation/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section: 'planned_week_comments',
+            content: JSON.stringify(nextOverrides),
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.message || `HTTP ${response.status}`);
+        }
+
+        setPlannedWeekCommentOverrides(nextOverrides);
+        setPlannedWeekCommentDrafts({});
       }
 
       setPresentationEditMode(false);
@@ -1578,7 +1631,7 @@ const SmartsheetPivotPage = () => {
       <div className="d-flex flex-column gap-2">
         <div className="fw-semibold">{title}</div>
         <div className="table-responsive">
-          <table className="table table-sm table-bordered table-striped align-middle mb-0">
+          <table className="table table-sm table-bordered table-striped align-middle mb-0 w-100">
             <thead className="table-light">
               <tr>
                 <th>Description</th>
@@ -1772,6 +1825,38 @@ const SmartsheetPivotPage = () => {
     });
   };
 
+  const formatPlannedWeekDateKey = (value) => {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return formatYmd(date);
+  };
+
+  const buildPlannedWeekCommentKey = (country, siteId, siteName, taskName, startDate, endDate) => {
+    const siteKey = siteId || siteName || '';
+    return [
+      String(country || ''),
+      String(siteKey || ''),
+      String(taskName || ''),
+      formatPlannedWeekDateKey(startDate),
+      formatPlannedWeekDateKey(endDate),
+    ].join('||').toLowerCase();
+  };
+
+  const getPlannedWeekCommentDraft = (key) => {
+    if (Object.prototype.hasOwnProperty.call(plannedWeekCommentDrafts, key)) {
+      return plannedWeekCommentDrafts[key];
+    }
+    if (Object.prototype.hasOwnProperty.call(plannedWeekCommentOverrides, key)) {
+      return plannedWeekCommentOverrides[key];
+    }
+    return '';
+  };
+
+  const updatePlannedWeekCommentDraft = (key, value) => {
+    setPlannedWeekCommentDrafts((prev) => ({ ...prev, [key]: value }));
+  };
+
   const getGeneralIssueShow = (entry) => {
     const key = entry?.id ? String(entry.id) : null;
     if (!key) return true;
@@ -1834,8 +1919,9 @@ const SmartsheetPivotPage = () => {
       fetchTrendOverrides();
       fetchOverviewOverrides();
       fetchGeneralIssuesOverrides();
+      fetchPlannedWeekCommentOverrides();
     }
-  }, [activeTab, fetchHighlights, fetchTrendOverrides, fetchOverviewOverrides, fetchGeneralIssuesOverrides]);
+  }, [activeTab, fetchHighlights, fetchTrendOverrides, fetchOverviewOverrides, fetchGeneralIssuesOverrides, fetchPlannedWeekCommentOverrides]);
 
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
@@ -2049,6 +2135,8 @@ const SmartsheetPivotPage = () => {
                     const endDate = getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']);
                     const status = getRowField(row, ['status', 'Status']) || '';
                     const comment = getRowField(row, ['comment', 'Comment']) || '';
+                    const commentKey = buildPlannedWeekCommentKey(country, siteId, siteName, taskName, startDate, endDate);
+                    const commentValue = getPlannedWeekCommentDraft(commentKey) || '';
 
                     return (
                       <tr key={`${country}-${siteId || siteName || 'row'}-${index}`}>
@@ -2063,7 +2151,18 @@ const SmartsheetPivotPage = () => {
                         <td>{formatDateDisplay(startDate)}</td>
                         <td>{formatDateDisplay(endDate)}</td>
                         <td>{formatDisplayValue(status)}</td>
-                        <td className="text-muted small">{formatDisplayValue(comment)}</td>
+                        <td className="text-muted small">
+                          {presentationEditMode ? (
+                            <textarea
+                              className="form-control form-control-sm"
+                              rows={2}
+                              value={commentValue}
+                              onChange={(event) => updatePlannedWeekCommentDraft(commentKey, event.target.value)}
+                            />
+                          ) : (
+                            formatDisplayValue(comment)
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
