@@ -86,6 +86,16 @@ const formatDateDisplay = (value) => formatYmd(value);
 
 const formatDisplayValue = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
+const formatActionLines = (value) => {
+  if (value === null || value === undefined || value === '') return ['—'];
+  const text = String(value);
+  const withBreaks = text.replace(/(\d{2}\.\d{2}\.\d{2})/g, '\n$1');
+  return withBreaks
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+};
+
 const formatMonthLabel = (value) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -312,6 +322,12 @@ const SmartsheetPivotPage = () => {
   const [trendError, setTrendError] = useState(null);
   const [trendLoaded, setTrendLoaded] = useState(false);
 
+  const [generalIssuesOverrides, setGeneralIssuesOverrides] = useState({});
+  const [generalIssuesDrafts, setGeneralIssuesDrafts] = useState({});
+  const [generalIssuesOverridesLoading, setGeneralIssuesOverridesLoading] = useState(false);
+  const [generalIssuesOverridesError, setGeneralIssuesOverridesError] = useState(null);
+  const [generalIssuesOverridesLoaded, setGeneralIssuesOverridesLoaded] = useState(false);
+
   const [overviewOverrides, setOverviewOverrides] = useState({});
   const [overviewDrafts, setOverviewDrafts] = useState({});
   const [overviewOverridesLoading, setOverviewOverridesLoading] = useState(false);
@@ -534,6 +550,28 @@ const SmartsheetPivotPage = () => {
       setOverviewOverridesLoading(false);
     }
   }, [overviewOverridesLoaded, overviewOverridesLoading]);
+
+  const fetchGeneralIssuesOverrides = useCallback(async () => {
+    if (generalIssuesOverridesLoaded || generalIssuesOverridesLoading) return;
+    setGeneralIssuesOverridesLoading(true);
+    setGeneralIssuesOverridesError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/content?section=general_issues_overrides');
+      if (!response.ok) {
+        throw new Error(`Failed to load general issues overrides (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const rawContent = payload?.content || '';
+      const parsed = rawContent ? JSON.parse(rawContent) : {};
+      setGeneralIssuesOverrides(parsed && typeof parsed === 'object' ? parsed : {});
+      setGeneralIssuesOverridesLoaded(true);
+    } catch (error) {
+      setGeneralIssuesOverridesError(error.message || 'Unable to load general issues overrides.');
+      setGeneralIssuesOverridesLoaded(true);
+    } finally {
+      setGeneralIssuesOverridesLoading(false);
+    }
+  }, [generalIssuesOverridesLoaded, generalIssuesOverridesLoading]);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -1209,7 +1247,8 @@ const SmartsheetPivotPage = () => {
     const edits = Object.values(presentationEdits);
     const trendDraftEntries = Object.entries(trendDrafts);
     const overviewDraftEntries = Object.entries(overviewDrafts);
-    if (edits.length === 0 && trendDraftEntries.length === 0 && overviewDraftEntries.length === 0) {
+    const generalIssueDraftEntries = Object.entries(generalIssuesDrafts);
+    if (edits.length === 0 && trendDraftEntries.length === 0 && overviewDraftEntries.length === 0 && generalIssueDraftEntries.length === 0) {
       setPresentationSaveError('No changes to save.');
       return;
     }
@@ -1297,6 +1336,30 @@ const SmartsheetPivotPage = () => {
 
         setOverviewOverrides(nextOverrides);
         setOverviewDrafts({});
+      }
+
+      if (generalIssueDraftEntries.length > 0) {
+        const nextOverrides = { ...generalIssuesOverrides };
+        generalIssueDraftEntries.forEach(([issueId, show]) => {
+          nextOverrides[issueId] = { show: !!show };
+        });
+
+        const response = await fetch('/api/smartsheet/presentation/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section: 'general_issues_overrides',
+            content: JSON.stringify(nextOverrides),
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.message || `HTTP ${response.status}`);
+        }
+
+        setGeneralIssuesOverrides(nextOverrides);
+        setGeneralIssuesDrafts({});
       }
 
       setPresentationEditMode(false);
@@ -1498,7 +1561,11 @@ const SmartsheetPivotPage = () => {
   };
 
   const renderGeneralIssuesTable = (entries, title) => {
-    if (!entries || entries.length === 0) {
+    const visibleEntries = presentationEditMode
+      ? entries
+      : entries.filter((entry) => getGeneralIssueShow(entry));
+
+    if (!visibleEntries || visibleEntries.length === 0) {
       return (
         <div className="d-flex flex-column gap-2">
           <div className="fw-semibold">{title}</div>
@@ -1519,16 +1586,34 @@ const SmartsheetPivotPage = () => {
                 <th>Owner</th>
                 <th>Action</th>
                 <th>Priority (CHML)</th>
+                {presentationEditMode && <th>Show</th>}
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry, index) => (
+              {visibleEntries.map((entry, index) => (
                 <tr key={`${entry.country ?? 'country'}-${index}`}>
                   <td>{formatDisplayValue(entry.description)}</td>
-                  <td>{formatDisplayValue(entry.country)}</td>
+                  <td className="fw-semibold">
+                    {entry.country ? <CountryFlag country={entry.country} /> : null}
+                    {formatDisplayValue(entry.country)}
+                  </td>
                   <td>{formatDisplayValue(entry.owner)}</td>
-                  <td>{formatDisplayValue(entry.action)}</td>
+                  <td>
+                    {formatActionLines(entry.action).map((line, lineIndex) => (
+                      <div key={`${entry.country ?? 'country'}-${index}-action-${lineIndex}`}>{line}</div>
+                    ))}
+                  </td>
                   <td>{formatDisplayValue(entry.priority)}</td>
+                  {presentationEditMode && (
+                    <td className="text-center">
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={getGeneralIssueShow(entry)}
+                        onChange={(event) => updateGeneralIssueDraft(entry, event.target.checked)}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -1687,6 +1772,25 @@ const SmartsheetPivotPage = () => {
     });
   };
 
+  const getGeneralIssueShow = (entry) => {
+    const key = entry?.id ? String(entry.id) : null;
+    if (!key) return true;
+    if (Object.prototype.hasOwnProperty.call(generalIssuesDrafts, key)) {
+      return !!generalIssuesDrafts[key];
+    }
+    const override = generalIssuesOverrides[key];
+    if (override && typeof override.show !== 'undefined') {
+      return !!override.show;
+    }
+    return true;
+  };
+
+  const updateGeneralIssueDraft = (entry, show) => {
+    if (!entry?.id) return;
+    const key = String(entry.id);
+    setGeneralIssuesDrafts((prev) => ({ ...prev, [key]: !!show }));
+  };
+
   const trendItems = filteredOverviewItems.map((row) => {
     const override = trendOverrides?.[row.country] || {};
     return {
@@ -1729,8 +1833,9 @@ const SmartsheetPivotPage = () => {
       fetchHighlights();
       fetchTrendOverrides();
       fetchOverviewOverrides();
+      fetchGeneralIssuesOverrides();
     }
-  }, [activeTab, fetchHighlights, fetchTrendOverrides, fetchOverviewOverrides]);
+  }, [activeTab, fetchHighlights, fetchTrendOverrides, fetchOverviewOverrides, fetchGeneralIssuesOverrides]);
 
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);

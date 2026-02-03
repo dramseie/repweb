@@ -1200,7 +1200,7 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function generalIssueLogData(?array $countries = null): array
     {
-           $sql = 'SELECT country, responsible_party, blocker_title, description, action_to_be_taken, priority '
+        $sql = 'SELECT id, country, responsible_party, blocker_title, description, action_to_be_taken, priority '
                . 'FROM nifi.ikea_issue_risk_log '
                . "WHERE priority IN ('High', 'Critical')";
 
@@ -1222,6 +1222,7 @@ class SmartsheetPresentationController extends AbstractController
             }
 
             $entry = [
+                'id' => (int) ($row['id'] ?? 0),
                 'description' => $description !== '' ? $description : null,
                 'country' => $country,
                 'owner' => $owner !== '' ? $owner : null,
