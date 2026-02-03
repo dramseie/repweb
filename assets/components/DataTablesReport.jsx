@@ -1,5 +1,5 @@
 // src/assets/react/components/DataTablesReport.jsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import $ from 'jquery';
 
@@ -249,9 +249,6 @@ export default function DataTablesReport({
   const [headers, setHeaders] = useState([]);
   const [rulesRaw, setRulesRaw] = useState(initialRawRules);
   const [rulesPretty, setRulesPretty] = useState(initialRevived);
-  const [taskFilterCountry, setTaskFilterCountry] = useState('');
-  const [taskFilterSiteName, setTaskFilterSiteName] = useState('');
-  const [taskFilterTaskName, setTaskFilterTaskName] = useState('');
 
   const tableRef = useRef(null);
   const dtRef = useRef(null);
@@ -750,43 +747,6 @@ export default function DataTablesReport({
     return idx >= 0 ? (headers[idx] ?? `#${idx}`) : String(t);
   };
 
-  const normalizeColumnKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const findColumnIndex = (candidates) => {
-    if (!candidates || candidates.length === 0) return null;
-    const normalizedHeaders = headers.map(normalizeColumnKey);
-    const normalizedColumns = columns.map(normalizeColumnKey);
-    const normalizedCandidates = candidates.map(normalizeColumnKey);
-    for (const candidate of normalizedCandidates) {
-      const headerIndex = normalizedHeaders.indexOf(candidate);
-      if (headerIndex >= 0) return headerIndex;
-      const columnIndex = normalizedColumns.indexOf(candidate);
-      if (columnIndex >= 0) return columnIndex;
-    }
-    return null;
-  };
-
-  const taskFilterColumnIndexes = useMemo(() => ({
-    country: findColumnIndex(['country', 'countryname', 'countrycode', 'countryregion', 'region', 'market']),
-    siteName: findColumnIndex(['sitename', 'site_name', 'site name']),
-    taskName: findColumnIndex(['taskname', 'task_name', 'task name']),
-  }), [headers, columns]);
-
-  useEffect(() => {
-    const dt = dtRef.current;
-    if (!dt) return;
-    const { country, siteName, taskName } = taskFilterColumnIndexes;
-    if (country == null && siteName == null && taskName == null) return;
-    if (country != null) dt.column(country).search(taskFilterCountry || '');
-    if (siteName != null) dt.column(siteName).search(taskFilterSiteName || '');
-    if (taskName != null) dt.column(taskName).search(taskFilterTaskName || '');
-    dt.draw();
-  }, [taskFilterCountry, taskFilterSiteName, taskFilterTaskName, taskFilterColumnIndexes]);
-
-  useEffect(() => {
-    setTaskFilterCountry('');
-    setTaskFilterSiteName('');
-    setTaskFilterTaskName('');
-  }, [repid, colsUrl, dataUrl]);
   const handleColumnSelect = (e) => {
     const idx = Number(e.target.value);
     setCfDraft(d => ({ ...d, columnIndex: Number.isNaN(idx) ? null : idx }));
@@ -891,61 +851,6 @@ export default function DataTablesReport({
             {repdesc && (<div className="small text-muted" dangerouslySetInnerHTML={{ __html: repdesc }} />)}
             {err && <div className="badge text-bg-danger ms-2 align-middle">{err}</div>}
           </div>
-          {(taskFilterColumnIndexes.country != null || taskFilterColumnIndexes.siteName != null || taskFilterColumnIndexes.taskName != null) && (
-            <div className="row g-2 align-items-end mb-3">
-              {taskFilterColumnIndexes.country != null && (
-                <div className="col-12 col-md-4 col-lg-3">
-                  <label className="form-label small mb-1">Country</label>
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    value={taskFilterCountry}
-                    onChange={(event) => setTaskFilterCountry(event.target.value)}
-                    placeholder="Filter country"
-                  />
-                </div>
-              )}
-              {taskFilterColumnIndexes.siteName != null && (
-                <div className="col-12 col-md-4 col-lg-3">
-                  <label className="form-label small mb-1">Site Name</label>
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    value={taskFilterSiteName}
-                    onChange={(event) => setTaskFilterSiteName(event.target.value)}
-                    placeholder="Filter site"
-                  />
-                </div>
-              )}
-              {taskFilterColumnIndexes.taskName != null && (
-                <div className="col-12 col-md-4 col-lg-3">
-                  <label className="form-label small mb-1">Task Name</label>
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    value={taskFilterTaskName}
-                    onChange={(event) => setTaskFilterTaskName(event.target.value)}
-                    placeholder="Filter task"
-                  />
-                </div>
-              )}
-              <div className="col-12 col-md-4 col-lg-3 d-flex">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm mt-md-auto"
-                  onClick={() => {
-                    setTaskFilterCountry('');
-                    setTaskFilterSiteName('');
-                    setTaskFilterTaskName('');
-                  }}
-                  disabled={!taskFilterCountry && !taskFilterSiteName && !taskFilterTaskName}
-                >
-                  Clear filters
-                </button>
-              </div>
-            </div>
-          )}
-
           <table
             ref={tableRef}
             id="dt"
