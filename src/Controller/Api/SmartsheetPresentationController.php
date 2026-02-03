@@ -1200,9 +1200,9 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function generalIssueLogData(?array $countries = null): array
     {
-        $sql = 'SELECT country, responsible_party, blocker_title, description, action_to_be_taken, impact '
-             . 'FROM nifi.ikea_issue_risk_log '
-             . "WHERE impact IN ('High', 'Critical')";
+           $sql = 'SELECT country, responsible_party, blocker_title, description, action_to_be_taken, priority '
+               . 'FROM nifi.ikea_issue_risk_log '
+               . "WHERE priority IN ('High', 'Critical')";
 
         $rows = $this->connection->fetchAllAssociative($sql);
 
@@ -1226,7 +1226,7 @@ class SmartsheetPresentationController extends AbstractController
                 'country' => $country,
                 'owner' => $owner !== '' ? $owner : null,
                 'action' => $row['action_to_be_taken'] ?? null,
-                'impact' => $row['impact'] ?? null,
+                'priority' => $row['priority'] ?? null,
             ];
 
             if (stripos($owner, 'IKEA') !== false) {

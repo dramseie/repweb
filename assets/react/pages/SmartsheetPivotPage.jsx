@@ -1518,7 +1518,7 @@ const SmartsheetPivotPage = () => {
                 <th>Country</th>
                 <th>Owner</th>
                 <th>Action</th>
-                <th>Impact (CHML)</th>
+                <th>Priority (CHML)</th>
               </tr>
             </thead>
             <tbody>
@@ -1528,7 +1528,7 @@ const SmartsheetPivotPage = () => {
                   <td>{formatDisplayValue(entry.country)}</td>
                   <td>{formatDisplayValue(entry.owner)}</td>
                   <td>{formatDisplayValue(entry.action)}</td>
-                  <td>{formatDisplayValue(entry.impact)}</td>
+                  <td>{formatDisplayValue(entry.priority)}</td>
                 </tr>
               ))}
             </tbody>
