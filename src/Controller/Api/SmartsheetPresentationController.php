@@ -49,6 +49,7 @@ class SmartsheetPresentationController extends AbstractController
     ];
     private const SITE_ID_CANDIDATES = ['Site_ID', 'Site Id', 'SiteID', 'Site Id', 'Site'];
     private const SITE_NAME_CANDIDATES = ['Site_Name', 'Site Name', 'SiteName', 'Site'];
+    private const TASK_ID_CANDIDATES = ['task_id', 'Task_ID', 'Task Id', 'TaskID'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
@@ -750,6 +751,7 @@ class SmartsheetPresentationController extends AbstractController
         $countryColumn = $columns['country'] ?? null;
         $siteNameColumn = $columns['siteName'] ?? null;
         $siteIdColumn = $columns['siteId'] ?? null;
+        $taskIdColumn = $columns['taskId'] ?? null;
         $taskNameColumn = $columns['taskName'] ?? null;
 
         if (!$countryColumn && !$siteNameColumn && !$siteIdColumn && !$taskNameColumn) {
@@ -765,6 +767,9 @@ class SmartsheetPresentationController extends AbstractController
         }
         if ($siteIdColumn) {
             $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
+        }
+        if ($taskIdColumn) {
+            $selectParts[] = sprintf('`%s` AS task_id', $taskIdColumn);
         }
         if ($taskNameColumn) {
             $selectParts[] = sprintf('`%s` AS task_name', $taskNameColumn);
@@ -798,6 +803,7 @@ class SmartsheetPresentationController extends AbstractController
             $countryColumn ? sprintf('`%s`', $countryColumn) : null,
             $siteNameColumn ? sprintf('`%s`', $siteNameColumn) : null,
             $siteIdColumn ? sprintf('`%s`', $siteIdColumn) : null,
+            $taskIdColumn ? sprintf('`%s`', $taskIdColumn) : null,
             $taskNameColumn ? sprintf('`%s`', $taskNameColumn) : null,
         ]));
         if ($orderParts) {
@@ -812,6 +818,7 @@ class SmartsheetPresentationController extends AbstractController
                 'country' => $row['country'] ?? null,
                 'siteName' => $row['site_name'] ?? null,
                 'siteId' => $row['site_id'] ?? null,
+                'taskId' => isset($row['task_id']) ? (string) $row['task_id'] : null,
                 'taskName' => $row['task_name'] ?? null,
             ];
         }, $rows);
@@ -1650,6 +1657,7 @@ class SmartsheetPresentationController extends AbstractController
             'country' => $this->findColumnName($columns, self::COUNTRY_CANDIDATES),
             'siteId' => $this->findColumnName($columns, self::SITE_ID_CANDIDATES),
             'siteName' => $this->findColumnName($columns, self::SITE_NAME_CANDIDATES),
+            'taskId' => $this->findColumnName($columns, self::TASK_ID_CANDIDATES),
             'taskName' => $this->findColumnName($columns, self::TASK_NAME_CANDIDATES),
             'startDate' => $this->findColumnName($columns, self::START_DATE_CANDIDATES),
             'endDate' => $this->findColumnName($columns, self::END_DATE_CANDIDATES),

@@ -1036,10 +1036,12 @@ const SmartsheetPivotPage = () => {
 
   const taskTrackerOptions = React.useMemo(() => {
     const map = new Map();
-    const pushOption = (value, meta = {}) => {
-      if (!value) return;
-      if (!map.has(value)) {
-        map.set(value, { value, label: value, ...meta });
+    const pushOption = (option) => {
+      if (!option) return;
+      const key = String(option.taskId || option.label || option.value || '');
+      if (!key) return;
+      if (!map.has(key)) {
+        map.set(key, { ...option, value: key, label: option.label || option.value || key });
       }
     };
     taskTrackerOptionItems.forEach((item) => {
@@ -1047,18 +1049,42 @@ const SmartsheetPivotPage = () => {
       const siteName = String(item?.siteName || '').trim();
       const siteId = String(item?.siteId || '').trim();
       const taskName = String(item?.taskName || '').trim();
+      const taskId = item?.taskId ? String(item.taskId) : null;
       const labelParts = [country, siteName || siteId, taskName].filter(Boolean);
       const label = labelParts.join(' / ');
       if (!label) return;
-      pushOption(label, { country, siteName: siteName || siteId, taskName });
+      pushOption({
+        taskId,
+        label,
+        country,
+        siteName: siteName || siteId,
+        taskName,
+      });
     });
 
-    taskTrackerDraft.tasks.forEach((task) => pushOption(String(task)));
+    normalizeTaskTrackerTasks(taskTrackerDraft.tasks).forEach((task) =>
+      pushOption({
+        taskId: task.taskId,
+        label: task.label,
+        country: task.country ?? null,
+        siteName: task.siteName ?? null,
+        taskName: task.taskName ?? null,
+      })
+    );
 
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [taskTrackerOptionItems, taskTrackerDraft.tasks]);
 
   const taskTrackerFilteredOptions = taskTrackerOptions;
+
+  const taskTrackerSelectedKeys = React.useMemo(() => {
+    const keys = new Set();
+    normalizeTaskTrackerTasks(taskTrackerDraft.tasks).forEach((task) => {
+      const key = getTaskTrackerTaskKey(task);
+      if (key) keys.add(key);
+    });
+    return keys;
+  }, [taskTrackerDraft.tasks]);
 
   const fetchTaskTrackerOptions = useCallback(async (mode = 'append') => {
     if (taskTrackerOptionsLoadingRef.current) return;
@@ -1093,17 +1119,16 @@ const SmartsheetPivotPage = () => {
   }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName]);
 
   useEffect(() => {
+    if (!taskTrackerSelectOpen) return undefined;
     const handle = setTimeout(() => {
       taskTrackerOptionsOffsetRef.current = 0;
       setTaskTrackerOptionsOffset(0);
       setTaskTrackerOptionsHasMore(true);
       setTaskTrackerOptionItems([]);
-      if (taskTrackerSelectOpen) {
-        fetchTaskTrackerOptions('replace');
-      }
+      fetchTaskTrackerOptions('replace');
     }, 250);
     return () => clearTimeout(handle);
-  }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName, taskTrackerSelectOpen, fetchTaskTrackerOptions]);
+  }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName, fetchTaskTrackerOptions]);
 
   const taskTrackerTopCategories = React.useMemo(() => {
     const counts = new Map();
@@ -1133,9 +1158,6 @@ const SmartsheetPivotPage = () => {
 
   useEffect(() => {
     if (!taskTrackerSelectOpen) return;
-    if (taskTrackerOptionItems.length === 0 && !taskTrackerOptionsLoading) {
-      fetchTaskTrackerOptions('replace');
-    }
     const handleClick = (event) => {
       if (!taskTrackerSelectRef.current) return;
       if (!taskTrackerSelectRef.current.contains(event.target)) {
@@ -1144,7 +1166,7 @@ const SmartsheetPivotPage = () => {
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [taskTrackerSelectOpen, taskTrackerOptionItems.length, taskTrackerOptionsLoading, fetchTaskTrackerOptions]);
+  }, [taskTrackerSelectOpen]);
 
   const fieldOptions = [
     { value: 'Start_Date', label: 'Start Date' },
@@ -1407,6 +1429,44 @@ const SmartsheetPivotPage = () => {
     return raw;
   };
 
+  const normalizeTaskTrackerTasks = (tasks) => {
+    if (!Array.isArray(tasks)) return [];
+    return tasks.map((task) => {
+      if (task && typeof task === 'object') {
+        const taskId = task.taskId ?? task.id ?? task.task_id ?? null;
+        const label = task.label
+          ?? task.taskName
+          ?? task.task_name
+          ?? task.name
+          ?? (taskId ? String(taskId) : '');
+        return {
+          taskId: taskId !== null ? String(taskId) : null,
+          label: String(label || ''),
+          country: task.country ?? null,
+          siteName: task.siteName ?? task.site_name ?? null,
+          taskName: task.taskName ?? task.task_name ?? null,
+        };
+      }
+      return { taskId: null, label: String(task) };
+    }).filter((item) => item.label);
+  };
+
+  const getTaskTrackerTaskKey = (task) => {
+    if (!task) return '';
+    if (typeof task === 'object') {
+      return String(task.taskId ?? task.id ?? task.task_id ?? task.value ?? task.label ?? '');
+    }
+    return String(task);
+  };
+
+  const getTaskTrackerTaskLabel = (task) => {
+    if (!task) return '';
+    if (typeof task === 'object') {
+      return String(task.label ?? task.taskName ?? task.task_name ?? task.name ?? task.taskId ?? '');
+    }
+    return String(task);
+  };
+
   const startTaskTrackerEdit = (entry) => {
     if (!entry?.id) return;
     setTaskTrackerEditId(entry.id);
@@ -1415,7 +1475,7 @@ const SmartsheetPivotPage = () => {
       category: entry.category || '',
       description: entry.description || '',
       responsible: entry.responsible || '',
-      tasks: Array.isArray(entry.tasks) ? entry.tasks : [],
+      tasks: normalizeTaskTrackerTasks(entry.tasks),
     });
   };
 
@@ -1433,6 +1493,13 @@ const SmartsheetPivotPage = () => {
       setTaskTrackerError('Date, category, and description are required.');
       return;
     }
+    const tasksPayload = normalizeTaskTrackerTasks(taskTrackerDraft.tasks).map((task) => ({
+      taskId: task.taskId,
+      label: task.label,
+      country: task.country ?? null,
+      siteName: task.siteName ?? null,
+      taskName: task.taskName ?? null,
+    }));
     setTaskTrackerSaving(true);
     setTaskTrackerError(null);
     try {
@@ -1448,7 +1515,7 @@ const SmartsheetPivotPage = () => {
           category: taskTrackerDraft.category,
           description: taskTrackerDraft.description,
           responsible: taskTrackerDraft.responsible || null,
-          tasks: taskTrackerDraft.tasks || [],
+          tasks: tasksPayload,
         }),
       });
       if (!response.ok) {
@@ -3966,7 +4033,15 @@ const SmartsheetPivotPage = () => {
                     <button
                       type="button"
                       className="task-tracker-multiselect__toggle"
-                      onClick={() => setTaskTrackerSelectOpen((prev) => !prev)}
+                      onClick={() =>
+                        setTaskTrackerSelectOpen((prev) => {
+                          const next = !prev;
+                          if (next && taskTrackerOptionItems.length === 0 && !taskTrackerOptionsLoadingRef.current) {
+                            fetchTaskTrackerOptions('replace');
+                          }
+                          return next;
+                        })
+                      }
                     >
                       <span>{taskTrackerDraft.tasks.length ? `${taskTrackerDraft.tasks.length} selected` : 'Select options'}</span>
                       <span className="task-tracker-multiselect__caret" />
@@ -4003,9 +4078,18 @@ const SmartsheetPivotPage = () => {
                               type="button"
                               className="task-tracker-multiselect__action"
                               onClick={() => {
-                                const values = taskTrackerFilteredOptions.map((option) => option.value);
-                                const next = new Set([...(taskTrackerDraft.tasks || []), ...values]);
-                                updateTaskTrackerDraft({ tasks: Array.from(next) });
+                                const existing = normalizeTaskTrackerTasks(taskTrackerDraft.tasks);
+                                const existingKeys = new Set(existing.map(getTaskTrackerTaskKey));
+                                const additions = taskTrackerFilteredOptions
+                                  .filter((option) => !existingKeys.has(String(option.value)))
+                                  .map((option) => ({
+                                    taskId: option.taskId ?? null,
+                                    label: option.label,
+                                    country: option.country ?? null,
+                                    siteName: option.siteName ?? null,
+                                    taskName: option.taskName ?? null,
+                                  }));
+                                updateTaskTrackerDraft({ tasks: [...existing, ...additions] });
                               }}
                             >
                               Check all
@@ -4014,8 +4098,10 @@ const SmartsheetPivotPage = () => {
                               type="button"
                               className="task-tracker-multiselect__action"
                               onClick={() => {
-                                const remove = new Set(taskTrackerFilteredOptions.map((option) => option.value));
-                                const remaining = (taskTrackerDraft.tasks || []).filter((value) => !remove.has(value));
+                                const remove = new Set(taskTrackerFilteredOptions.map((option) => String(option.value)));
+                                const remaining = normalizeTaskTrackerTasks(taskTrackerDraft.tasks).filter(
+                                  (task) => !remove.has(getTaskTrackerTaskKey(task))
+                                );
                                 updateTaskTrackerDraft({ tasks: remaining });
                               }}
                             >
@@ -4052,20 +4138,33 @@ const SmartsheetPivotPage = () => {
                             <div className="task-tracker-multiselect__empty">Loading…</div>
                           )}
                           {taskTrackerFilteredOptions.map((option) => {
-                            const checked = (taskTrackerDraft.tasks || []).includes(option.value);
+                            const optionKey = String(option.value);
+                            const checked = taskTrackerSelectedKeys.has(optionKey);
                             return (
                               <label key={`tracker-task-${option.value}`} className="task-tracker-multiselect__item">
                                 <input
                                   type="checkbox"
                                   checked={checked}
                                   onChange={() => {
-                                    const next = new Set(taskTrackerDraft.tasks || []);
+                                    const current = normalizeTaskTrackerTasks(taskTrackerDraft.tasks);
                                     if (checked) {
-                                      next.delete(option.value);
+                                      updateTaskTrackerDraft({
+                                        tasks: current.filter((task) => getTaskTrackerTaskKey(task) !== optionKey),
+                                      });
                                     } else {
-                                      next.add(option.value);
+                                      updateTaskTrackerDraft({
+                                        tasks: [
+                                          ...current,
+                                          {
+                                            taskId: option.taskId ?? null,
+                                            label: option.label,
+                                            country: option.country ?? null,
+                                            siteName: option.siteName ?? null,
+                                            taskName: option.taskName ?? null,
+                                          },
+                                        ],
+                                      });
                                     }
-                                    updateTaskTrackerDraft({ tasks: Array.from(next) });
                                   }}
                                 />
                                 <span>{option.label}</span>
@@ -4136,7 +4235,11 @@ const SmartsheetPivotPage = () => {
                           <td>{formatDisplayValue(entry.category)}</td>
                           <td>{formatDisplayValue(entry.description)}</td>
                           <td>{formatDisplayValue(entry.responsible)}</td>
-                          <td>{Array.isArray(entry.tasks) ? entry.tasks.join(', ') : ''}</td>
+                          <td>
+                            {Array.isArray(entry.tasks)
+                              ? entry.tasks.map((task) => getTaskTrackerTaskLabel(task)).filter(Boolean).join(', ')
+                              : ''}
+                          </td>
                           <td className="text-nowrap">
                             <button
                               type="button"
