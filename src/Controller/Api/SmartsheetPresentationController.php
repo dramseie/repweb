@@ -24,6 +24,7 @@ class SmartsheetPresentationController extends AbstractController
     private const SIGN_OFF_TASK = 'Store Sign off Completed';
     private const STATUS_TABLE = 'smartsheet_status_log';
     private const CONTENT_TABLE = 'smartsheet_content';
+    private const TASK_TRACKER_TABLE = 'smartsheet_task_tracker';
     private const STATUS_CATEGORIES = [
         'assessment' => 'Planned Assessments',
         'installation' => 'Planned Installations',
@@ -697,6 +698,93 @@ class SmartsheetPresentationController extends AbstractController
         $payload = $this->issueLogData();
         $payload['generalIssues'] = $this->generalIssueLogData();
         return $this->json($payload);
+    }
+
+    #[Route('/task-tracker', name: 'task_tracker_index', methods: ['GET'])]
+    public function taskTrackerIndex(): JsonResponse
+    {
+        $rows = $this->connection->fetchAllAssociative(
+            sprintf(
+                'SELECT id, log_date, category, description, responsible, tasks_json, created_at, updated_at FROM %s ORDER BY log_date DESC, id DESC',
+                self::TASK_TRACKER_TABLE
+            )
+        );
+
+        $items = array_map(static function (array $row): array {
+            $tasks = json_decode((string) ($row['tasks_json'] ?? ''), true);
+            return [
+                'id' => (int) ($row['id'] ?? 0),
+                'date' => $row['log_date'] ?? null,
+                'category' => $row['category'] ?? null,
+                'description' => $row['description'] ?? null,
+                'responsible' => $row['responsible'] ?? null,
+                'tasks' => is_array($tasks) ? $tasks : [],
+                'createdAt' => $row['created_at'] ?? null,
+                'updatedAt' => $row['updated_at'] ?? null,
+            ];
+        }, $rows);
+
+        return $this->json(['items' => $items]);
+    }
+
+    #[Route('/task-tracker', name: 'task_tracker_create', methods: ['POST'])]
+    public function taskTrackerCreate(Request $request): JsonResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true) ?? [];
+        $date = trim((string) ($payload['date'] ?? ''));
+        $category = trim((string) ($payload['category'] ?? ''));
+        $description = trim((string) ($payload['description'] ?? ''));
+        $responsible = trim((string) ($payload['responsible'] ?? '')) ?: null;
+        $tasks = $payload['tasks'] ?? [];
+
+        if ($date === '' || $category === '' || $description === '') {
+            return $this->json(['message' => 'date, category, and description are required.'], 400);
+        }
+        if (!is_array($tasks)) {
+            $tasks = [];
+        }
+
+        $createdAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $this->connection->insert(self::TASK_TRACKER_TABLE, [
+            'log_date' => $date,
+            'category' => $category,
+            'description' => $description,
+            'responsible' => $responsible,
+            'tasks_json' => json_encode(array_values($tasks), JSON_UNESCAPED_UNICODE),
+            'created_at' => $createdAt,
+        ]);
+
+        return $this->json(['ok' => true, 'createdAt' => $createdAt]);
+    }
+
+    #[Route('/task-tracker/{id}', name: 'task_tracker_update', methods: ['PUT'])]
+    public function taskTrackerUpdate(int $id, Request $request): JsonResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true) ?? [];
+        $date = trim((string) ($payload['date'] ?? ''));
+        $category = trim((string) ($payload['category'] ?? ''));
+        $description = trim((string) ($payload['description'] ?? ''));
+        $responsible = trim((string) ($payload['responsible'] ?? '')) ?: null;
+        $tasks = $payload['tasks'] ?? [];
+
+        if ($date === '' || $category === '' || $description === '') {
+            return $this->json(['message' => 'date, category, and description are required.'], 400);
+        }
+        if (!is_array($tasks)) {
+            $tasks = [];
+        }
+
+        $updatedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $this->connection->update(self::TASK_TRACKER_TABLE, [
+            'log_date' => $date,
+            'category' => $category,
+            'description' => $description,
+            'responsible' => $responsible,
+            'tasks_json' => json_encode(array_values($tasks), JSON_UNESCAPED_UNICODE),
+            'updated_at' => $updatedAt,
+        ], ['id' => $id]);
+
+        return $this->json(['ok' => true, 'updatedAt' => $updatedAt]);
     }
 
     #[Route('/overview', name: 'presentation_overview', methods: ['GET'])]

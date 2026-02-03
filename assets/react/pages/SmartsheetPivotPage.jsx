@@ -353,6 +353,19 @@ const SmartsheetPivotPage = () => {
   const [plannedWeekLoading, setPlannedWeekLoading] = useState(false);
   const [plannedWeekError, setPlannedWeekError] = useState(null);
 
+  const [taskTrackerItems, setTaskTrackerItems] = useState([]);
+  const [taskTrackerLoading, setTaskTrackerLoading] = useState(false);
+  const [taskTrackerError, setTaskTrackerError] = useState(null);
+  const [taskTrackerDraft, setTaskTrackerDraft] = useState({
+    date: '',
+    category: '',
+    description: '',
+    responsible: '',
+    tasks: [],
+  });
+  const [taskTrackerSaving, setTaskTrackerSaving] = useState(false);
+  const [taskTrackerEditId, setTaskTrackerEditId] = useState(null);
+
   const [reportList, setReportList] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState(null);
@@ -644,6 +657,23 @@ const SmartsheetPivotPage = () => {
       setReportLoading(false);
     }
   }, [selectedReportId]);
+
+  const fetchTaskTracker = useCallback(async () => {
+    setTaskTrackerLoading(true);
+    setTaskTrackerError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/task-tracker');
+      if (!response.ok) {
+        throw new Error(`Failed to load task tracker (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setTaskTrackerItems(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setTaskTrackerError(error.message || 'Unable to load task tracker.');
+    } finally {
+      setTaskTrackerLoading(false);
+    }
+  }, []);
 
   const fetchReportMeta = useCallback(async (repid) => {
     if (!repid) {
@@ -1230,6 +1260,63 @@ const SmartsheetPivotPage = () => {
       setPresentationSaveError(error.message || 'Failed to save issue.');
     } finally {
       setIssueSaving((prev) => ({ ...prev, [country]: false }));
+    }
+  };
+
+  const resetTaskTrackerDraft = () => {
+    setTaskTrackerDraft({ date: '', category: '', description: '', responsible: '', tasks: [] });
+    setTaskTrackerEditId(null);
+  };
+
+  const startTaskTrackerEdit = (entry) => {
+    if (!entry?.id) return;
+    setTaskTrackerEditId(entry.id);
+    setTaskTrackerDraft({
+      date: entry.date || '',
+      category: entry.category || '',
+      description: entry.description || '',
+      responsible: entry.responsible || '',
+      tasks: Array.isArray(entry.tasks) ? entry.tasks : [],
+    });
+  };
+
+  const updateTaskTrackerDraft = (patch) => {
+    setTaskTrackerDraft((prev) => ({ ...prev, ...patch }));
+  };
+
+  const submitTaskTracker = async () => {
+    if (!taskTrackerDraft.date || !taskTrackerDraft.category || !taskTrackerDraft.description) {
+      setTaskTrackerError('Date, category, and description are required.');
+      return;
+    }
+    setTaskTrackerSaving(true);
+    setTaskTrackerError(null);
+    try {
+      const endpoint = taskTrackerEditId
+        ? `/api/smartsheet/presentation/task-tracker/${taskTrackerEditId}`
+        : '/api/smartsheet/presentation/task-tracker';
+      const method = taskTrackerEditId ? 'PUT' : 'POST';
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: taskTrackerDraft.date,
+          category: taskTrackerDraft.category,
+          description: taskTrackerDraft.description,
+          responsible: taskTrackerDraft.responsible || null,
+          tasks: taskTrackerDraft.tasks || [],
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      resetTaskTrackerDraft();
+      fetchTaskTracker();
+    } catch (error) {
+      setTaskTrackerError(error.message || 'Failed to save task tracker entry.');
+    } finally {
+      setTaskTrackerSaving(false);
     }
   };
 
@@ -2666,6 +2753,12 @@ const SmartsheetPivotPage = () => {
     }
   }, [activeTab, selectedReportId, fetchReportMeta]);
 
+  useEffect(() => {
+    if (activeTab === 'task-tracker' && !taskTrackerLoading) {
+      fetchTaskTracker();
+    }
+  }, [activeTab, fetchTaskTracker, taskTrackerLoading]);
+
   return (
     <div className="smartsheet-pivot">
       <ul className="nav nav-tabs mb-3" role="tablist">
@@ -2722,6 +2815,17 @@ const SmartsheetPivotPage = () => {
             onClick={() => setActiveTab('reports')}
           >
             Reports
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'task-tracker' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'task-tracker'}
+            onClick={() => setActiveTab('task-tracker')}
+          >
+            Task Tracker
           </button>
         </li>
       </ul>
@@ -3641,6 +3745,159 @@ const SmartsheetPivotPage = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'task-tracker' && (
+        <div className="d-flex flex-column gap-3">
+          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+            <div>
+              <h2 className="h5 mb-0">Task Tracker</h2>
+              <div className="text-muted small">Log tracking entries and link them to tasks.</div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm"
+              onClick={fetchTaskTracker}
+              disabled={taskTrackerLoading}
+            >
+              Refresh
+            </button>
+          </div>
+
+          {taskTrackerError && (
+            <div className="alert alert-warning" role="alert">
+              {taskTrackerError}
+            </div>
+          )}
+
+          <div className="card shadow-sm">
+            <div className="card-body">
+              <div className="row g-3">
+                <div className="col-12 col-lg-2">
+                  <label className="form-label small mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="form-control form-control-sm"
+                    value={taskTrackerDraft.date}
+                    onChange={(event) => updateTaskTrackerDraft({ date: event.target.value })}
+                  />
+                </div>
+                <div className="col-12 col-lg-3">
+                  <label className="form-label small mb-1">Category</label>
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={taskTrackerDraft.category}
+                    onChange={(event) => updateTaskTrackerDraft({ category: event.target.value })}
+                  />
+                </div>
+                <div className="col-12 col-lg-3">
+                  <label className="form-label small mb-1">Responsible</label>
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={taskTrackerDraft.responsible}
+                    onChange={(event) => updateTaskTrackerDraft({ responsible: event.target.value })}
+                  />
+                </div>
+                <div className="col-12 col-lg-4">
+                  <label className="form-label small mb-1">Assign to Tasks</label>
+                  <select
+                    className="form-select form-select-sm"
+                    multiple
+                    value={taskTrackerDraft.tasks}
+                    onChange={(event) =>
+                      updateTaskTrackerDraft({
+                        tasks: Array.from(event.target.selectedOptions).map((option) => option.value),
+                      })
+                    }
+                    style={{ minHeight: 90 }}
+                  >
+                    {taskOptions.map((option) => (
+                      <option key={`tracker-task-${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12">
+                  <label className="form-label small mb-1">Description</label>
+                  <textarea
+                    className="form-control form-control-sm"
+                    rows={3}
+                    value={taskTrackerDraft.description}
+                    onChange={(event) => updateTaskTrackerDraft({ description: event.target.value })}
+                  />
+                </div>
+                <div className="col-12 d-flex gap-2 justify-content-end">
+                  {taskTrackerEditId && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={resetTaskTrackerDraft}
+                      disabled={taskTrackerSaving}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={submitTaskTracker}
+                    disabled={taskTrackerSaving}
+                  >
+                    {taskTrackerSaving ? 'Saving…' : (taskTrackerEditId ? 'Save entry' : 'Add entry')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card shadow-sm">
+            <div className="card-body">
+              {taskTrackerLoading && <div className="text-muted">Loading task tracker…</div>}
+              {!taskTrackerLoading && taskTrackerItems.length === 0 && (
+                <div className="text-muted">No task tracker entries yet.</div>
+              )}
+              {!taskTrackerLoading && taskTrackerItems.length > 0 && (
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th>Responsible</th>
+                        <th>Tasks</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {taskTrackerItems.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{formatDateDisplay(entry.date)}</td>
+                          <td>{formatDisplayValue(entry.category)}</td>
+                          <td>{formatDisplayValue(entry.description)}</td>
+                          <td>{formatDisplayValue(entry.responsible)}</td>
+                          <td>{Array.isArray(entry.tasks) ? entry.tasks.join(', ') : ''}</td>
+                          <td className="text-nowrap">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary"
+                              onClick={() => startTaskTrackerEdit(entry)}
+                            >
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
