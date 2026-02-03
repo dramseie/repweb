@@ -2004,6 +2004,21 @@ const SmartsheetPivotPage = () => {
             categories,
             reversed: true,
             title: { text: null },
+            labels: {
+              useHTML: true,
+              formatter() {
+                const label = String(this.value || '');
+                const code = countryFlagCode(label);
+                if (!code) {
+                  return label;
+                }
+                const src = `https://flagcdn.com/16x12/${code.toLowerCase()}.png`;
+                return `<span style="display:inline-flex;align-items:center;gap:6px;">
+                  <img src="${src}" alt="" width="16" height="12" style="border-radius:2px;" />
+                  <span>${label}</span>
+                </span>`;
+              },
+            },
           },
           tooltip: {
             formatter() {
@@ -2032,8 +2047,8 @@ const SmartsheetPivotPage = () => {
             },
           },
           series: [
-            { name: 'Installation', color: '#0f9d88', data: installData },
-            { name: 'Sign-off', color: '#7fd9c9', data: signoffData },
+            { name: 'Installation', color: '#0b8f7b', data: installData },
+            { name: 'Sign-off', color: '#bfeee2', data: signoffData },
           ],
         };
       };
@@ -2095,8 +2110,8 @@ const SmartsheetPivotPage = () => {
             },
           },
           series: [
-            { name: 'Installation', color: '#0f9d88', data: installData },
-            { name: 'Sign-off', color: '#7fd9c9', data: signoffData },
+            { name: 'Installation', color: '#0b8f7b', data: installData },
+            { name: 'Sign-off', color: '#bfeee2', data: signoffData },
           ],
         };
       };
