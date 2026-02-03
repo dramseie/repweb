@@ -356,6 +356,7 @@ const SmartsheetPivotPage = () => {
   const [taskTrackerItems, setTaskTrackerItems] = useState([]);
   const [taskTrackerLoading, setTaskTrackerLoading] = useState(false);
   const [taskTrackerError, setTaskTrackerError] = useState(null);
+  const [taskTrackerLoaded, setTaskTrackerLoaded] = useState(false);
   const [taskTrackerDraft, setTaskTrackerDraft] = useState({
     date: '',
     category: '',
@@ -668,6 +669,7 @@ const SmartsheetPivotPage = () => {
       }
       const payload = await response.json();
       setTaskTrackerItems(Array.isArray(payload?.items) ? payload.items : []);
+      setTaskTrackerLoaded(true);
     } catch (error) {
       setTaskTrackerError(error.message || 'Unable to load task tracker.');
     } finally {
@@ -2754,10 +2756,10 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, selectedReportId, fetchReportMeta]);
 
   useEffect(() => {
-    if (activeTab === 'task-tracker' && !taskTrackerLoading) {
+    if (activeTab === 'task-tracker' && !taskTrackerLoaded && !taskTrackerLoading) {
       fetchTaskTracker();
     }
-  }, [activeTab, fetchTaskTracker, taskTrackerLoading]);
+  }, [activeTab, fetchTaskTracker, taskTrackerLoaded, taskTrackerLoading]);
 
   return (
     <div className="smartsheet-pivot">
