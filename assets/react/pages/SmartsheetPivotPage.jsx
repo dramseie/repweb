@@ -376,6 +376,7 @@ const SmartsheetPivotPage = () => {
   const [taskTrackerOptionsHasMore, setTaskTrackerOptionsHasMore] = useState(true);
   const [taskTrackerOptionsOffset, setTaskTrackerOptionsOffset] = useState(0);
   const taskTrackerOptionsOffsetRef = useRef(0);
+  const taskTrackerOptionsLoadingRef = useRef(false);
 
   const [reportList, setReportList] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -1060,7 +1061,8 @@ const SmartsheetPivotPage = () => {
   const taskTrackerFilteredOptions = taskTrackerOptions;
 
   const fetchTaskTrackerOptions = useCallback(async (mode = 'append') => {
-    if (taskTrackerOptionsLoading) return;
+    if (taskTrackerOptionsLoadingRef.current) return;
+    taskTrackerOptionsLoadingRef.current = true;
     setTaskTrackerOptionsLoading(true);
     const nextOffset = mode === 'append' ? taskTrackerOptionsOffsetRef.current : 0;
     try {
@@ -1085,9 +1087,10 @@ const SmartsheetPivotPage = () => {
     } catch (error) {
       setTaskTrackerOptionsHasMore(false);
     } finally {
+      taskTrackerOptionsLoadingRef.current = false;
       setTaskTrackerOptionsLoading(false);
     }
-  }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName, taskTrackerOptionsLoading]);
+  }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
