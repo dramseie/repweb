@@ -358,7 +358,7 @@ const SmartsheetPivotPage = () => {
   const [taskTrackerError, setTaskTrackerError] = useState(null);
   const [taskTrackerLoaded, setTaskTrackerLoaded] = useState(false);
   const [taskTrackerDraft, setTaskTrackerDraft] = useState({
-    date: '',
+    date: formatYmd(new Date()),
     category: '',
     description: '',
     responsible: '',
@@ -1074,6 +1074,32 @@ const SmartsheetPivotPage = () => {
     });
   }, [taskTrackerOptions, taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName]);
 
+  const taskTrackerTopCategories = React.useMemo(() => {
+    const counts = new Map();
+    taskTrackerItems.forEach((entry) => {
+      const value = String(entry?.category || '').trim();
+      if (!value) return;
+      counts.set(value, (counts.get(value) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([value]) => value);
+  }, [taskTrackerItems]);
+
+  const taskTrackerTopResponsibles = React.useMemo(() => {
+    const counts = new Map();
+    taskTrackerItems.forEach((entry) => {
+      const value = String(entry?.responsible || '').trim();
+      if (!value) return;
+      counts.set(value, (counts.get(value) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([value]) => value);
+  }, [taskTrackerItems]);
+
   useEffect(() => {
     if (!taskTrackerSelectOpen) return;
     const handleClick = (event) => {
@@ -1329,7 +1355,7 @@ const SmartsheetPivotPage = () => {
   };
 
   const resetTaskTrackerDraft = () => {
-    setTaskTrackerDraft({ date: '', category: '', description: '', responsible: '', tasks: [] });
+    setTaskTrackerDraft({ date: formatYmd(new Date()), category: '', description: '', responsible: '', tasks: [] });
     setTaskTrackerEditId(null);
   };
 
@@ -3854,8 +3880,14 @@ const SmartsheetPivotPage = () => {
                     type="text"
                     className="form-control form-control-sm"
                     value={taskTrackerDraft.category}
+                    list="task-tracker-category-options"
                     onChange={(event) => updateTaskTrackerDraft({ category: event.target.value })}
                   />
+                  <datalist id="task-tracker-category-options">
+                    {taskTrackerDraft.category.trim() === '' && taskTrackerTopCategories.map((value) => (
+                      <option key={`task-tracker-category-${value}`} value={value} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="col-12 col-lg-3">
                   <label className="form-label small mb-1">Responsible</label>
@@ -3863,8 +3895,14 @@ const SmartsheetPivotPage = () => {
                     type="text"
                     className="form-control form-control-sm"
                     value={taskTrackerDraft.responsible}
+                    list="task-tracker-responsible-options"
                     onChange={(event) => updateTaskTrackerDraft({ responsible: event.target.value })}
                   />
+                  <datalist id="task-tracker-responsible-options">
+                    {taskTrackerDraft.responsible.trim() === '' && taskTrackerTopResponsibles.map((value) => (
+                      <option key={`task-tracker-responsible-${value}`} value={value} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="col-12 col-lg-4">
                   <label className="form-label small mb-1">Assign to Tasks</label>
@@ -3884,7 +3922,7 @@ const SmartsheetPivotPage = () => {
                           <input
                             type="text"
                             className="task-tracker-multiselect__filter-input"
-                            placeholder="Enter keywords"
+                            placeholder="Task Name"
                             value={taskTrackerFilterTaskName}
                             onChange={(event) => setTaskTrackerFilterTaskName(event.target.value)}
                           />
