@@ -1086,6 +1086,19 @@ const SmartsheetPivotPage = () => {
     return keys;
   }, [taskTrackerDraft.tasks]);
 
+  const taskTrackerTaskIdLookup = React.useMemo(() => {
+    const map = new Map();
+    taskTrackerOptions.forEach((option) => {
+      if (option.label && option.taskId) {
+        map.set(String(option.label), String(option.taskId));
+      }
+      if (option.value && option.taskId) {
+        map.set(String(option.value), String(option.taskId));
+      }
+    });
+    return map;
+  }, [taskTrackerOptions]);
+
   const fetchTaskTrackerOptions = useCallback(async (mode = 'append') => {
     if (taskTrackerOptionsLoadingRef.current) return;
     taskTrackerOptionsLoadingRef.current = true;
@@ -1429,7 +1442,7 @@ const SmartsheetPivotPage = () => {
     return raw;
   };
 
-  function normalizeTaskTrackerTasks(tasks) {
+  function normalizeTaskTrackerTasks(tasks, taskIdLookup = null) {
     if (!Array.isArray(tasks)) return [];
     return tasks.map((task) => {
       if (task && typeof task === 'object') {
@@ -1439,15 +1452,18 @@ const SmartsheetPivotPage = () => {
           ?? task.task_name
           ?? task.name
           ?? (taskId ? String(taskId) : '');
+        const resolvedTaskId = taskId ?? (taskIdLookup && label ? taskIdLookup.get(String(label)) : null);
         return {
-          taskId: taskId !== null ? String(taskId) : null,
+          taskId: resolvedTaskId !== null ? String(resolvedTaskId) : null,
           label: String(label || ''),
           country: task.country ?? null,
           siteName: task.siteName ?? task.site_name ?? null,
           taskName: task.taskName ?? task.task_name ?? null,
         };
       }
-      return { taskId: null, label: String(task) };
+      const label = String(task);
+      const resolvedTaskId = taskIdLookup && label ? taskIdLookup.get(label) : null;
+      return { taskId: resolvedTaskId !== null ? String(resolvedTaskId) : null, label };
     }).filter((item) => item.label);
   }
 
@@ -1475,7 +1491,7 @@ const SmartsheetPivotPage = () => {
       category: entry.category || '',
       description: entry.description || '',
       responsible: entry.responsible || '',
-      tasks: normalizeTaskTrackerTasks(entry.tasks),
+      tasks: normalizeTaskTrackerTasks(entry.tasks, taskTrackerTaskIdLookup),
     });
   };
 
@@ -1493,7 +1509,7 @@ const SmartsheetPivotPage = () => {
       setTaskTrackerError('Date, category, and description are required.');
       return;
     }
-    const tasksPayload = normalizeTaskTrackerTasks(taskTrackerDraft.tasks).map((task) => ({
+    const tasksPayload = normalizeTaskTrackerTasks(taskTrackerDraft.tasks, taskTrackerTaskIdLookup).map((task) => ({
       taskId: task.taskId,
       label: task.label,
       country: task.country ?? null,
