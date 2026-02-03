@@ -278,7 +278,7 @@ const SmartsheetPivotPage = () => {
   const [presentationPostDeployment, setPresentationPostDeployment] = useState({ meta: null, items: [] });
   const [presentationTimeline, setPresentationTimeline] = useState({ items: [] });
   const [timelineDrilldownCountry, setTimelineDrilldownCountry] = useState(null);
-  const [presentationIssues, setPresentationIssues] = useState({ items: [] });
+  const [presentationIssues, setPresentationIssues] = useState({ items: [], generalIssues: { ikea: [], hpe: [] } });
   const [presentationProgress, setPresentationProgress] = useState({ items: [] });
   const [presentationOverview, setPresentationOverview] = useState({ items: [] });
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -449,6 +449,7 @@ const SmartsheetPivotPage = () => {
       });
       setPresentationIssues({
         items: Array.isArray(issuesPayload?.items) ? issuesPayload.items : [],
+        generalIssues: issuesPayload?.generalIssues ?? { ikea: [], hpe: [] },
       });
       setPresentationProgress({
         items: Array.isArray(progressPayload?.items) ? progressPayload.items : [],
@@ -1496,41 +1497,43 @@ const SmartsheetPivotPage = () => {
     );
   };
 
-  const renderGeneralIssuesTable = (entries) => {
+  const renderGeneralIssuesTable = (entries, title) => {
     if (!entries || entries.length === 0) {
-      return <div className="text-muted small">No issues logged.</div>;
+      return (
+        <div className="d-flex flex-column gap-2">
+          <div className="fw-semibold">{title}</div>
+          <div className="text-muted small">No issues logged.</div>
+        </div>
+      );
     }
 
     return (
-      <div className="table-responsive">
-        <table className="table table-sm table-bordered table-striped align-middle mb-0">
-          <thead className="table-light">
-            <tr>
-              <th>Country</th>
-              <th>Site Name</th>
-              <th>Site ID</th>
-              <th>Description</th>
-              <th>Priority (CHML)</th>
-              <th>Responsible Party</th>
-              <th>Action to be taken (DD.MM.YY - NS)</th>
-              <th>Date to be resolved (DD.MM.YY)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry, index) => (
-              <tr key={`${entry.country ?? 'country'}-${entry.storeId ?? index}`}>
-                <td>{formatDisplayValue(entry.country)}</td>
-                <td>{formatDisplayValue(entry.storeName)}</td>
-                <td>{formatDisplayValue(entry.storeId)}</td>
-                <td>{formatDisplayValue(entry.description)}</td>
-                <td>{formatDisplayValue(entry.priority)}</td>
-                <td>{formatDisplayValue(entry.responsibleParty)}</td>
-                <td>{formatDisplayValue(entry.actionRequired)}</td>
-                <td>{formatDateDisplay(entry.resolveDate)}</td>
+      <div className="d-flex flex-column gap-2">
+        <div className="fw-semibold">{title}</div>
+        <div className="table-responsive">
+          <table className="table table-sm table-bordered table-striped align-middle mb-0">
+            <thead className="table-light">
+              <tr>
+                <th>Description</th>
+                <th>Country</th>
+                <th>Owner</th>
+                <th>Action</th>
+                <th>Impact (CHML)</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {entries.map((entry, index) => (
+                <tr key={`${entry.country ?? 'country'}-${index}`}>
+                  <td>{formatDisplayValue(entry.description)}</td>
+                  <td>{formatDisplayValue(entry.country)}</td>
+                  <td>{formatDisplayValue(entry.owner)}</td>
+                  <td>{formatDisplayValue(entry.action)}</td>
+                  <td>{formatDisplayValue(entry.impact)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   };
@@ -1704,9 +1707,14 @@ const SmartsheetPivotPage = () => {
     { green: [], amber: [], red: [] }
   );
 
-  const flattenedIssues = filteredIssueItems.flatMap((block) =>
-    (block.issues || []).map((issue) => ({ ...issue, country: block.country }))
-  );
+  const generalIssues = presentationIssues?.generalIssues || { ikea: [], hpe: [] };
+  const normalizeCountryMatch = (value) => String(value || '').toLowerCase();
+  const filterGeneralIssues = (entries) => {
+    if (!selectedCountryValues.length) return entries;
+    return entries.filter((entry) =>
+      selectedCountryValues.some((country) => normalizeCountryMatch(entry.country).includes(normalizeCountryMatch(country)))
+    );
+  };
 
   
 
@@ -2312,7 +2320,14 @@ const SmartsheetPivotPage = () => {
     }
 
     if (meta.key === '__issues') {
-      return renderGeneralIssuesTable(flattenedIssues);
+      const ikeaIssues = filterGeneralIssues(Array.isArray(generalIssues.ikea) ? generalIssues.ikea : []);
+      const hpeIssues = filterGeneralIssues(Array.isArray(generalIssues.hpe) ? generalIssues.hpe : []);
+      return (
+        <div className="d-flex flex-column gap-4">
+          {renderGeneralIssuesTable(ikeaIssues, 'Issues - IKEA')}
+          {renderGeneralIssuesTable(hpeIssues, 'Issues - HPE')}
+        </div>
+      );
     }
 
     return <div className="text-muted">{meta.body}</div>;

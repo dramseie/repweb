@@ -703,7 +703,9 @@ class SmartsheetPresentationController extends AbstractController
     #[Route('/issues', name: 'issue_log', methods: ['GET'])]
     public function issues(): JsonResponse
     {
-        return $this->json($this->issueLogData());
+        $payload = $this->issueLogData();
+        $payload['generalIssues'] = $this->generalIssueLogData();
+        return $this->json($payload);
     }
 
     #[Route('/overview', name: 'presentation_overview', methods: ['GET'])]
@@ -1191,6 +1193,66 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         return ['items' => $items];
+    }
+
+    /**
+     * @return array{ikea: array<int, array<string, mixed>>, hpe: array<int, array<string, mixed>>}
+     */
+    private function generalIssueLogData(?array $countries = null): array
+    {
+        $sql = 'SELECT country, responsible_party, blocker_title, description, action_to_be_taken, impact '
+             . 'FROM nifi.ikea_issue_risk_log '
+             . "WHERE impact IN ('High', 'Critical')";
+
+        $rows = $this->connection->fetchAllAssociative($sql);
+
+        $ikea = [];
+        $hpe = [];
+
+        foreach ($rows as $row) {
+            $country = trim((string) ($row['country'] ?? '')) ?: 'Unspecified';
+            if ($countries && !$this->countryMatchesFilter($country, $countries)) {
+                continue;
+            }
+
+            $owner = trim((string) ($row['responsible_party'] ?? ''));
+            $description = trim((string) ($row['blocker_title'] ?? ''));
+            if ($description === '') {
+                $description = trim((string) ($row['description'] ?? ''));
+            }
+
+            $entry = [
+                'description' => $description !== '' ? $description : null,
+                'country' => $country,
+                'owner' => $owner !== '' ? $owner : null,
+                'action' => $row['action_to_be_taken'] ?? null,
+                'impact' => $row['impact'] ?? null,
+            ];
+
+            if (stripos($owner, 'IKEA') !== false) {
+                $ikea[] = $entry;
+            } else {
+                $hpe[] = $entry;
+            }
+        }
+
+        return ['ikea' => $ikea, 'hpe' => $hpe];
+    }
+
+    /**
+     * @param array<int, string> $countries
+     */
+    private function countryMatchesFilter(string $countryValue, array $countries): bool
+    {
+        foreach ($countries as $country) {
+            if ($country === '') {
+                continue;
+            }
+            if (stripos($countryValue, $country) !== false) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
