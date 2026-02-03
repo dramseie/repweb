@@ -4,11 +4,13 @@ namespace App\Controller\Api;
 
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Routing\Annotation\Route;
@@ -26,6 +28,7 @@ class SmartsheetPresentationController extends AbstractController
     private const STATUS_TABLE = 'smartsheet_status_log';
     private const CONTENT_TABLE = 'smartsheet_content';
     private const TASK_TRACKER_TABLE = 'smartsheet_task_tracker';
+    private const TASK_TRACKER_FILES_TABLE = 'smartsheet_files';
     private const STATUS_CATEGORIES = [
         'assessment' => 'Planned Assessments',
         'installation' => 'Planned Installations',
@@ -902,6 +905,114 @@ class SmartsheetPresentationController extends AbstractController
         ], ['id' => $id]);
 
         return $this->json(['ok' => true, 'id' => $id, 'taskId' => $id, 'updatedAt' => $updatedAt]);
+    }
+
+    #[Route('/task-tracker/{id}/files', name: 'task_tracker_files_index', methods: ['GET'])]
+    public function taskTrackerFilesIndex(int $id): JsonResponse
+    {
+        $rows = $this->connection->fetchAllAssociative(
+            sprintf(
+                'SELECT id, filename, mime_type, size_bytes, created_at FROM %s WHERE task_tracker_id = :id ORDER BY id DESC',
+                self::TASK_TRACKER_FILES_TABLE
+            ),
+            ['id' => $id]
+        );
+
+        $items = array_map(static function (array $row): array {
+            return [
+                'id' => (int) ($row['id'] ?? 0),
+                'filename' => $row['filename'] ?? null,
+                'mimeType' => $row['mime_type'] ?? null,
+                'size' => (int) ($row['size_bytes'] ?? 0),
+                'createdAt' => $row['created_at'] ?? null,
+                'downloadUrl' => sprintf('/api/smartsheet/presentation/task-tracker/files/%d', (int) ($row['id'] ?? 0)),
+            ];
+        }, $rows);
+
+        return $this->json(['items' => $items]);
+    }
+
+    #[Route('/task-tracker/{id}/files', name: 'task_tracker_files_upload', methods: ['POST'])]
+    public function taskTrackerFilesUpload(int $id, Request $request): JsonResponse
+    {
+        $files = $request->files->all();
+        $uploads = [];
+
+        if (isset($files['files']) && is_array($files['files'])) {
+            $uploads = array_merge($uploads, $files['files']);
+        }
+        if (isset($files['file'])) {
+            $uploads[] = $files['file'];
+        }
+
+        if (!$uploads) {
+            return $this->json(['message' => 'No files uploaded.'], 400);
+        }
+
+        $createdAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $saved = [];
+
+        foreach ($uploads as $upload) {
+            if (!$upload || !$upload->isValid()) {
+                continue;
+            }
+            $content = file_get_contents($upload->getPathname());
+            if ($content === false) {
+                continue;
+            }
+
+            $this->connection->insert(
+                self::TASK_TRACKER_FILES_TABLE,
+                [
+                    'task_tracker_id' => $id,
+                    'filename' => $upload->getClientOriginalName(),
+                    'mime_type' => $upload->getClientMimeType() ?: 'application/octet-stream',
+                    'size_bytes' => (int) $upload->getSize(),
+                    'content' => $content,
+                    'created_at' => $createdAt,
+                ],
+                [
+                    'task_tracker_id' => ParameterType::INTEGER,
+                    'size_bytes' => ParameterType::INTEGER,
+                    'content' => ParameterType::LARGE_OBJECT,
+                ]
+            );
+
+            $fileId = (int) $this->connection->lastInsertId();
+            $saved[] = [
+                'id' => $fileId,
+                'filename' => $upload->getClientOriginalName(),
+                'mimeType' => $upload->getClientMimeType() ?: 'application/octet-stream',
+                'size' => (int) $upload->getSize(),
+                'createdAt' => $createdAt,
+                'downloadUrl' => sprintf('/api/smartsheet/presentation/task-tracker/files/%d', $fileId),
+            ];
+        }
+
+        return $this->json(['items' => $saved]);
+    }
+
+    #[Route('/task-tracker/files/{fileId}', name: 'task_tracker_files_download', methods: ['GET'])]
+    public function taskTrackerFilesDownload(int $fileId): Response
+    {
+        $row = $this->connection->fetchAssociative(
+            sprintf('SELECT filename, mime_type, content FROM %s WHERE id = :id', self::TASK_TRACKER_FILES_TABLE),
+            ['id' => $fileId]
+        );
+
+        if (!$row) {
+            return new Response('Not found', 404);
+        }
+
+        $response = new Response($row['content'] ?? '');
+        $response->headers->set('Content-Type', $row['mime_type'] ?? 'application/octet-stream');
+        $response->headers->set('Content-Disposition', $response->headers->makeDisposition(
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+            (string) ($row['filename'] ?? 'file')
+        ));
+        $response->headers->set('Cache-Control', 'no-store');
+
+        return $response;
     }
 
     #[Route('/overview', name: 'presentation_overview', methods: ['GET'])]

@@ -149,6 +149,32 @@
   color: #6c757d;
 }
 
+/* Task Tracker file dropzone */
+.smartsheet-pivot .task-tracker-dropzone {
+  border: 1px dashed #b5b5b5;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #6c757d;
+  cursor: pointer;
+  background: #fafafa;
+}
+
+.smartsheet-pivot .task-tracker-dropzone:hover {
+  border-color: #8fbce0;
+  color: #2f6fa3;
+  background: #f4f9ff;
+}
+
+.smartsheet-pivot .task-tracker-dropzone__input {
+  display: none;
+}
+
+.smartsheet-pivot .task-tracker-files {
+  margin-top: 0.35rem;
+}
+
 /* Remove hover fill and keep text black */
 .dt-buttons .dt-button:hover,
 .dt-buttons .btn:hover {

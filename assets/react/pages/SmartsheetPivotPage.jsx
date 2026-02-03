@@ -377,6 +377,10 @@ const SmartsheetPivotPage = () => {
   const [taskTrackerOptionsOffset, setTaskTrackerOptionsOffset] = useState(0);
   const taskTrackerOptionsOffsetRef = useRef(0);
   const taskTrackerOptionsLoadingRef = useRef(false);
+  const [taskTrackerFilesById, setTaskTrackerFilesById] = useState({});
+  const [taskTrackerFilesLoading, setTaskTrackerFilesLoading] = useState({});
+  const [taskTrackerFilesUploading, setTaskTrackerFilesUploading] = useState({});
+  const [taskTrackerFilesError, setTaskTrackerFilesError] = useState({});
 
   const [reportList, setReportList] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -1130,6 +1134,58 @@ const SmartsheetPivotPage = () => {
       setTaskTrackerOptionsLoading(false);
     }
   }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName]);
+
+  const fetchTaskTrackerFiles = useCallback(async (entryId) => {
+    if (!entryId) return;
+    setTaskTrackerFilesLoading((prev) => ({ ...prev, [entryId]: true }));
+    setTaskTrackerFilesError((prev) => ({ ...prev, [entryId]: null }));
+    try {
+      const response = await fetch(`/api/smartsheet/presentation/task-tracker/${entryId}/files`);
+      if (!response.ok) {
+        throw new Error(`Failed to load files (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setTaskTrackerFilesById((prev) => ({
+        ...prev,
+        [entryId]: Array.isArray(payload?.items) ? payload.items : [],
+      }));
+    } catch (error) {
+      setTaskTrackerFilesError((prev) => ({
+        ...prev,
+        [entryId]: error.message || 'Failed to load files.',
+      }));
+    } finally {
+      setTaskTrackerFilesLoading((prev) => ({ ...prev, [entryId]: false }));
+    }
+  }, []);
+
+  const uploadTaskTrackerFiles = useCallback(async (entryId, files) => {
+    if (!entryId || !files || files.length === 0) return;
+    setTaskTrackerFilesUploading((prev) => ({ ...prev, [entryId]: true }));
+    setTaskTrackerFilesError((prev) => ({ ...prev, [entryId]: null }));
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach((file) => {
+        formData.append('files[]', file);
+      });
+      const response = await fetch(`/api/smartsheet/presentation/task-tracker/${entryId}/files`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `Failed to upload files (HTTP ${response.status}).`);
+      }
+      await fetchTaskTrackerFiles(entryId);
+    } catch (error) {
+      setTaskTrackerFilesError((prev) => ({
+        ...prev,
+        [entryId]: error.message || 'Failed to upload files.',
+      }));
+    } finally {
+      setTaskTrackerFilesUploading((prev) => ({ ...prev, [entryId]: false }));
+    }
+  }, [fetchTaskTrackerFiles]);
 
   useEffect(() => {
     if (!taskTrackerSelectOpen) return undefined;
@@ -4241,6 +4297,7 @@ const SmartsheetPivotPage = () => {
                         <th>Description</th>
                         <th>Responsible</th>
                         <th>Tasks</th>
+                        <th>Files</th>
                         <th />
                       </tr>
                     </thead>
@@ -4255,6 +4312,62 @@ const SmartsheetPivotPage = () => {
                             {Array.isArray(entry.tasks)
                               ? entry.tasks.map((task) => getTaskTrackerTaskLabel(task)).filter(Boolean).join(', ')
                               : ''}
+                          </td>
+                          <td>
+                            <div
+                              className="task-tracker-dropzone"
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                uploadTaskTrackerFiles(entry.id, event.dataTransfer.files);
+                              }}
+                              onClick={() => {
+                                const input = document.getElementById(`task-tracker-file-${entry.id}`);
+                                if (input) input.click();
+                              }}
+                            >
+                              <div className="task-tracker-dropzone__label">
+                                Drag & drop files or click
+                              </div>
+                              <input
+                                id={`task-tracker-file-${entry.id}`}
+                                type="file"
+                                multiple
+                                className="task-tracker-dropzone__input"
+                                onChange={(event) => uploadTaskTrackerFiles(entry.id, event.target.files)}
+                              />
+                            </div>
+                            <div className="task-tracker-files">
+                              {taskTrackerFilesError[entry.id] && (
+                                <div className="text-danger small">{taskTrackerFilesError[entry.id]}</div>
+                              )}
+                              {taskTrackerFilesUploading[entry.id] && (
+                                <div className="text-muted small">Uploading…</div>
+                              )}
+                              {!taskTrackerFilesById[entry.id] && !taskTrackerFilesLoading[entry.id] && (
+                                <button
+                                  type="button"
+                                  className="btn btn-link btn-sm p-0"
+                                  onClick={() => fetchTaskTrackerFiles(entry.id)}
+                                >
+                                  Load files
+                                </button>
+                              )}
+                              {taskTrackerFilesLoading[entry.id] && (
+                                <div className="text-muted small">Loading…</div>
+                              )}
+                              {Array.isArray(taskTrackerFilesById[entry.id]) && taskTrackerFilesById[entry.id].length > 0 && (
+                                <ul className="list-unstyled small mb-0">
+                                  {taskTrackerFilesById[entry.id].map((file) => (
+                                    <li key={file.id}>
+                                      <a href={file.downloadUrl} target="_blank" rel="noreferrer">
+                                        {file.filename}
+                                      </a>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                           </td>
                           <td className="text-nowrap">
                             <button
