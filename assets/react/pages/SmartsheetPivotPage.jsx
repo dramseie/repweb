@@ -1539,6 +1539,42 @@ const SmartsheetPivotPage = () => {
     return String(task);
   }
 
+  const cleanTaskTrackerSiteName = (value) => {
+    if (!value) return '';
+    return String(value)
+      .replace(/IKEAStore\s*-\s*/gi, '')
+      .replace(/IKEA\s*-\s*/gi, '')
+      .replace(/Store\s*-\s*/gi, '')
+      .replace(/\bIKEAStore\b/gi, '')
+      .replace(/\bIKEA\b/gi, '')
+      .replace(/\bStore\b/gi, '')
+      .replace(/^\s*-\s*/g, '')
+      .replace(/\s*-\s*/g, ' ')
+      .trim();
+  };
+
+  const renderTaskTrackerTask = (task, index) => {
+    const label = getTaskTrackerTaskLabel(task);
+    const parts = label.split(' / ').map((part) => part.trim()).filter(Boolean);
+    const country = (task && typeof task === 'object' && task.country) ? task.country : (parts[0] || '');
+    const siteName = (task && typeof task === 'object' && task.siteName)
+      ? task.siteName
+      : (parts[1] || '');
+    const taskName = (task && typeof task === 'object' && task.taskName)
+      ? task.taskName
+      : (parts[2] || parts.slice(2).join(' / '));
+
+    const cleanedSite = cleanTaskTrackerSiteName(siteName);
+    const textParts = [cleanedSite, taskName].filter(Boolean).join(' / ');
+
+    return (
+      <div key={`task-tracker-task-${index}`} className="d-flex align-items-center gap-2">
+        {country ? <CountryFlag country={country} /> : null}
+        <span>{textParts}</span>
+      </div>
+    );
+  };
+
   const startTaskTrackerEdit = (entry) => {
     if (!entry?.id) return;
     setTaskTrackerEditId(entry.id);
@@ -4310,7 +4346,7 @@ const SmartsheetPivotPage = () => {
                           <td>{formatDisplayValue(entry.responsible)}</td>
                           <td>
                             {Array.isArray(entry.tasks)
-                              ? entry.tasks.map((task) => getTaskTrackerTaskLabel(task)).filter(Boolean).join(', ')
+                              ? entry.tasks.map((task, index) => renderTaskTrackerTask(task, index))
                               : ''}
                           </td>
                           <td>

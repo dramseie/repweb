@@ -28,7 +28,7 @@ class SmartsheetPresentationController extends AbstractController
     private const STATUS_TABLE = 'smartsheet_status_log';
     private const CONTENT_TABLE = 'smartsheet_content';
     private const TASK_TRACKER_TABLE = 'smartsheet_task_tracker';
-    private const TASK_TRACKER_FILES_TABLE = 'smartsheet_files';
+    private const TASK_TRACKER_FILES_TABLE = 'smartsheet_files.task_tracker_files';
     private const STATUS_CATEGORIES = [
         'assessment' => 'Planned Assessments',
         'installation' => 'Planned Installations',
