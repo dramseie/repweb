@@ -1662,12 +1662,9 @@ class SmartsheetPresentationController extends AbstractController
         }
         if (
             str_contains($text, 'not started')
-                'SELECT * FROM %s WHERE Task_Name = :taskName AND End_Date BETWEEN :startDate AND :endDate',
-                $source
-            );
-            $source = $taskName === self::SIGN_OFF_TASK
-                ? 'nifi.smartsheet_post_deployment_signoff_view'
-                : self::MASTER_TABLE;
+            || str_contains($text, 'not_started')
+            || str_contains($text, 'todo')
+            || str_contains($text, 'pending')
         ) {
             return 'not_started';
         }
