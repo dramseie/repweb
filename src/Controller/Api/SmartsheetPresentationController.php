@@ -713,8 +713,10 @@ class SmartsheetPresentationController extends AbstractController
 
         $items = array_map(static function (array $row): array {
             $tasks = json_decode((string) ($row['tasks_json'] ?? ''), true);
+            $id = (int) ($row['id'] ?? 0);
             return [
-                'id' => (int) ($row['id'] ?? 0),
+                'id' => $id,
+                'taskId' => $id,
                 'date' => $row['log_date'] ?? null,
                 'category' => $row['category'] ?? null,
                 'description' => $row['description'] ?? null,
@@ -726,6 +728,101 @@ class SmartsheetPresentationController extends AbstractController
         }, $rows);
 
         return $this->json(['items' => $items]);
+    }
+
+    #[Route('/task-tracker/options', name: 'task_tracker_options', methods: ['GET'])]
+    public function taskTrackerOptions(Request $request): JsonResponse
+    {
+        $offset = max(0, (int) $request->query->get('offset', 0));
+        $limit = (int) $request->query->get('limit', 200);
+        if ($limit < 50) {
+            $limit = 50;
+        }
+        if ($limit > 500) {
+            $limit = 500;
+        }
+
+        $countryFilter = trim((string) $request->query->get('country', ''));
+        $siteFilter = trim((string) $request->query->get('site', ''));
+        $taskFilter = trim((string) $request->query->get('task', ''));
+
+        $columns = $this->resolveMasterColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+        $taskNameColumn = $columns['taskName'] ?? null;
+
+        if (!$countryColumn && !$siteNameColumn && !$siteIdColumn && !$taskNameColumn) {
+            return $this->json(['items' => [], 'hasMore' => false, 'nextOffset' => $offset]);
+        }
+
+        $selectParts = [];
+        if ($countryColumn) {
+            $selectParts[] = sprintf('`%s` AS country', $countryColumn);
+        }
+        if ($siteNameColumn) {
+            $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
+        }
+        if ($siteIdColumn) {
+            $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
+        }
+        if ($taskNameColumn) {
+            $selectParts[] = sprintf('`%s` AS task_name', $taskNameColumn);
+        }
+
+        $sql = sprintf('SELECT DISTINCT %s FROM %s WHERE 1=1', implode(', ', $selectParts), self::MASTER_TABLE);
+        $params = [];
+
+        if ($countryFilter !== '' && $countryColumn) {
+            $sql .= sprintf(' AND `%s` LIKE :country', $countryColumn);
+            $params['country'] = '%' . $countryFilter . '%';
+        }
+
+        if ($siteFilter !== '' && ($siteNameColumn || $siteIdColumn)) {
+            if ($siteNameColumn && $siteIdColumn) {
+                $sql .= sprintf(' AND (`%s` LIKE :site OR `%s` LIKE :site)', $siteNameColumn, $siteIdColumn);
+            } elseif ($siteNameColumn) {
+                $sql .= sprintf(' AND `%s` LIKE :site', $siteNameColumn);
+            } else {
+                $sql .= sprintf(' AND `%s` LIKE :site', $siteIdColumn);
+            }
+            $params['site'] = '%' . $siteFilter . '%';
+        }
+
+        if ($taskFilter !== '' && $taskNameColumn) {
+            $sql .= sprintf(' AND `%s` LIKE :task', $taskNameColumn);
+            $params['task'] = '%' . $taskFilter . '%';
+        }
+
+        $orderParts = array_values(array_filter([
+            $countryColumn ? sprintf('`%s`', $countryColumn) : null,
+            $siteNameColumn ? sprintf('`%s`', $siteNameColumn) : null,
+            $siteIdColumn ? sprintf('`%s`', $siteIdColumn) : null,
+            $taskNameColumn ? sprintf('`%s`', $taskNameColumn) : null,
+        ]));
+        if ($orderParts) {
+            $sql .= ' ORDER BY ' . implode(', ', $orderParts);
+        }
+
+        $sql .= sprintf(' LIMIT %d OFFSET %d', $limit, $offset);
+
+        $rows = $this->connection->fetchAllAssociative($sql, $params);
+        $items = array_map(static function (array $row): array {
+            return [
+                'country' => $row['country'] ?? null,
+                'siteName' => $row['site_name'] ?? null,
+                'siteId' => $row['site_id'] ?? null,
+                'taskName' => $row['task_name'] ?? null,
+            ];
+        }, $rows);
+
+        $nextOffset = $offset + count($items);
+
+        return $this->json([
+            'items' => $items,
+            'hasMore' => count($items) >= $limit,
+            'nextOffset' => $nextOffset,
+        ]);
     }
 
     #[Route('/task-tracker', name: 'task_tracker_create', methods: ['POST'])]
@@ -760,7 +857,9 @@ class SmartsheetPresentationController extends AbstractController
             'created_at' => $createdAt,
         ]);
 
-        return $this->json(['ok' => true, 'createdAt' => $createdAt]);
+        $id = (int) $this->connection->lastInsertId();
+
+        return $this->json(['ok' => true, 'id' => $id, 'taskId' => $id, 'createdAt' => $createdAt]);
     }
 
     #[Route('/task-tracker/{id}', name: 'task_tracker_update', methods: ['PUT'])]
@@ -795,7 +894,7 @@ class SmartsheetPresentationController extends AbstractController
             'updated_at' => $updatedAt,
         ], ['id' => $id]);
 
-        return $this->json(['ok' => true, 'updatedAt' => $updatedAt]);
+        return $this->json(['ok' => true, 'id' => $id, 'taskId' => $id, 'updatedAt' => $updatedAt]);
     }
 
     #[Route('/overview', name: 'presentation_overview', methods: ['GET'])]
