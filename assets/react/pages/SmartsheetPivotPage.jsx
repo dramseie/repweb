@@ -1989,6 +1989,7 @@ const SmartsheetPivotPage = () => {
             spacingLeft: 10,
             spacingRight: 10,
           },
+          accessibility: { enabled: false },
           title: { text: null },
           credits: { enabled: false },
           legend: { enabled: true },
@@ -2006,6 +2007,7 @@ const SmartsheetPivotPage = () => {
             title: { text: null },
             labels: {
               useHTML: true,
+              style: { fontWeight: 600 },
               formatter() {
                 const label = String(this.value || '');
                 const code = countryFlagCode(label);
@@ -2078,6 +2080,7 @@ const SmartsheetPivotPage = () => {
             spacingLeft: 10,
             spacingRight: 10,
           },
+          accessibility: { enabled: false },
           title: { text: null },
           credits: { enabled: false },
           legend: { enabled: false },
