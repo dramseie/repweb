@@ -1632,6 +1632,13 @@ const SmartsheetPivotPage = () => {
         <div className="fw-semibold">{title}</div>
         <div className="table-responsive">
           <table className="table table-sm table-bordered table-striped align-middle mb-0 w-100">
+            <colgroup>
+              <col style={{ width: '34%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '34%' }} />
+              <col style={{ width: '10%' }} />
+            </colgroup>
             <thead className="table-light">
               <tr>
                 <th>Description</th>
