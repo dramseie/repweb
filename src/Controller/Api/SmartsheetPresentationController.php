@@ -872,6 +872,51 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json(['ok' => true, 'id' => $id, 'taskId' => $id, 'createdAt' => $createdAt]);
     }
 
+    #[Route('/task-tracker/draft', name: 'task_tracker_draft', methods: ['POST'])]
+    public function taskTrackerDraft(Request $request): JsonResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true) ?? [];
+        $date = trim((string) ($payload['date'] ?? ''));
+        $category = trim((string) ($payload['category'] ?? ''));
+        $description = trim((string) ($payload['description'] ?? ''));
+        $responsible = trim((string) ($payload['responsible'] ?? '')) ?: null;
+        $tasks = $payload['tasks'] ?? [];
+
+        $normalizedDate = $this->normalizeTaskTrackerDate($date) ?? (new DateTimeImmutable('now'))->format('Y-m-d');
+        if (!is_array($tasks)) {
+            $tasks = [];
+        }
+
+        if ($category === '') {
+            $category = 'Draft';
+        }
+        if ($description === '') {
+            $description = 'Draft entry';
+        }
+
+        $createdAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $this->connection->insert(self::TASK_TRACKER_TABLE, [
+            'log_date' => $normalizedDate,
+            'category' => $category,
+            'description' => $description,
+            'responsible' => $responsible,
+            'tasks_json' => json_encode(array_values($tasks), JSON_UNESCAPED_UNICODE),
+            'created_at' => $createdAt,
+        ]);
+
+        $id = (int) $this->connection->lastInsertId();
+
+        return $this->json([
+            'ok' => true,
+            'id' => $id,
+            'taskId' => $id,
+            'createdAt' => $createdAt,
+            'category' => $category,
+            'description' => $description,
+            'date' => $normalizedDate,
+        ]);
+    }
+
     #[Route('/task-tracker/{id}', name: 'task_tracker_update', methods: ['PUT'])]
     public function taskTrackerUpdate(int $id, Request $request): JsonResponse
     {
