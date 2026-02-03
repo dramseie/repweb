@@ -1187,6 +1187,15 @@ const SmartsheetPivotPage = () => {
     }
   }, [fetchTaskTrackerFiles]);
 
+  useEffect(() => {
+    taskTrackerItems.forEach((entry) => {
+      if (!entry?.id) return;
+      if (taskTrackerFilesById[entry.id]) return;
+      if (taskTrackerFilesLoading[entry.id]) return;
+      fetchTaskTrackerFiles(entry.id);
+    });
+  }, [taskTrackerItems, taskTrackerFilesById, taskTrackerFilesLoading, fetchTaskTrackerFiles]);
+
   const ensureTaskTrackerDraftId = useCallback(async () => {
     if (taskTrackerEditId) return taskTrackerEditId;
     const normalizedDate = normalizeTaskTrackerDate(taskTrackerDraft.date) || formatYmd(new Date());
@@ -4466,15 +4475,6 @@ const SmartsheetPivotPage = () => {
                             <div className="task-tracker-files">
                               {taskTrackerFilesError[entry.id] && (
                                 <div className="text-danger small">{taskTrackerFilesError[entry.id]}</div>
-                              )}
-                              {!taskTrackerFilesById[entry.id] && !taskTrackerFilesLoading[entry.id] && (
-                                <button
-                                  type="button"
-                                  className="btn btn-link btn-sm p-0"
-                                  onClick={() => fetchTaskTrackerFiles(entry.id)}
-                                >
-                                  Load files
-                                </button>
                               )}
                               {taskTrackerFilesLoading[entry.id] && (
                                 <div className="text-muted small">Loading…</div>
