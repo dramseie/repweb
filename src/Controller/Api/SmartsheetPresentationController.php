@@ -1221,8 +1221,6 @@ class SmartsheetPresentationController extends AbstractController
         $siteNameColumn = $columns['siteName'] ?? null;
         $taskNameColumn = $columns['taskName'] ?? null;
         $statusColumn = $columns['status'] ?? null;
-        $commentColumn = $columns['comment'] ?? null;
-        $ragColumn = $columns['rag'] ?? null;
 
         if ($countryColumn === null || $siteIdColumn === null || $taskNameColumn === null) {
             return ['items' => []];
@@ -1239,12 +1237,12 @@ class SmartsheetPresentationController extends AbstractController
         if ($statusColumn !== null) {
             $selectParts[] = sprintf('`%s` AS status', $statusColumn);
         }
-        if ($commentColumn !== null) {
-            $selectParts[] = sprintf('`%s` AS comment', $commentColumn);
-        }
-        if ($ragColumn !== null) {
-            $selectParts[] = sprintf('`%s` AS rag', $ragColumn);
-        }
+        $overviewOverrides = $this->connection->fetchAssociative(
+            sprintf('SELECT content FROM %s WHERE section = :section ORDER BY created_at DESC LIMIT 1', self::CONTENT_TABLE),
+            ['section' => 'overview_overrides']
+        );
+        $overviewOverrideData = json_decode((string) ($overviewOverrides['content'] ?? ''), true);
+        $overviewOverrideData = is_array($overviewOverrideData) ? $overviewOverrideData : [];
 
         $sql = sprintf('SELECT %s FROM %s', implode(', ', $selectParts), self::MASTER_TABLE);
         $rows = $this->connection->fetchAllAssociative($sql);
@@ -1265,19 +1263,7 @@ class SmartsheetPresentationController extends AbstractController
             }
 
             $statusClass = $this->classifyProgressStatus($row['status'] ?? null);
-            $comment = trim((string) ($row['comment'] ?? ''));
-            $rag = trim((string) ($row['rag'] ?? ''));
-
             $countryData[$country]['sites'][$siteKey] = true;
-
-            if ($comment !== '' && empty($countryData[$country]['comment'])) {
-                $countryData[$country]['comment'] = $comment;
-            }
-
-            if ($rag !== '') {
-                $current = $countryData[$country]['rag'] ?? null;
-                $countryData[$country]['rag'] = $this->pickWorstRag($current, $rag);
-            }
 
             $taskNormalized = mb_strtolower($taskName);
             $assessmentTask = 'assessment completed';
@@ -1303,6 +1289,7 @@ class SmartsheetPresentationController extends AbstractController
 
         $items = [];
         foreach ($countryData as $country => $data) {
+            $override = $overviewOverrideData[$country] ?? [];
             $items[] = [
                 'country' => $country,
                 'stores' => count($data['sites'] ?? []),
@@ -1311,8 +1298,8 @@ class SmartsheetPresentationController extends AbstractController
                 'storesInstalled' => count($data['storesInstalled'] ?? []),
                 'defectsCompleted' => count($data['defectsCompleted'] ?? []),
                 'storeSignoff' => count($data['storeSignoff'] ?? []),
-                'comment' => $data['comment'] ?? null,
-                'rag' => $data['rag'] ?? null,
+                'comment' => is_array($override) ? ($override['comment'] ?? null) : null,
+                'rag' => is_array($override) ? ($override['rag'] ?? null) : null,
             ];
         }
 
