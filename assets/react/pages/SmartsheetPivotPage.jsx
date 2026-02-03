@@ -2035,6 +2035,7 @@ const SmartsheetPivotPage = () => {
               borderRadius: 4,
               pointPadding: 0.15,
               groupPadding: 0.12,
+              colorByPoint: false,
               point: {
                 events: {
                   click() {
@@ -2110,6 +2111,7 @@ const SmartsheetPivotPage = () => {
               borderRadius: 4,
               pointPadding: 0.2,
               groupPadding: 0.1,
+              colorByPoint: false,
             },
           },
           series: [
