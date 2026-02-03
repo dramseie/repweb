@@ -4293,6 +4293,70 @@ const SmartsheetPivotPage = () => {
                     onChange={(event) => updateTaskTrackerDraft({ description: event.target.value })}
                   />
                 </div>
+                <div className="col-12">
+                  <label className="form-label small mb-1">Files</label>
+                  {taskTrackerEditId ? (
+                    <>
+                      <div
+                        className="task-tracker-dropzone"
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          uploadTaskTrackerFiles(taskTrackerEditId, event.dataTransfer.files);
+                        }}
+                        onClick={() => {
+                          const input = document.getElementById('task-tracker-file-current');
+                          if (input) input.click();
+                        }}
+                      >
+                        <div className="task-tracker-dropzone__label">
+                          Drag & drop files or click
+                        </div>
+                        <input
+                          id="task-tracker-file-current"
+                          type="file"
+                          multiple
+                          className="task-tracker-dropzone__input"
+                          onChange={(event) => uploadTaskTrackerFiles(taskTrackerEditId, event.target.files)}
+                        />
+                      </div>
+                      <div className="task-tracker-files">
+                        {taskTrackerFilesError[taskTrackerEditId] && (
+                          <div className="text-danger small">{taskTrackerFilesError[taskTrackerEditId]}</div>
+                        )}
+                        {taskTrackerFilesUploading[taskTrackerEditId] && (
+                          <div className="text-muted small">Uploading…</div>
+                        )}
+                        {!taskTrackerFilesById[taskTrackerEditId] && !taskTrackerFilesLoading[taskTrackerEditId] && (
+                          <button
+                            type="button"
+                            className="btn btn-link btn-sm p-0"
+                            onClick={() => fetchTaskTrackerFiles(taskTrackerEditId)}
+                          >
+                            Load files
+                          </button>
+                        )}
+                        {taskTrackerFilesLoading[taskTrackerEditId] && (
+                          <div className="text-muted small">Loading…</div>
+                        )}
+                        {Array.isArray(taskTrackerFilesById[taskTrackerEditId])
+                          && taskTrackerFilesById[taskTrackerEditId].length > 0 && (
+                            <ul className="list-unstyled small mb-0">
+                              {taskTrackerFilesById[taskTrackerEditId].map((file) => (
+                                <li key={file.id}>
+                                  <a href={file.downloadUrl} target="_blank" rel="noreferrer">
+                                    {file.filename}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-muted small">Save the entry to upload files.</div>
+                  )}
+                </div>
                 <div className="col-12 d-flex gap-2 justify-content-end">
                   {taskTrackerEditId && (
                     <button
@@ -4343,62 +4407,6 @@ const SmartsheetPivotPage = () => {
                           <td>{formatDisplayValue(entry.category)}</td>
                           <td>
                             <div>{formatDisplayValue(entry.description)}</div>
-                            <div className="mt-2">
-                              <div
-                                className="task-tracker-dropzone"
-                                onDragOver={(event) => event.preventDefault()}
-                                onDrop={(event) => {
-                                  event.preventDefault();
-                                  uploadTaskTrackerFiles(entry.id, event.dataTransfer.files);
-                                }}
-                                onClick={() => {
-                                  const input = document.getElementById(`task-tracker-file-${entry.id}`);
-                                  if (input) input.click();
-                                }}
-                              >
-                                <div className="task-tracker-dropzone__label">
-                                  Drag & drop files or click
-                                </div>
-                                <input
-                                  id={`task-tracker-file-${entry.id}`}
-                                  type="file"
-                                  multiple
-                                  className="task-tracker-dropzone__input"
-                                  onChange={(event) => uploadTaskTrackerFiles(entry.id, event.target.files)}
-                                />
-                              </div>
-                              <div className="task-tracker-files">
-                                {taskTrackerFilesError[entry.id] && (
-                                  <div className="text-danger small">{taskTrackerFilesError[entry.id]}</div>
-                                )}
-                                {taskTrackerFilesUploading[entry.id] && (
-                                  <div className="text-muted small">Uploading…</div>
-                                )}
-                                {!taskTrackerFilesById[entry.id] && !taskTrackerFilesLoading[entry.id] && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-link btn-sm p-0"
-                                    onClick={() => fetchTaskTrackerFiles(entry.id)}
-                                  >
-                                    Load files
-                                  </button>
-                                )}
-                                {taskTrackerFilesLoading[entry.id] && (
-                                  <div className="text-muted small">Loading…</div>
-                                )}
-                                {Array.isArray(taskTrackerFilesById[entry.id]) && taskTrackerFilesById[entry.id].length > 0 && (
-                                  <ul className="list-unstyled small mb-0">
-                                    {taskTrackerFilesById[entry.id].map((file) => (
-                                      <li key={file.id}>
-                                        <a href={file.downloadUrl} target="_blank" rel="noreferrer">
-                                          {file.filename}
-                                        </a>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                            </div>
                           </td>
                           <td>{formatDisplayValue(entry.responsible)}</td>
                           <td>
