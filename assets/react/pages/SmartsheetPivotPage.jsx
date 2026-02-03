@@ -1359,11 +1359,25 @@ const SmartsheetPivotPage = () => {
     setTaskTrackerEditId(null);
   };
 
+  const normalizeTaskTrackerDate = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const match = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if (match) {
+      const day = String(match[1]).padStart(2, '0');
+      const month = String(match[2]).padStart(2, '0');
+      const year = match[3];
+      return `${year}-${month}-${day}`;
+    }
+    return raw;
+  };
+
   const startTaskTrackerEdit = (entry) => {
     if (!entry?.id) return;
     setTaskTrackerEditId(entry.id);
     setTaskTrackerDraft({
-      date: entry.date || '',
+      date: normalizeTaskTrackerDate(entry.date) || '',
       category: entry.category || '',
       description: entry.description || '',
       responsible: entry.responsible || '',
@@ -1376,7 +1390,12 @@ const SmartsheetPivotPage = () => {
   };
 
   const submitTaskTracker = async () => {
-    if (!taskTrackerDraft.date || !taskTrackerDraft.category || !taskTrackerDraft.description) {
+    const normalizedDate = normalizeTaskTrackerDate(taskTrackerDraft.date);
+    if (!normalizedDate || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+      setTaskTrackerError('Date must be in YYYY-MM-DD format.');
+      return;
+    }
+    if (!taskTrackerDraft.category || !taskTrackerDraft.description) {
       setTaskTrackerError('Date, category, and description are required.');
       return;
     }
@@ -1391,7 +1410,7 @@ const SmartsheetPivotPage = () => {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          date: taskTrackerDraft.date,
+          date: normalizedDate,
           category: taskTrackerDraft.category,
           description: taskTrackerDraft.description,
           responsible: taskTrackerDraft.responsible || null,
@@ -3868,10 +3887,13 @@ const SmartsheetPivotPage = () => {
                 <div className="col-12 col-lg-2">
                   <label className="form-label small mb-1">Date</label>
                   <input
-                    type="date"
+                    type="text"
                     className="form-control form-control-sm"
                     value={taskTrackerDraft.date}
-                    onChange={(event) => updateTaskTrackerDraft({ date: event.target.value })}
+                    placeholder="YYYY-MM-DD"
+                    inputMode="numeric"
+                    onChange={(event) => updateTaskTrackerDraft({ date: normalizeTaskTrackerDate(event.target.value) })}
+                    onBlur={(event) => updateTaskTrackerDraft({ date: normalizeTaskTrackerDate(event.target.value) })}
                   />
                 </div>
                 <div className="col-12 col-lg-3">

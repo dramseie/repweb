@@ -737,7 +737,12 @@ class SmartsheetPresentationController extends AbstractController
         $responsible = trim((string) ($payload['responsible'] ?? '')) ?: null;
         $tasks = $payload['tasks'] ?? [];
 
-        if ($date === '' || $category === '' || $description === '') {
+        $normalizedDate = $this->normalizeTaskTrackerDate($date);
+        if ($normalizedDate === null) {
+            return $this->json(['message' => 'date must be in YYYY-MM-DD format.'], 400);
+        }
+
+        if ($category === '' || $description === '') {
             return $this->json(['message' => 'date, category, and description are required.'], 400);
         }
         if (!is_array($tasks)) {
@@ -746,7 +751,7 @@ class SmartsheetPresentationController extends AbstractController
 
         $createdAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
         $this->connection->insert(self::TASK_TRACKER_TABLE, [
-            'log_date' => $date,
+            'log_date' => $normalizedDate,
             'category' => $category,
             'description' => $description,
             'responsible' => $responsible,
@@ -767,7 +772,12 @@ class SmartsheetPresentationController extends AbstractController
         $responsible = trim((string) ($payload['responsible'] ?? '')) ?: null;
         $tasks = $payload['tasks'] ?? [];
 
-        if ($date === '' || $category === '' || $description === '') {
+        $normalizedDate = $this->normalizeTaskTrackerDate($date);
+        if ($normalizedDate === null) {
+            return $this->json(['message' => 'date must be in YYYY-MM-DD format.'], 400);
+        }
+
+        if ($category === '' || $description === '') {
             return $this->json(['message' => 'date, category, and description are required.'], 400);
         }
         if (!is_array($tasks)) {
@@ -776,7 +786,7 @@ class SmartsheetPresentationController extends AbstractController
 
         $updatedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
         $this->connection->update(self::TASK_TRACKER_TABLE, [
-            'log_date' => $date,
+            'log_date' => $normalizedDate,
             'category' => $category,
             'description' => $description,
             'responsible' => $responsible,
@@ -791,6 +801,26 @@ class SmartsheetPresentationController extends AbstractController
     public function overview(): JsonResponse
     {
         return $this->json($this->programmeOverviewData());
+    }
+
+    private function normalizeTaskTrackerDate(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        if ($date instanceof DateTimeImmutable) {
+            return $date->format('Y-m-d');
+        }
+
+        $date = DateTimeImmutable::createFromFormat('d/m/Y', $value);
+        if ($date instanceof DateTimeImmutable) {
+            return $date->format('Y-m-d');
+        }
+
+        return null;
     }
 
     #[Route('/content', name: 'presentation_content_get', methods: ['GET'])]
