@@ -1033,6 +1033,15 @@ const SmartsheetPivotPage = () => {
     };
   }, [timelineItems]);
 
+  const timelineSiteMap = React.useMemo(() => {
+    const map = new Map();
+    timelineItems.forEach((item) => {
+      const country = item.country || 'Unspecified';
+      map.set(country, Array.isArray(item.sites) ? item.sites : []);
+    });
+    return map;
+  }, [timelineItems]);
+
   const filteredPresentationItems = selectedCountryValues.length
     ? presentationItems.filter((item) => selectedCountryValues.includes(item.country))
     : presentationItems;
@@ -1954,15 +1963,6 @@ const SmartsheetPivotPage = () => {
     }
 
     if (meta.key === '__exec_timeline') {
-      const timelineSiteMap = React.useMemo(() => {
-        const map = new Map();
-        timelineItems.forEach((item) => {
-          const country = item.country || 'Unspecified';
-          map.set(country, Array.isArray(item.sites) ? item.sites : []);
-        });
-        return map;
-      }, [timelineItems]);
-
       const buildCountryTimelineOptions = () => {
         if (!timelineDomain) return null;
         const categories = timelineItems.map((item) => item.country || 'Unspecified');
