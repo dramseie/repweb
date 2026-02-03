@@ -90,10 +90,11 @@ const formatActionLines = (value) => {
   if (value === null || value === undefined || value === '') return ['—'];
   const text = String(value);
   const withBreaks = text.replace(/(\d{2}\.\d{2}\.\d{2})/g, '\n$1');
-  return withBreaks
+  const lines = withBreaks
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+  return lines.length > 0 ? [lines[0]] : ['—'];
 };
 
 const formatMonthLabel = (value) => {
@@ -1633,11 +1634,11 @@ const SmartsheetPivotPage = () => {
         <div className="table-responsive">
           <table className="table table-sm table-bordered table-striped align-middle mb-0 w-100">
             <colgroup>
-              <col style={{ width: '34%' }} />
+              <col style={{ width: '35%' }} />
               <col style={{ width: '12%' }} />
               <col style={{ width: '10%' }} />
-              <col style={{ width: '34%' }} />
-              <col style={{ width: '10%' }} />
+              <col style={{ width: '39%' }} />
+              <col style={{ width: '4%' }} />
             </colgroup>
             <thead className="table-light">
               <tr>
@@ -1905,11 +1906,27 @@ const SmartsheetPivotPage = () => {
 
   const generalIssues = presentationIssues?.generalIssues || { ikea: [], hpe: [] };
   const normalizeCountryMatch = (value) => String(value || '').toLowerCase();
+  const sortGeneralIssues = (entries) => {
+    const items = [...entries];
+    items.sort((a, b) => {
+      const aCountry = String(a.country || '');
+      const bCountry = String(b.country || '');
+      const aIsGeneral = aCountry.toLowerCase() === 'general';
+      const bIsGeneral = bCountry.toLowerCase() === 'general';
+      if (aIsGeneral && !bIsGeneral) return -1;
+      if (!aIsGeneral && bIsGeneral) return 1;
+      return aCountry.localeCompare(bCountry);
+    });
+    return items;
+  };
+
   const filterGeneralIssues = (entries) => {
-    if (!selectedCountryValues.length) return entries;
-    return entries.filter((entry) =>
-      selectedCountryValues.some((country) => normalizeCountryMatch(entry.country).includes(normalizeCountryMatch(country)))
-    );
+    const filtered = !selectedCountryValues.length
+      ? entries
+      : entries.filter((entry) =>
+          selectedCountryValues.some((country) => normalizeCountryMatch(entry.country).includes(normalizeCountryMatch(country)))
+        );
+    return sortGeneralIssues(filtered);
   };
 
   

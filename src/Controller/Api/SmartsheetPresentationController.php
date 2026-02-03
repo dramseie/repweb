@@ -189,19 +189,10 @@ class SmartsheetPresentationController extends AbstractController
             ]));
         };
 
-        // Use direct date containment so ranges spanning year boundaries are matched correctly
-        $sql = sprintf(
-            "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND (DATE(Start_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY) OR DATE(End_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY))",
-            self::MASTER_TABLE
-        );
-
-        $params = [
-            'assessment' => 'Assessment',
-            'installPattern' => '%installation execution%',
-        ];
-
+        $sql = 'SELECT * FROM nifi.smartsheet_planned_week_view';
+        $params = [];
         if ($country !== '') {
-            $sql .= ' AND (country = :country OR Country = :country)';
+            $sql .= ' WHERE country = :country';
             $params['country'] = $country;
         }
 
@@ -984,32 +975,27 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function timelineData(?array $countries = null): array
     {
-        $installRows = $this->fetchRowsForTask('Installation execution');
-        $signoffRows = $this->fetchRowsForTask('Store Sign off Completed');
-
-        $installColumns = $installRows !== [] ? $this->resolveColumns($installRows[0]) : [];
-        $signoffColumns = $signoffRows !== [] ? $this->resolveColumns($signoffRows[0]) : [];
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT country, site_id, site_name, install_start, install_end, signoff_end FROM nifi.smartsheet_timeline_view'
+        );
 
         $installStartByCountry = [];
         $installEndByCountry = [];
+        $signoffCompletedByCountry = [];
         $sitesByCountry = [];
         $siteAliasesByCountry = [];
-        $addTimelineSite = function (
-            string $country,
-            array $row,
-            array $columns,
-            string $kind
-        ) use (&$sitesByCountry, &$siteAliasesByCountry): void {
-            $siteIdColumn = $columns['siteId'] ?? null;
-            $siteNameColumn = $columns['siteName'] ?? null;
-            $startColumn = $columns['startDate'] ?? null;
-            $endColumn = $columns['endDate'] ?? null;
-            $siteId = $siteIdColumn ? trim((string) ($row[$siteIdColumn] ?? '')) : '';
-            $siteName = $siteNameColumn ? $this->normalizeSiteName($row[$siteNameColumn] ?? null) : null;
+
+        foreach ($rows as $row) {
+            $country = trim((string) ($row['country'] ?? ''));
+            $country = $country !== '' ? $country : 'Unspecified';
+
+            $siteId = trim((string) ($row['site_id'] ?? ''));
+            $siteName = $this->normalizeSiteName($row['site_name'] ?? null);
             $normalizedName = $siteName ? mb_strtolower($siteName) : null;
             if ($siteId === '' && (!$siteName || $siteName === '')) {
-                return;
+                continue;
             }
+
             if (!isset($sitesByCountry[$country])) {
                 $sitesByCountry[$country] = [];
             }
@@ -1049,64 +1035,31 @@ class SmartsheetPresentationController extends AbstractController
                 }
             }
 
-            $entry = &$sitesByCountry[$country][$key];
-            if ($kind === 'install') {
-                $startDate = $this->parseDate($startColumn ? $row[$startColumn] ?? null : null);
-                $endDate = $this->parseDate($endColumn ? $row[$endColumn] ?? null : null);
-                if ($startDate !== null && ($entry['startDate'] === null || $startDate < $entry['startDate'])) {
-                    $entry['startDate'] = $startDate;
-                }
-                if ($endDate !== null && ($entry['installEndDate'] === null || $endDate > $entry['installEndDate'])) {
-                    $entry['installEndDate'] = $endDate;
-                }
+            $installStart = $this->parseDate($row['install_start'] ?? null);
+            $installEnd = $this->parseDate($row['install_end'] ?? null);
+            $signoffEnd = $this->parseDate($row['signoff_end'] ?? null);
+
+            if ($installStart !== null && (!isset($installStartByCountry[$country]) || $installStart < $installStartByCountry[$country])) {
+                $installStartByCountry[$country] = $installStart;
             }
-            if ($kind === 'signoff') {
-                $endDate = $this->parseDate($endColumn ? $row[$endColumn] ?? null : null);
-                if ($endDate !== null && ($entry['endDate'] === null || $endDate > $entry['endDate'])) {
-                    $entry['endDate'] = $endDate;
-                }
+            if ($installEnd !== null && (!isset($installEndByCountry[$country]) || $installEnd > $installEndByCountry[$country])) {
+                $installEndByCountry[$country] = $installEnd;
+            }
+            if ($signoffEnd !== null && (!isset($signoffCompletedByCountry[$country]) || $signoffEnd > $signoffCompletedByCountry[$country])) {
+                $signoffCompletedByCountry[$country] = $signoffEnd;
+            }
+
+            $entry = &$sitesByCountry[$country][$key];
+            if ($installStart !== null && ($entry['startDate'] === null || $installStart < $entry['startDate'])) {
+                $entry['startDate'] = $installStart;
+            }
+            if ($installEnd !== null && ($entry['installEndDate'] === null || $installEnd > $entry['installEndDate'])) {
+                $entry['installEndDate'] = $installEnd;
+            }
+            if ($signoffEnd !== null && ($entry['endDate'] === null || $signoffEnd > $entry['endDate'])) {
+                $entry['endDate'] = $signoffEnd;
             }
             unset($entry);
-        };
-        foreach ($installRows as $row) {
-            $countryColumn = $installColumns['country'] ?? null;
-            $startColumn = $installColumns['startDate'] ?? null;
-            $endColumn = $installColumns['endDate'] ?? null;
-
-            $country = $countryColumn ? trim((string) ($row[$countryColumn] ?? '')) : '';
-            $country = $country !== '' ? $country : 'Unspecified';
-
-            $startDate = $this->parseDate($startColumn ? $row[$startColumn] ?? null : null);
-            $endDate = $this->parseDate($endColumn ? $row[$endColumn] ?? null : null);
-
-            if ($startDate !== null && (!isset($installStartByCountry[$country]) || $startDate < $installStartByCountry[$country])) {
-                $installStartByCountry[$country] = $startDate;
-            }
-            if ($endDate !== null && (!isset($installEndByCountry[$country]) || $endDate > $installEndByCountry[$country])) {
-                $installEndByCountry[$country] = $endDate;
-            }
-
-            $addTimelineSite($country, $row, $installColumns, 'install');
-        }
-
-        $signoffCompletedByCountry = [];
-        foreach ($signoffRows as $row) {
-            $countryColumn = $signoffColumns['country'] ?? null;
-            $endColumn = $signoffColumns['endDate'] ?? null;
-
-            $country = $countryColumn ? trim((string) ($row[$countryColumn] ?? '')) : '';
-            $country = $country !== '' ? $country : 'Unspecified';
-
-            $endDate = $this->parseDate($endColumn ? $row[$endColumn] ?? null : null);
-            if ($endDate === null) {
-                continue;
-            }
-
-            if (!isset($signoffCompletedByCountry[$country]) || $endDate > $signoffCompletedByCountry[$country]) {
-                $signoffCompletedByCountry[$country] = $endDate;
-            }
-
-            $addTimelineSite($country, $row, $signoffColumns, 'signoff');
         }
 
         $countryList = array_unique(array_merge(
@@ -1201,8 +1154,7 @@ class SmartsheetPresentationController extends AbstractController
     private function generalIssueLogData(?array $countries = null): array
     {
            $sql = 'SELECT id, country, responsible_party, blocker_title, description, action_to_be_taken, priority '
-               . 'FROM nifi.ikea_issue_risk_log '
-               . "WHERE priority IN ('High', 'Critical') AND (status IS NULL OR status <> 'Closed')";
+               . 'FROM nifi.smartsheet_general_issues_view';
 
         $rows = $this->connection->fetchAllAssociative($sql);
 
@@ -1299,9 +1251,15 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function fetchRows(DateTimeImmutable $start, DateTimeImmutable $end, string $taskName): array
     {
+        $source = match ($taskName) {
+            self::DEFAULT_TASK_NAME => 'nifi.smartsheet_planned_assessments_view',
+            'Installation Execution' => 'nifi.smartsheet_planned_installations_view',
+            self::POST_DEPLOYMENT_TASK, self::SIGN_OFF_TASK => 'nifi.smartsheet_post_deployment_signoff_view',
+            default => self::MASTER_TABLE,
+        };
         $sql = sprintf(
             'SELECT * FROM %s WHERE Task_Name = :taskName AND Start_Date <= :endDate AND End_Date >= :startDate',
-            self::MASTER_TABLE
+            $source
         );
 
         return $this->connection->fetchAllAssociative($sql, [
@@ -1316,7 +1274,13 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function fetchRowsForTask(string $taskName): array
     {
-        $sql = sprintf('SELECT * FROM %s WHERE Task_Name = :taskName', self::MASTER_TABLE);
+        $source = match ($taskName) {
+            self::DEFAULT_TASK_NAME => 'nifi.smartsheet_planned_assessments_view',
+            'Installation Execution' => 'nifi.smartsheet_planned_installations_view',
+            self::POST_DEPLOYMENT_TASK, self::SIGN_OFF_TASK => 'nifi.smartsheet_post_deployment_signoff_view',
+            default => self::MASTER_TABLE,
+        };
+        $sql = sprintf('SELECT * FROM %s WHERE Task_Name = :taskName', $source);
 
         return $this->connection->fetchAllAssociative($sql, [
             'taskName' => $taskName,
@@ -1562,9 +1526,12 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function fetchRowsByEndDateRange(string $taskName, DateTimeImmutable $start, DateTimeImmutable $end): array
     {
+        $source = $taskName === self::SIGN_OFF_TASK
+            ? 'nifi.smartsheet_post_deployment_signoff_view'
+            : self::MASTER_TABLE;
         $sql = sprintf(
             'SELECT * FROM %s WHERE Task_Name = :taskName AND End_Date >= :startDate AND End_Date <= :endDate',
-            self::MASTER_TABLE
+            $source
         );
 
         return $this->connection->fetchAllAssociative($sql, [
@@ -1695,9 +1662,12 @@ class SmartsheetPresentationController extends AbstractController
         }
         if (
             str_contains($text, 'not started')
-            || str_contains($text, 'not_started')
-            || str_contains($text, 'todo')
-            || str_contains($text, 'pending')
+                'SELECT * FROM %s WHERE Task_Name = :taskName AND End_Date BETWEEN :startDate AND :endDate',
+                $source
+            );
+            $source = $taskName === self::SIGN_OFF_TASK
+                ? 'nifi.smartsheet_post_deployment_signoff_view'
+                : self::MASTER_TABLE;
         ) {
             return 'not_started';
         }
@@ -1716,8 +1686,8 @@ class SmartsheetPresentationController extends AbstractController
     }
 
     /**
-     * @return array<string, array{country: string, siteId: string, siteName: ?string}>
-     */
+        $sql = 'SELECT id, country, store_name, store_id, description, priority, responsible_party, action_required, resolve_date '
+             . 'FROM repweb.smartsheet_issue_log_view ORDER BY country, resolve_date, store_name';
     private function fetchStatusSites(): array
     {
         $taskNames = [
@@ -2155,99 +2125,38 @@ class SmartsheetPresentationController extends AbstractController
 
     private function getFlagDataUri(string $country): ?string
     {
-        $trimmed = trim($country);
-        if ($trimmed === '') {
-            return null;
-        }
-        if (array_key_exists($trimmed, $this->flagCache)) {
-            return $this->flagCache[$trimmed];
-        }
-        $code = self::COUNTRY_FLAG_MAP[$trimmed] ?? '';
-        if ($code === '') {
-            $this->flagCache[$trimmed] = null;
-            return null;
+        $overviewOverrides = $this->connection->fetchAssociative(
+            sprintf('SELECT content FROM %s WHERE section = :section ORDER BY created_at DESC LIMIT 1', self::CONTENT_TABLE),
+            ['section' => 'overview_overrides']
+        );
+        $overviewOverrideData = json_decode((string) ($overviewOverrides['content'] ?? ''), true);
+        $overviewOverrideData = is_array($overviewOverrideData) ? $overviewOverrideData : [];
+
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT country, stores, assessed, ongoing_installations, stores_installed, store_signoff '
+            . 'FROM nifi.smartsheet_country_trend_view'
+        );
+
+        $items = [];
+        foreach ($rows as $row) {
+            $country = trim((string) ($row['country'] ?? '')) ?: 'Unspecified';
+            $override = $overviewOverrideData[$country] ?? [];
+            $items[] = [
+                'country' => $country,
+                'stores' => (int) ($row['stores'] ?? 0),
+                'assessed' => (int) ($row['assessed'] ?? 0),
+                'ongoingInstallations' => (int) ($row['ongoing_installations'] ?? 0),
+                'storesInstalled' => (int) ($row['stores_installed'] ?? 0),
+                'defectsCompleted' => 0,
+                'storeSignoff' => (int) ($row['store_signoff'] ?? 0),
+                'comment' => is_array($override) ? ($override['comment'] ?? null) : null,
+                'rag' => is_array($override) ? ($override['rag'] ?? null) : null,
+            ];
         }
 
-        $url = sprintf('https://flagcdn.com/24x18/%s.png', strtolower($code));
-        $context = stream_context_create([
-            'http' => ['timeout' => 5],
-            'https' => ['timeout' => 5],
-        ]);
-        $data = @file_get_contents($url, false, $context);
-        if ($data === false) {
-            $this->flagCache[$trimmed] = null;
-            return null;
-        }
+        usort($items, static fn (array $a, array $b): int => strcasecmp($a['country'], $b['country']));
 
-        $uri = sprintf('data:image/png;base64,%s', base64_encode($data));
-        $this->flagCache[$trimmed] = $uri;
-        return $uri;
-    }
-
-    private function buildCountryFlag(string $country): string
-    {
-        $dataUri = $this->getFlagDataUri($country);
-        if ($dataUri === null) {
-            return '';
-        }
-        return sprintf('<img class="flag" alt="" src="%s" width="24" height="18" />', $dataUri);
-    }
-
-    private function normalizeRagValue(?string $value): string
-    {
-        $text = mb_strtolower(trim((string) $value));
-        if ($text === '') {
-            return '';
-        }
-        if (str_contains($text, 'green')) {
-            return 'green';
-        }
-        if (str_contains($text, 'amber') || str_contains($text, 'yellow')) {
-            return 'amber';
-        }
-        if (str_contains($text, 'red')) {
-            return 'red';
-        }
-        return '';
-    }
-
-    private function buildOfflinePresentationHtml(array $data, array $assets): string
-    {
-        $generatedAt = htmlspecialchars((string) ($data['generatedAt'] ?? ''), ENT_QUOTES);
-        $presentationDate = htmlspecialchars((new DateTimeImmutable('now'))->format('Y-m-d'), ENT_QUOTES);
-
-        $assessments = $data['plannedAssessments'] ?? [];
-        $installations = $data['plannedInstallations'] ?? [];
-        $postDeployment = $data['postDeployment'] ?? [];
-        $issueLog = $data['issueLog'] ?? [];
-        $overviewItems = $data['overviewItems'] ?? [];
-        $timeline = $data['timeline'] ?? [];
-        $progress = $data['progress'] ?? [];
-        $plannedWeekRows = $data['plannedWeekRows'] ?? [];
-
-        $highlights = (string) ($data['highlights'] ?? '');
-        $trendOverrides = $data['trendOverrides'] ?? [];
-        $overviewOverrides = $data['overviewOverrides'] ?? [];
-
-        $trafficLights = [
-            'green' => $assets['traffic_green'] ?? null,
-            'amber' => $assets['traffic_amber'] ?? null,
-            'red' => $assets['traffic_red'] ?? null,
-        ];
-
-        $overviewMap = [];
-        foreach ($overviewItems as $row) {
-            if (!empty($row['country'])) {
-                $overviewMap[$row['country']] = $row;
-            }
-        }
-
-        $progressMap = [];
-        foreach (($progress['items'] ?? []) as $row) {
-            if (!empty($row['country'])) {
-                $progressMap[$row['country']] = $row;
-            }
-        }
+        return ['items' => $items];
 
         $timelineMap = [];
         foreach (($timeline['items'] ?? []) as $row) {
