@@ -375,6 +375,7 @@ const SmartsheetPivotPage = () => {
   const [taskTrackerOptionsLoading, setTaskTrackerOptionsLoading] = useState(false);
   const [taskTrackerOptionsHasMore, setTaskTrackerOptionsHasMore] = useState(true);
   const [taskTrackerOptionsOffset, setTaskTrackerOptionsOffset] = useState(0);
+  const taskTrackerOptionsOffsetRef = useRef(0);
 
   const [reportList, setReportList] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -1061,7 +1062,7 @@ const SmartsheetPivotPage = () => {
   const fetchTaskTrackerOptions = useCallback(async (mode = 'append') => {
     if (taskTrackerOptionsLoading) return;
     setTaskTrackerOptionsLoading(true);
-    const nextOffset = mode === 'append' ? taskTrackerOptionsOffset : 0;
+    const nextOffset = mode === 'append' ? taskTrackerOptionsOffsetRef.current : 0;
     try {
       const params = new URLSearchParams({
         offset: String(nextOffset),
@@ -1077,17 +1078,20 @@ const SmartsheetPivotPage = () => {
       const payload = await response.json();
       const items = Array.isArray(payload?.items) ? payload.items : [];
       setTaskTrackerOptionItems((prev) => (mode === 'append' ? [...prev, ...items] : items));
-      setTaskTrackerOptionsOffset(nextOffset + items.length);
+      const updatedOffset = nextOffset + items.length;
+      taskTrackerOptionsOffsetRef.current = updatedOffset;
+      setTaskTrackerOptionsOffset(updatedOffset);
       setTaskTrackerOptionsHasMore(Boolean(payload?.hasMore) && items.length > 0);
     } catch (error) {
       setTaskTrackerOptionsHasMore(false);
     } finally {
       setTaskTrackerOptionsLoading(false);
     }
-  }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName, taskTrackerOptionsLoading, taskTrackerOptionsOffset]);
+  }, [taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName, taskTrackerOptionsLoading]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
+      taskTrackerOptionsOffsetRef.current = 0;
       setTaskTrackerOptionsOffset(0);
       setTaskTrackerOptionsHasMore(true);
       setTaskTrackerOptionItems([]);
