@@ -1666,7 +1666,7 @@ const SmartsheetPivotPage = () => {
     });
   };
 
-  const getOverviewDraft = (country) => overviewDrafts[country] || { rag: '', comment: '' };
+  const getOverviewDraft = (country) => overviewDrafts[country] || { rag: null, comment: null };
 
   const updateOverviewDraft = (country, patch) => {
     setOverviewDrafts((prev) => {
@@ -1824,8 +1824,8 @@ const SmartsheetPivotPage = () => {
                   {filteredOverviewItems.map((row) => {
                     const override = overviewOverrides?.[row.country] || {};
                     const draft = getOverviewDraft(row.country);
-                    const ragValue = draft.rag !== '' ? draft.rag : (override.rag ?? row.rag);
-                    const commentValue = draft.comment !== '' ? draft.comment : (override.comment ?? row.comment);
+                    const ragValue = draft.rag !== null && draft.rag !== undefined ? draft.rag : (override.rag ?? row.rag ?? '');
+                    const commentValue = draft.comment !== null && draft.comment !== undefined ? draft.comment : (override.comment ?? row.comment ?? '');
                     const rag = normalizeRag(ragValue);
                     const ragLabel = ragValue ? ragValue : '—';
                     const ragClass = rag === 'green'
@@ -1868,7 +1868,7 @@ const SmartsheetPivotPage = () => {
                             <input
                               type="text"
                               className="form-control form-control-sm"
-                              value={commentValue || ''}
+                              value={commentValue ?? ''}
                               onChange={(event) => updateOverviewDraft(row.country, { comment: event.target.value })}
                             />
                           ) : (

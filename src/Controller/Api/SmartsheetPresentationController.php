@@ -145,6 +145,50 @@ class SmartsheetPresentationController extends AbstractController
         $req = $this->requestStack->getCurrentRequest();
         $country = $req ? trim((string) $req->query->get('country', '')) : '';
 
+        $columns = $this->resolveMasterColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $taskNameColumn = $columns['taskName'] ?? null;
+        $startColumn = $columns['startDate'] ?? null;
+        $endColumn = $columns['endDate'] ?? null;
+
+        $commentOverridesRow = $this->connection->fetchAssociative(
+            sprintf('SELECT content FROM %s WHERE section = :section ORDER BY created_at DESC LIMIT 1', self::CONTENT_TABLE),
+            ['section' => 'planned_week_comments']
+        );
+        $commentOverrides = json_decode((string) ($commentOverridesRow['content'] ?? ''), true);
+        $commentOverrides = is_array($commentOverrides) ? $commentOverrides : [];
+
+        $formatDateKey = static function ($value): string {
+            if ($value === null || $value === '') {
+                return '';
+            }
+            $timestamp = strtotime((string) $value);
+            if ($timestamp === false) {
+                return trim((string) $value);
+            }
+            return date('Y-m-d', $timestamp);
+        };
+
+        $buildCommentKey = static function (
+            string $countryValue,
+            string $siteIdValue,
+            string $siteNameValue,
+            string $taskValue,
+            string $startValue,
+            string $endValue
+        ): string {
+            $siteKey = $siteIdValue !== '' ? $siteIdValue : $siteNameValue;
+            return mb_strtolower(implode('||', [
+                trim($countryValue),
+                trim($siteKey),
+                trim($taskValue),
+                $startValue,
+                $endValue,
+            ]));
+        };
+
         // Use direct date containment so ranges spanning year boundaries are matched correctly
         $sql = sprintf(
             "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND (DATE(Start_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY) OR DATE(End_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY))",
@@ -162,6 +206,42 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         $rows = $this->connection->fetchAllAssociative($sql, $params);
+        foreach ($rows as &$row) {
+            $rowCountry = $countryColumn && array_key_exists($countryColumn, $row)
+                ? (string) ($row[$countryColumn] ?? '')
+                : (string) ($row['country'] ?? ($row['Country'] ?? ''));
+            $rowSiteId = $siteIdColumn && array_key_exists($siteIdColumn, $row)
+                ? (string) ($row[$siteIdColumn] ?? '')
+                : (string) ($row['site_id'] ?? ($row['Site_ID'] ?? ($row['SiteID'] ?? '')));
+            $rowSiteName = $siteNameColumn && array_key_exists($siteNameColumn, $row)
+                ? (string) ($row[$siteNameColumn] ?? '')
+                : (string) ($row['site_name'] ?? ($row['Site_Name'] ?? ($row['SiteName'] ?? '')));
+            $rowTask = $taskNameColumn && array_key_exists($taskNameColumn, $row)
+                ? (string) ($row[$taskNameColumn] ?? '')
+                : (string) ($row['task_name'] ?? ($row['Task_Name'] ?? ''));
+            $rowStart = $startColumn && array_key_exists($startColumn, $row)
+                ? $row[$startColumn]
+                : ($row['start_date'] ?? ($row['Start_Date'] ?? null));
+            $rowEnd = $endColumn && array_key_exists($endColumn, $row)
+                ? $row[$endColumn]
+                : ($row['end_date'] ?? ($row['End_Date'] ?? null));
+
+            $key = $buildCommentKey(
+                $rowCountry,
+                $rowSiteId,
+                $rowSiteName,
+                $rowTask,
+                $formatDateKey($rowStart),
+                $formatDateKey($rowEnd)
+            );
+
+            if ($key !== '' && array_key_exists($key, $commentOverrides)) {
+                $row['comment'] = (string) ($commentOverrides[$key] ?? '');
+            } else {
+                $row['comment'] = '';
+            }
+        }
+        unset($row);
 
         return $this->json(['items' => $rows]);
     }
