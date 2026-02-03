@@ -369,6 +369,8 @@ const SmartsheetPivotPage = () => {
   const [taskTrackerFilterCountry, setTaskTrackerFilterCountry] = useState('');
   const [taskTrackerFilterSiteName, setTaskTrackerFilterSiteName] = useState('');
   const [taskTrackerFilterTaskName, setTaskTrackerFilterTaskName] = useState('');
+  const [taskTrackerSelectOpen, setTaskTrackerSelectOpen] = useState(false);
+  const taskTrackerSelectRef = useRef(null);
 
   const [reportList, setReportList] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -1071,6 +1073,18 @@ const SmartsheetPivotPage = () => {
       return true;
     });
   }, [taskTrackerOptions, taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName]);
+
+  useEffect(() => {
+    if (!taskTrackerSelectOpen) return;
+    const handleClick = (event) => {
+      if (!taskTrackerSelectRef.current) return;
+      if (!taskTrackerSelectRef.current.contains(event.target)) {
+        setTaskTrackerSelectOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [taskTrackerSelectOpen]);
 
   const fieldOptions = [
     { value: 'Start_Date', label: 'Start Date' },
@@ -3854,71 +3868,108 @@ const SmartsheetPivotPage = () => {
                 </div>
                 <div className="col-12 col-lg-4">
                   <label className="form-label small mb-1">Assign to Tasks</label>
-                  <div className="border rounded p-2 bg-light mb-2">
-                    <div className="row g-2">
-                      <div className="col-12">
-                        <input
-                          type="text"
-                          className="form-control form-control-sm"
-                          placeholder="Filter Country"
-                          value={taskTrackerFilterCountry}
-                          onChange={(event) => setTaskTrackerFilterCountry(event.target.value)}
-                        />
+                  <div className="task-tracker-multiselect" ref={taskTrackerSelectRef}>
+                    <button
+                      type="button"
+                      className="task-tracker-multiselect__toggle"
+                      onClick={() => setTaskTrackerSelectOpen((prev) => !prev)}
+                    >
+                      <span>{taskTrackerDraft.tasks.length ? `${taskTrackerDraft.tasks.length} selected` : 'Select options'}</span>
+                      <span className="task-tracker-multiselect__caret" />
+                    </button>
+                    {taskTrackerSelectOpen && (
+                      <div className="task-tracker-multiselect__menu">
+                        <div className="task-tracker-multiselect__filter">
+                          <label className="task-tracker-multiselect__filter-label">Filter:</label>
+                          <input
+                            type="text"
+                            className="task-tracker-multiselect__filter-input"
+                            placeholder="Enter keywords"
+                            value={taskTrackerFilterTaskName}
+                            onChange={(event) => setTaskTrackerFilterTaskName(event.target.value)}
+                          />
+                          <div className="task-tracker-multiselect__filter-row">
+                            <input
+                              type="text"
+                              className="task-tracker-multiselect__filter-input"
+                              placeholder="Country"
+                              value={taskTrackerFilterCountry}
+                              onChange={(event) => setTaskTrackerFilterCountry(event.target.value)}
+                            />
+                            <input
+                              type="text"
+                              className="task-tracker-multiselect__filter-input"
+                              placeholder="Site Name"
+                              value={taskTrackerFilterSiteName}
+                              onChange={(event) => setTaskTrackerFilterSiteName(event.target.value)}
+                            />
+                          </div>
+                          <div className="task-tracker-multiselect__actions">
+                            <button
+                              type="button"
+                              className="task-tracker-multiselect__action"
+                              onClick={() => {
+                                const values = taskTrackerFilteredOptions.map((option) => option.value);
+                                const next = new Set([...(taskTrackerDraft.tasks || []), ...values]);
+                                updateTaskTrackerDraft({ tasks: Array.from(next) });
+                              }}
+                            >
+                              Check all
+                            </button>
+                            <button
+                              type="button"
+                              className="task-tracker-multiselect__action"
+                              onClick={() => {
+                                const remove = new Set(taskTrackerFilteredOptions.map((option) => option.value));
+                                const remaining = (taskTrackerDraft.tasks || []).filter((value) => !remove.has(value));
+                                updateTaskTrackerDraft({ tasks: remaining });
+                              }}
+                            >
+                              Uncheck all
+                            </button>
+                            <button
+                              type="button"
+                              className="task-tracker-multiselect__action"
+                              onClick={() => {
+                                setTaskTrackerFilterCountry('');
+                                setTaskTrackerFilterSiteName('');
+                                setTaskTrackerFilterTaskName('');
+                              }}
+                              disabled={!taskTrackerFilterCountry && !taskTrackerFilterSiteName && !taskTrackerFilterTaskName}
+                            >
+                              Clear filters
+                            </button>
+                          </div>
+                        </div>
+                        <div className="task-tracker-multiselect__list">
+                          {taskTrackerFilteredOptions.length === 0 && (
+                            <div className="task-tracker-multiselect__empty">No matching tasks</div>
+                          )}
+                          {taskTrackerFilteredOptions.map((option) => {
+                            const checked = (taskTrackerDraft.tasks || []).includes(option.value);
+                            return (
+                              <label key={`tracker-task-${option.value}`} className="task-tracker-multiselect__item">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    const next = new Set(taskTrackerDraft.tasks || []);
+                                    if (checked) {
+                                      next.delete(option.value);
+                                    } else {
+                                      next.add(option.value);
+                                    }
+                                    updateTaskTrackerDraft({ tasks: Array.from(next) });
+                                  }}
+                                />
+                                <span>{option.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="col-12">
-                        <input
-                          type="text"
-                          className="form-control form-control-sm"
-                          placeholder="Filter Site Name"
-                          value={taskTrackerFilterSiteName}
-                          onChange={(event) => setTaskTrackerFilterSiteName(event.target.value)}
-                        />
-                      </div>
-                      <div className="col-12">
-                        <input
-                          type="text"
-                          className="form-control form-control-sm"
-                          placeholder="Filter Task Name"
-                          value={taskTrackerFilterTaskName}
-                          onChange={(event) => setTaskTrackerFilterTaskName(event.target.value)}
-                        />
-                      </div>
-                      <div className="col-12 d-flex justify-content-end">
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary btn-sm"
-                          onClick={() => {
-                            setTaskTrackerFilterCountry('');
-                            setTaskTrackerFilterSiteName('');
-                            setTaskTrackerFilterTaskName('');
-                          }}
-                          disabled={!taskTrackerFilterCountry && !taskTrackerFilterSiteName && !taskTrackerFilterTaskName}
-                        >
-                          Clear filters
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <select
-                    className="form-select form-select-sm"
-                    multiple
-                    value={taskTrackerDraft.tasks}
-                    onChange={(event) =>
-                      updateTaskTrackerDraft({
-                        tasks: Array.from(event.target.selectedOptions).map((option) => option.value),
-                      })
-                    }
-                    style={{ minHeight: 90 }}
-                  >
-                    {taskTrackerFilteredOptions.length === 0 && (
-                      <option value="" disabled>No matching tasks</option>
                     )}
-                    {taskTrackerFilteredOptions.map((option) => (
-                      <option key={`tracker-task-${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  </div>
                 </div>
                 <div className="col-12">
                   <label className="form-label small mb-1">Description</label>
