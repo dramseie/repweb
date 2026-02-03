@@ -4333,7 +4333,6 @@ const SmartsheetPivotPage = () => {
                         <th>Description</th>
                         <th>Responsible</th>
                         <th>Tasks</th>
-                        <th>Files</th>
                         <th />
                       </tr>
                     </thead>
@@ -4342,68 +4341,70 @@ const SmartsheetPivotPage = () => {
                         <tr key={entry.id}>
                           <td>{formatDateDisplay(entry.date)}</td>
                           <td>{formatDisplayValue(entry.category)}</td>
-                          <td>{formatDisplayValue(entry.description)}</td>
+                          <td>
+                            <div>{formatDisplayValue(entry.description)}</div>
+                            <div className="mt-2">
+                              <div
+                                className="task-tracker-dropzone"
+                                onDragOver={(event) => event.preventDefault()}
+                                onDrop={(event) => {
+                                  event.preventDefault();
+                                  uploadTaskTrackerFiles(entry.id, event.dataTransfer.files);
+                                }}
+                                onClick={() => {
+                                  const input = document.getElementById(`task-tracker-file-${entry.id}`);
+                                  if (input) input.click();
+                                }}
+                              >
+                                <div className="task-tracker-dropzone__label">
+                                  Drag & drop files or click
+                                </div>
+                                <input
+                                  id={`task-tracker-file-${entry.id}`}
+                                  type="file"
+                                  multiple
+                                  className="task-tracker-dropzone__input"
+                                  onChange={(event) => uploadTaskTrackerFiles(entry.id, event.target.files)}
+                                />
+                              </div>
+                              <div className="task-tracker-files">
+                                {taskTrackerFilesError[entry.id] && (
+                                  <div className="text-danger small">{taskTrackerFilesError[entry.id]}</div>
+                                )}
+                                {taskTrackerFilesUploading[entry.id] && (
+                                  <div className="text-muted small">Uploading…</div>
+                                )}
+                                {!taskTrackerFilesById[entry.id] && !taskTrackerFilesLoading[entry.id] && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-link btn-sm p-0"
+                                    onClick={() => fetchTaskTrackerFiles(entry.id)}
+                                  >
+                                    Load files
+                                  </button>
+                                )}
+                                {taskTrackerFilesLoading[entry.id] && (
+                                  <div className="text-muted small">Loading…</div>
+                                )}
+                                {Array.isArray(taskTrackerFilesById[entry.id]) && taskTrackerFilesById[entry.id].length > 0 && (
+                                  <ul className="list-unstyled small mb-0">
+                                    {taskTrackerFilesById[entry.id].map((file) => (
+                                      <li key={file.id}>
+                                        <a href={file.downloadUrl} target="_blank" rel="noreferrer">
+                                          {file.filename}
+                                        </a>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          </td>
                           <td>{formatDisplayValue(entry.responsible)}</td>
                           <td>
                             {Array.isArray(entry.tasks)
                               ? entry.tasks.map((task, index) => renderTaskTrackerTask(task, index))
                               : ''}
-                          </td>
-                          <td>
-                            <div
-                              className="task-tracker-dropzone"
-                              onDragOver={(event) => event.preventDefault()}
-                              onDrop={(event) => {
-                                event.preventDefault();
-                                uploadTaskTrackerFiles(entry.id, event.dataTransfer.files);
-                              }}
-                              onClick={() => {
-                                const input = document.getElementById(`task-tracker-file-${entry.id}`);
-                                if (input) input.click();
-                              }}
-                            >
-                              <div className="task-tracker-dropzone__label">
-                                Drag & drop files or click
-                              </div>
-                              <input
-                                id={`task-tracker-file-${entry.id}`}
-                                type="file"
-                                multiple
-                                className="task-tracker-dropzone__input"
-                                onChange={(event) => uploadTaskTrackerFiles(entry.id, event.target.files)}
-                              />
-                            </div>
-                            <div className="task-tracker-files">
-                              {taskTrackerFilesError[entry.id] && (
-                                <div className="text-danger small">{taskTrackerFilesError[entry.id]}</div>
-                              )}
-                              {taskTrackerFilesUploading[entry.id] && (
-                                <div className="text-muted small">Uploading…</div>
-                              )}
-                              {!taskTrackerFilesById[entry.id] && !taskTrackerFilesLoading[entry.id] && (
-                                <button
-                                  type="button"
-                                  className="btn btn-link btn-sm p-0"
-                                  onClick={() => fetchTaskTrackerFiles(entry.id)}
-                                >
-                                  Load files
-                                </button>
-                              )}
-                              {taskTrackerFilesLoading[entry.id] && (
-                                <div className="text-muted small">Loading…</div>
-                              )}
-                              {Array.isArray(taskTrackerFilesById[entry.id]) && taskTrackerFilesById[entry.id].length > 0 && (
-                                <ul className="list-unstyled small mb-0">
-                                  {taskTrackerFilesById[entry.id].map((file) => (
-                                    <li key={file.id}>
-                                      <a href={file.downloadUrl} target="_blank" rel="noreferrer">
-                                        {file.filename}
-                                      </a>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
                           </td>
                           <td className="text-nowrap">
                             <button
