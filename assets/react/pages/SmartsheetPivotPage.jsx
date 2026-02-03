@@ -1657,7 +1657,7 @@ const SmartsheetPivotPage = () => {
     return '';
   };
 
-  const getTrendDraft = (country) => trendDrafts[country] || { rag: '', comment: '' };
+  const getTrendDraft = (country) => trendDrafts[country] || { rag: null, comment: null };
 
   const updateTrendDraft = (country, patch) => {
     setTrendDrafts((prev) => {
@@ -1679,8 +1679,8 @@ const SmartsheetPivotPage = () => {
     const override = trendOverrides?.[row.country] || {};
     return {
       ...row,
-      rag: override.rag ?? row.rag,
-      comment: override.comment ?? row.comment,
+      rag: override.rag ?? null,
+      comment: override.comment ?? null,
     };
   });
 
@@ -2163,8 +2163,8 @@ const SmartsheetPivotPage = () => {
                 <tbody>
                   {trendItems.map((row) => {
                     const draft = getTrendDraft(row.country);
-                    const ragValue = draft.rag !== '' ? draft.rag : (row.rag || '');
-                    const commentValue = draft.comment !== '' ? draft.comment : (row.comment || '');
+                    const ragValue = draft.rag !== null && draft.rag !== undefined ? draft.rag : (row.rag ?? '');
+                    const commentValue = draft.comment !== null && draft.comment !== undefined ? draft.comment : (row.comment ?? '');
                     return (
                       <tr key={row.country}>
                         <td className="fw-semibold">
@@ -2186,9 +2186,8 @@ const SmartsheetPivotPage = () => {
                           <input
                             type="text"
                             className="form-control form-control-sm"
-                            value={commentValue}
+                            value={commentValue ?? ''}
                             onChange={(event) => updateTrendDraft(row.country, { comment: event.target.value })}
-                            placeholder="Add comment"
                           />
                         </td>
                       </tr>
