@@ -1451,21 +1451,21 @@ const SmartsheetPivotPage = () => {
     }).filter((item) => item.label);
   }
 
-  const getTaskTrackerTaskKey = (task) => {
+  function getTaskTrackerTaskKey(task) {
     if (!task) return '';
     if (typeof task === 'object') {
       return String(task.taskId ?? task.id ?? task.task_id ?? task.value ?? task.label ?? '');
     }
     return String(task);
-  };
+  }
 
-  const getTaskTrackerTaskLabel = (task) => {
+  function getTaskTrackerTaskLabel(task) {
     if (!task) return '';
     if (typeof task === 'object') {
       return String(task.label ?? task.taskName ?? task.task_name ?? task.name ?? task.taskId ?? '');
     }
     return String(task);
-  };
+  }
 
   const startTaskTrackerEdit = (entry) => {
     if (!entry?.id) return;
