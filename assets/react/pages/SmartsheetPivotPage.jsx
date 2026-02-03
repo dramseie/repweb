@@ -366,6 +366,9 @@ const SmartsheetPivotPage = () => {
   });
   const [taskTrackerSaving, setTaskTrackerSaving] = useState(false);
   const [taskTrackerEditId, setTaskTrackerEditId] = useState(null);
+  const [taskTrackerFilterCountry, setTaskTrackerFilterCountry] = useState('');
+  const [taskTrackerFilterSiteName, setTaskTrackerFilterSiteName] = useState('');
+  const [taskTrackerFilterTaskName, setTaskTrackerFilterTaskName] = useState('');
 
   const [reportList, setReportList] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -1022,6 +1025,52 @@ const SmartsheetPivotPage = () => {
     value: taskName,
     label: taskName,
   }));
+
+  const taskTrackerOptions = React.useMemo(() => {
+    const map = new Map();
+    const pushOption = (value, meta = {}) => {
+      if (!value) return;
+      if (!map.has(value)) {
+        map.set(value, { value, label: value, ...meta });
+      }
+    };
+
+    plannedWeekRows.forEach((row) => {
+      const country = getRowField(row, ['country', 'Country']) || '';
+      const siteNameRaw = getRowField(row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '';
+      const siteName = cleanSiteName(siteNameRaw) || siteNameRaw || '';
+      const taskName = getRowField(row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) || '';
+      const siteId = getRowField(row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) || '';
+      const labelParts = [country, siteName || siteId, taskName].filter(Boolean);
+      const label = labelParts.join(' / ');
+      if (!label) return;
+      pushOption(label, { country, siteName: siteName || siteId, taskName });
+    });
+
+    taskTrackerItems.forEach((entry) => {
+      if (!Array.isArray(entry?.tasks)) return;
+      entry.tasks.forEach((task) => pushOption(String(task)));
+    });
+
+    taskTrackerDraft.tasks.forEach((task) => pushOption(String(task)));
+
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [plannedWeekRows, taskTrackerItems, taskTrackerDraft.tasks]);
+
+  const taskTrackerFilteredOptions = React.useMemo(() => {
+    const countryFilter = taskTrackerFilterCountry.trim().toLowerCase();
+    const siteFilter = taskTrackerFilterSiteName.trim().toLowerCase();
+    const taskFilter = taskTrackerFilterTaskName.trim().toLowerCase();
+    return taskTrackerOptions.filter((option) => {
+      const countryValue = (option.country || '').toLowerCase();
+      const siteValue = (option.siteName || '').toLowerCase();
+      const taskValue = (option.taskName || option.label || '').toLowerCase();
+      if (countryFilter && !countryValue.includes(countryFilter)) return false;
+      if (siteFilter && !siteValue.includes(siteFilter)) return false;
+      if (taskFilter && !taskValue.includes(taskFilter)) return false;
+      return true;
+    });
+  }, [taskTrackerOptions, taskTrackerFilterCountry, taskTrackerFilterSiteName, taskTrackerFilterTaskName]);
 
   const fieldOptions = [
     { value: 'Start_Date', label: 'Start Date' },
@@ -3805,6 +3854,51 @@ const SmartsheetPivotPage = () => {
                 </div>
                 <div className="col-12 col-lg-4">
                   <label className="form-label small mb-1">Assign to Tasks</label>
+                  <div className="border rounded p-2 bg-light mb-2">
+                    <div className="row g-2">
+                      <div className="col-12">
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          placeholder="Filter Country"
+                          value={taskTrackerFilterCountry}
+                          onChange={(event) => setTaskTrackerFilterCountry(event.target.value)}
+                        />
+                      </div>
+                      <div className="col-12">
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          placeholder="Filter Site Name"
+                          value={taskTrackerFilterSiteName}
+                          onChange={(event) => setTaskTrackerFilterSiteName(event.target.value)}
+                        />
+                      </div>
+                      <div className="col-12">
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          placeholder="Filter Task Name"
+                          value={taskTrackerFilterTaskName}
+                          onChange={(event) => setTaskTrackerFilterTaskName(event.target.value)}
+                        />
+                      </div>
+                      <div className="col-12 d-flex justify-content-end">
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm"
+                          onClick={() => {
+                            setTaskTrackerFilterCountry('');
+                            setTaskTrackerFilterSiteName('');
+                            setTaskTrackerFilterTaskName('');
+                          }}
+                          disabled={!taskTrackerFilterCountry && !taskTrackerFilterSiteName && !taskTrackerFilterTaskName}
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                   <select
                     className="form-select form-select-sm"
                     multiple
@@ -3816,7 +3910,10 @@ const SmartsheetPivotPage = () => {
                     }
                     style={{ minHeight: 90 }}
                   >
-                    {taskOptions.map((option) => (
+                    {taskTrackerFilteredOptions.length === 0 && (
+                      <option value="" disabled>No matching tasks</option>
+                    )}
+                    {taskTrackerFilteredOptions.map((option) => (
                       <option key={`tracker-task-${option.value}`} value={option.value}>
                         {option.label}
                       </option>
