@@ -1264,6 +1264,12 @@ const SmartsheetPivotPage = () => {
     () => Array.from(new Set(ganttCountryTasks)),
     [ganttCountryTasks]
   );
+  const ganttCountryTaskFilterSet = React.useMemo(() => {
+    const normalized = ganttCountryTasks
+      .map((task) => String(task).trim().toLowerCase())
+      .filter((task) => task.length > 0);
+    return new Set(normalized);
+  }, [ganttCountryTasks]);
 
   const ganttSeries = React.useMemo(() => {
     const items = Array.isArray(ganttData.items) ? ganttData.items : [];
@@ -1479,6 +1485,10 @@ const SmartsheetPivotPage = () => {
     const siteMap = new Map();
 
     items.forEach((item) => {
+      if (ganttCountryTaskFilterSet.size > 0) {
+        const taskValue = String(item.taskName || '').trim().toLowerCase();
+        if (!ganttCountryTaskFilterSet.has(taskValue)) return;
+      }
       const start = parseDateValue(item.startDate);
       const end = parseDateValue(item.endDate);
       if (!start || !end) return;
@@ -1511,7 +1521,7 @@ const SmartsheetPivotPage = () => {
     });
 
     return { data };
-  }, [ganttCountryData.items]);
+  }, [ganttCountryData.items, ganttCountryTaskFilterSet]);
 
   const countryGanttOptions = React.useMemo(() => {
     return {
