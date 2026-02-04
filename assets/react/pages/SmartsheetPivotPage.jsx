@@ -1440,6 +1440,10 @@ const SmartsheetPivotPage = () => {
     return {
       ...ganttOptions,
       chart: { type: 'gantt', height },
+      yAxis: {
+        ...(ganttOptions.yAxis || {}),
+        staticScale: 18,
+      },
       series: [
         {
           name: 'Tasks',
@@ -4952,6 +4956,25 @@ const SmartsheetPivotPage = () => {
 
               {ganttSelectorTab === 'site' && (
                 <div className="row g-3 align-items-end">
+                  <div className="col-12 col-md-4">
+                    <label className="form-label fw-medium">Country</label>
+                    <select
+                      className="form-select"
+                      value={ganttCountry}
+                      onChange={(event) => {
+                        setGanttCountry(event.target.value);
+                        setGanttSites([]);
+                        setGanttSiteKey('');
+                      }}
+                      disabled={ganttCountriesLoading}
+                    >
+                      <option value="">Select a country…</option>
+                      {ganttCountries.map((country) => (
+                        <option key={country} value={country}>{country}</option>
+                      ))}
+                    </select>
+                    {ganttCountriesError && <div className="form-text text-danger">{ganttCountriesError}</div>}
+                  </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label fw-medium">Site</label>
                     <select
