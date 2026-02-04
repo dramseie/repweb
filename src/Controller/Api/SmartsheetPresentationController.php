@@ -1315,7 +1315,15 @@ class SmartsheetPresentationController extends AbstractController
             $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
         }
 
-        $taskNames = array_filter(array_map('strtolower', $request->query->all('tasks')));
+        $tasksParam = $request->query->get('tasks');
+        if (is_array($tasksParam)) {
+            $taskNames = $tasksParam;
+        } elseif (is_string($tasksParam) && $tasksParam !== '') {
+            $taskNames = [$tasksParam];
+        } else {
+            $taskNames = [];
+        }
+        $taskNames = array_filter(array_map('strtolower', $taskNames));
         if ($taskNames === []) {
             $taskNames = ['assessment execution', 'installation execution', 'store sign off'];
         }
@@ -1328,8 +1336,21 @@ class SmartsheetPresentationController extends AbstractController
             $taskNameColumn
         );
 
+        $orderParts = [
+            sprintf('`%s`', $countryColumn),
+        ];
+        if ($siteNameColumn && $siteIdColumn) {
+            $orderParts[] = sprintf('COALESCE(`%s`, `%s`)', $siteNameColumn, $siteIdColumn);
+        } elseif ($siteNameColumn) {
+            $orderParts[] = sprintf('`%s`', $siteNameColumn);
+        } elseif ($siteIdColumn) {
+            $orderParts[] = sprintf('`%s`', $siteIdColumn);
+        }
+        $orderParts[] = sprintf('`%s`', $taskNameColumn);
+        $orderParts[] = sprintf('`%s`', $startColumn);
+
         $rows = $this->connection->executeQuery(
-            $sql,
+            $sql . ' ORDER BY ' . implode(', ', $orderParts),
             [$taskNames],
             [ArrayParameterType::STRING]
         )->fetchAllAssociative();
