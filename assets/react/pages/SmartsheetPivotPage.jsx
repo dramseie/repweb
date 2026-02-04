@@ -1270,6 +1270,14 @@ const SmartsheetPivotPage = () => {
       .filter((task) => task.length > 0);
     return new Set(normalized);
   }, [ganttCountryTasks]);
+  const ganttCountryTaskLabelMap = React.useMemo(() => {
+    const map = new Map();
+    ganttCountryTasks.forEach((task) => {
+      const key = String(task).trim().toLowerCase();
+      if (key) map.set(key, task);
+    });
+    return map;
+  }, [ganttCountryTasks]);
 
   const ganttSeries = React.useMemo(() => {
     const items = Array.isArray(ganttData.items) ? ganttData.items : [];
@@ -1483,45 +1491,108 @@ const SmartsheetPivotPage = () => {
     const data = [];
     const countryMap = new Map();
     const siteMap = new Map();
+    const siteRangeMap = new Map();
+    const siteTaskMap = new Map();
+    const preparedItems = [];
 
-    items.forEach((item) => {
-      if (ganttCountryTaskFilterSet.size > 0) {
-        const taskValue = String(item.taskName || '').trim().toLowerCase();
-        if (!ganttCountryTaskFilterSet.has(taskValue)) return;
-      }
-      const start = parseDateValue(item.startDate);
-      const end = parseDateValue(item.endDate);
-      if (!start || !end) return;
-      const countryName = item.country || 'Unknown';
+    const normalizeTask = (value) => String(value || '').trim().toLowerCase();
+    const ensureCountryNode = (countryName) => {
       const countryId = `country:${countryName}`;
       if (!countryMap.has(countryId)) {
         countryMap.set(countryId, true);
         data.push({ id: countryId, name: countryName, collapsed: true });
       }
-
-      const siteKey = item.siteId || item.siteName || 'Unknown';
-      const siteLabel = item.siteName
-        ? (item.siteId ? `${item.siteName} (${item.siteId})` : item.siteName)
-        : siteKey;
+      return countryId;
+    };
+    const ensureSiteNode = (countryName, siteKey, siteLabel) => {
+      const countryId = ensureCountryNode(countryName);
       const siteId = `site:${countryName}:${siteKey}`;
       if (!siteMap.has(siteId)) {
         siteMap.set(siteId, true);
         data.push({ id: siteId, parent: countryId, name: siteLabel, collapsed: true });
       }
+      return siteId;
+    };
 
+    items.forEach((item) => {
+      const start = parseDateValue(item.startDate);
+      const end = parseDateValue(item.endDate);
+      if (!start || !end) return;
+      const countryName = item.country || 'Unknown';
+      const siteKey = item.siteId || item.siteName || 'Unknown';
+      const siteLabel = item.siteName
+        ? (item.siteId ? `${item.siteName} (${item.siteId})` : item.siteName)
+        : siteKey;
       const taskName = item.taskName || 'Task';
-      const taskId = `task:${countryName}:${siteKey}:${taskName}:${start.getTime()}`;
-      data.push({
-        id: taskId,
-        parent: siteId,
-        name: taskName,
-        start: start.getTime(),
-        end: end.getTime(),
+      const taskValue = normalizeTask(taskName);
+      const siteRangeKey = `${countryName}||${siteKey}`;
+
+      const currentRange = siteRangeMap.get(siteRangeKey) || { min: start, max: end };
+      if (start < currentRange.min) currentRange.min = start;
+      if (end > currentRange.max) currentRange.max = end;
+      siteRangeMap.set(siteRangeKey, currentRange);
+
+      if (taskValue) {
+        if (!siteTaskMap.has(siteRangeKey)) {
+          siteTaskMap.set(siteRangeKey, new Set());
+        }
+        siteTaskMap.get(siteRangeKey).add(taskValue);
+      }
+
+      preparedItems.push({
+        countryName,
+        siteKey,
+        siteLabel,
+        taskName,
+        taskValue,
+        start,
+        end,
       });
     });
 
+    preparedItems.forEach((item) => {
+      if (ganttCountryTaskFilterSet.size > 0 && !ganttCountryTaskFilterSet.has(item.taskValue)) {
+        return;
+      }
+      const siteId = ensureSiteNode(item.countryName, item.siteKey, item.siteLabel);
+      const taskId = `task:${item.countryName}:${item.siteKey}:${item.taskName}:${item.start.getTime()}`;
+      data.push({
+        id: taskId,
+        parent: siteId,
+        name: item.taskName,
+        start: item.start.getTime(),
+        end: item.end.getTime(),
+      });
+    });
+
+    if (ganttCountryTaskFilterSet.size > 0) {
+      siteRangeMap.forEach((range, siteRangeKey) => {
+        const [countryName, siteKey] = siteRangeKey.split('||');
+        const siteLabel = preparedItems.find(
+          (item) => item.countryName === countryName && item.siteKey === siteKey
+        )?.siteLabel || siteKey;
+        const siteId = ensureSiteNode(countryName, siteKey, siteLabel);
+        const existingTasks = siteTaskMap.get(siteRangeKey) || new Set();
+
+        ganttCountryTaskFilterSet.forEach((taskValue) => {
+          if (existingTasks.has(taskValue)) return;
+          const label = ganttCountryTaskLabelMap.get(taskValue) || taskValue;
+          const placeholderId = `task:placeholder:${countryName}:${siteKey}:${label}`;
+          data.push({
+            id: placeholderId,
+            parent: siteId,
+            name: label,
+            start: range.min.getTime(),
+            end: range.min.getTime(),
+            color: 'rgba(108, 117, 125, 0.35)',
+            borderColor: 'rgba(108, 117, 125, 0.6)',
+          });
+        });
+      });
+    }
+
     return { data };
-  }, [ganttCountryData.items, ganttCountryTaskFilterSet]);
+  }, [ganttCountryData.items, ganttCountryTaskFilterSet, ganttCountryTaskLabelMap]);
 
   const countryGanttOptions = React.useMemo(() => {
     return {
