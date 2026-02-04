@@ -826,6 +826,7 @@ const SmartsheetPivotPage = () => {
     setGanttCountryLoading(true);
     setGanttCountryError(null);
     try {
+      console.log('Country Gantt selected tasks:', ganttCountryTasksForQuery);
       const params = new URLSearchParams();
       ganttCountryTasksForQuery.forEach((task) => params.append('tasks', task));
       const query = params.toString();
