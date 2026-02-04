@@ -381,6 +381,7 @@ const SmartsheetPivotPage = () => {
   const [ganttData, setGanttData] = useState({ items: [] });
   const [ganttLoading, setGanttLoading] = useState(false);
   const [ganttError, setGanttError] = useState(null);
+  const [ganttSelectorTab, setGanttSelectorTab] = useState('country');
 
   const [taskTrackerItems, setTaskTrackerItems] = useState([]);
   const [taskTrackerLoading, setTaskTrackerLoading] = useState(false);
@@ -3491,7 +3492,7 @@ const SmartsheetPivotPage = () => {
             aria-selected={activeTab === 'gantt'}
             onClick={() => setActiveTab('gantt')}
           >
-            Gantt
+            Graph
           </button>
         </li>
       </ul>
@@ -4815,49 +4816,83 @@ const SmartsheetPivotPage = () => {
         <div className="d-flex flex-column gap-3">
           <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
             <div>
-              <h2 className="h5 mb-0">Gantt</h2>
+              <h2 className="h5 mb-0">Graph</h2>
               <div className="text-muted small">Project plan by country</div>
             </div>
           </div>
 
           <div className="card shadow-sm">
             <div className="card-body">
-              <div className="row g-3 align-items-end">
-                <div className="col-12 col-md-4">
-                  <label className="form-label fw-medium">Country</label>
-                  <select
-                    className="form-select"
-                    value={ganttCountry}
-                    onChange={(event) => {
-                      setGanttCountry(event.target.value);
-                      setGanttSites([]);
-                      setGanttSiteKey('');
-                    }}
-                    disabled={ganttCountriesLoading}
+              <ul className="nav nav-tabs mb-3" role="tablist">
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link ${ganttSelectorTab === 'country' ? 'active' : ''}`}
+                    role="tab"
+                    aria-selected={ganttSelectorTab === 'country'}
+                    onClick={() => setGanttSelectorTab('country')}
                   >
-                    <option value="">Select a country…</option>
-                    {ganttCountries.map((country) => (
-                      <option key={country} value={country}>{country}</option>
-                    ))}
-                  </select>
-                  {ganttCountriesError && <div className="form-text text-danger">{ganttCountriesError}</div>}
-                </div>
-                <div className="col-12 col-md-4">
-                  <label className="form-label fw-medium">Site</label>
-                  <select
-                    className="form-select"
-                    value={ganttSiteKey}
-                    onChange={(event) => setGanttSiteKey(event.target.value)}
-                    disabled={!ganttCountry || ganttSitesLoading}
+                    Country
+                  </button>
+                </li>
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link ${ganttSelectorTab === 'site' ? 'active' : ''}`}
+                    role="tab"
+                    aria-selected={ganttSelectorTab === 'site'}
+                    onClick={() => setGanttSelectorTab('site')}
                   >
-                    <option value="">Select a site…</option>
-                    {ganttSites.map((site) => (
-                      <option key={site.key} value={site.key}>{site.label}</option>
-                    ))}
-                  </select>
-                  {ganttSitesError && <div className="form-text text-danger">{ganttSitesError}</div>}
+                    Site
+                  </button>
+                </li>
+              </ul>
+
+              {ganttSelectorTab === 'country' && (
+                <div className="row g-3 align-items-end">
+                  <div className="col-12 col-md-4">
+                    <label className="form-label fw-medium">Country</label>
+                    <select
+                      className="form-select"
+                      value={ganttCountry}
+                      onChange={(event) => {
+                        setGanttCountry(event.target.value);
+                        setGanttSites([]);
+                        setGanttSiteKey('');
+                        setGanttSelectorTab('site');
+                      }}
+                      disabled={ganttCountriesLoading}
+                    >
+                      <option value="">Select a country…</option>
+                      {ganttCountries.map((country) => (
+                        <option key={country} value={country}>{country}</option>
+                      ))}
+                    </select>
+                    {ganttCountriesError && <div className="form-text text-danger">{ganttCountriesError}</div>}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {ganttSelectorTab === 'site' && (
+                <div className="row g-3 align-items-end">
+                  <div className="col-12 col-md-4">
+                    <label className="form-label fw-medium">Site</label>
+                    <select
+                      className="form-select"
+                      value={ganttSiteKey}
+                      onChange={(event) => setGanttSiteKey(event.target.value)}
+                      disabled={!ganttCountry || ganttSitesLoading}
+                    >
+                      <option value="">Select a site…</option>
+                      {ganttSites.map((site) => (
+                        <option key={site.key} value={site.key}>{site.label}</option>
+                      ))}
+                    </select>
+                    {ganttSitesError && <div className="form-text text-danger">{ganttSitesError}</div>}
+                    {!ganttCountry && <div className="form-text text-muted">Select a country first.</div>}
+                  </div>
+                </div>
+              )}
 
               {ganttError && (
                 <div className="alert alert-warning mt-3" role="alert">
