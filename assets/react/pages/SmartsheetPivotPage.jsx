@@ -382,6 +382,9 @@ const SmartsheetPivotPage = () => {
   const [ganttLoading, setGanttLoading] = useState(false);
   const [ganttError, setGanttError] = useState(null);
   const [ganttSelectorTab, setGanttSelectorTab] = useState('country');
+  const [ganttCountryData, setGanttCountryData] = useState({ items: [] });
+  const [ganttCountryLoading, setGanttCountryLoading] = useState(false);
+  const [ganttCountryError, setGanttCountryError] = useState(null);
 
   const [taskTrackerItems, setTaskTrackerItems] = useState([]);
   const [taskTrackerLoading, setTaskTrackerLoading] = useState(false);
@@ -784,6 +787,23 @@ const SmartsheetPivotPage = () => {
       setGanttSitesError(error.message || 'Unable to load gantt sites.');
     } finally {
       setGanttSitesLoading(false);
+    }
+  }, []);
+
+  const fetchGanttCountryData = useCallback(async () => {
+    setGanttCountryLoading(true);
+    setGanttCountryError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/gantt-country');
+      if (!response.ok) {
+        throw new Error(`Failed to load country gantt data (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setGanttCountryData({ items: Array.isArray(payload?.items) ? payload.items : [] });
+    } catch (error) {
+      setGanttCountryError(error.message || 'Unable to load country gantt data.');
+    } finally {
+      setGanttCountryLoading(false);
     }
   }, []);
 
@@ -1373,6 +1393,62 @@ const SmartsheetPivotPage = () => {
       accessibility: { enabled: false },
     };
   }, [ganttSeries]);
+
+  const countryGanttSeries = React.useMemo(() => {
+    const items = Array.isArray(ganttCountryData.items) ? ganttCountryData.items : [];
+    const data = [];
+    const countryMap = new Map();
+    const siteMap = new Map();
+
+    items.forEach((item) => {
+      const start = parseDateValue(item.startDate);
+      const end = parseDateValue(item.endDate);
+      if (!start || !end) return;
+      const countryName = item.country || 'Unknown';
+      const countryId = `country:${countryName}`;
+      if (!countryMap.has(countryId)) {
+        countryMap.set(countryId, true);
+        data.push({ id: countryId, name: countryName, collapsed: true });
+      }
+
+      const siteKey = item.siteId || item.siteName || 'Unknown';
+      const siteLabel = item.siteName
+        ? (item.siteId ? `${item.siteName} (${item.siteId})` : item.siteName)
+        : siteKey;
+      const siteId = `site:${countryName}:${siteKey}`;
+      if (!siteMap.has(siteId)) {
+        siteMap.set(siteId, true);
+        data.push({ id: siteId, parent: countryId, name: siteLabel, collapsed: true });
+      }
+
+      const taskName = item.taskName || 'Task';
+      const taskId = `task:${countryName}:${siteKey}:${taskName}:${start.getTime()}`;
+      data.push({
+        id: taskId,
+        parent: siteId,
+        name: taskName,
+        start: start.getTime(),
+        end: end.getTime(),
+      });
+    });
+
+    return { data };
+  }, [ganttCountryData.items]);
+
+  const countryGanttOptions = React.useMemo(() => {
+    const height = Math.max(520, countryGanttSeries.data.length * 18 + 220);
+    return {
+      ...ganttOptions,
+      chart: { type: 'gantt', height },
+      series: [
+        {
+          name: 'Tasks',
+          data: countryGanttSeries.data,
+          dataLabels: { enabled: false },
+        },
+      ],
+    };
+  }, [countryGanttSeries, ganttOptions]);
 
   const fetchTaskTrackerOptions = useCallback(async (mode = 'append') => {
     if (taskTrackerOptionsLoadingRef.current) return;
@@ -3415,6 +3491,12 @@ const SmartsheetPivotPage = () => {
     }
   }, [activeTab, ganttCountry, ganttSiteKey, fetchGanttData]);
 
+  useEffect(() => {
+    if (activeTab === 'gantt' && ganttSelectorTab === 'country') {
+      fetchGanttCountryData();
+    }
+  }, [activeTab, ganttSelectorTab, fetchGanttCountryData]);
+
   return (
     <div className="smartsheet-pivot">
       <ul className="nav nav-tabs mb-3" role="tablist">
@@ -4849,27 +4931,22 @@ const SmartsheetPivotPage = () => {
               </ul>
 
               {ganttSelectorTab === 'country' && (
-                <div className="row g-3 align-items-end">
-                  <div className="col-12 col-md-4">
-                    <label className="form-label fw-medium">Country</label>
-                    <select
-                      className="form-select"
-                      value={ganttCountry}
-                      onChange={(event) => {
-                        setGanttCountry(event.target.value);
-                        setGanttSites([]);
-                        setGanttSiteKey('');
-                        setGanttSelectorTab('site');
-                      }}
-                      disabled={ganttCountriesLoading}
-                    >
-                      <option value="">Select a country…</option>
-                      {ganttCountries.map((country) => (
-                        <option key={country} value={country}>{country}</option>
-                      ))}
-                    </select>
-                    {ganttCountriesError && <div className="form-text text-danger">{ganttCountriesError}</div>}
-                  </div>
+                <div className="d-flex flex-column gap-3">
+                  {ganttCountryError && (
+                    <div className="alert alert-warning" role="alert">
+                      {ganttCountryError}
+                    </div>
+                  )}
+
+                  {ganttCountryLoading && <div className="text-muted">Loading country gantt…</div>}
+
+                  {!ganttCountryLoading && countryGanttSeries.data.length === 0 && (
+                    <div className="text-muted">No country gantt tasks found.</div>
+                  )}
+
+                  {!ganttCountryLoading && countryGanttSeries.data.length > 0 && (
+                    <HighchartsReact highcharts={Highcharts} constructorType="ganttChart" options={countryGanttOptions} />
+                  )}
                 </div>
               )}
 
@@ -4894,22 +4971,26 @@ const SmartsheetPivotPage = () => {
                 </div>
               )}
 
-              {ganttError && (
-                <div className="alert alert-warning mt-3" role="alert">
-                  {ganttError}
-                </div>
-              )}
+              {ganttSelectorTab === 'site' && (
+                <>
+                  {ganttError && (
+                    <div className="alert alert-warning mt-3" role="alert">
+                      {ganttError}
+                    </div>
+                  )}
 
-              {ganttLoading && <div className="text-muted mt-3">Loading gantt…</div>}
+                  {ganttLoading && <div className="text-muted mt-3">Loading gantt…</div>}
 
-              {!ganttLoading && ganttCountry && ganttSiteKey && ganttSeries.data.length === 0 && (
-                <div className="text-muted mt-3">No gantt tasks found.</div>
-              )}
+                  {!ganttLoading && ganttCountry && ganttSiteKey && ganttSeries.data.length === 0 && (
+                    <div className="text-muted mt-3">No gantt tasks found.</div>
+                  )}
 
-              {!ganttLoading && ganttSeries.data.length > 0 && (
-                <div className="mt-3">
-                  <HighchartsReact highcharts={Highcharts} constructorType="ganttChart" options={ganttOptions} />
-                </div>
+                  {!ganttLoading && ganttSeries.data.length > 0 && (
+                    <div className="mt-3">
+                      <HighchartsReact highcharts={Highcharts} constructorType="ganttChart" options={ganttOptions} />
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

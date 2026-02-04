@@ -1258,6 +1258,64 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json(['items' => $items]);
     }
 
+    #[Route('/gantt-country', name: 'presentation_gantt_country', methods: ['GET'])]
+    public function ganttCountry(): JsonResponse
+    {
+        $columns = $this->resolveMasterColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $taskNameColumn = $columns['taskName'] ?? null;
+        $startColumn = $columns['startDate'] ?? null;
+        $endColumn = $columns['endDate'] ?? null;
+
+        if (!$countryColumn || !$taskNameColumn || !$startColumn || !$endColumn || (!$siteNameColumn && !$siteIdColumn)) {
+            return $this->json(['items' => []]);
+        }
+
+        $selectParts = [
+            sprintf('`%s` AS country', $countryColumn),
+            sprintf('`%s` AS task_name', $taskNameColumn),
+            sprintf('`%s` AS start_date', $startColumn),
+            sprintf('`%s` AS end_date', $endColumn),
+        ];
+        if ($siteNameColumn) {
+            $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
+        }
+        if ($siteIdColumn) {
+            $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
+        }
+
+        $taskNames = ['assessment execution', 'installation execution'];
+        $sql = sprintf(
+            'SELECT %s FROM %s WHERE `%s` IS NOT NULL AND `%s` IS NOT NULL AND LOWER(`%s`) IN (?)',
+            implode(', ', $selectParts),
+            self::MASTER_TABLE,
+            $startColumn,
+            $endColumn,
+            $taskNameColumn
+        );
+
+        $rows = $this->connection->executeQuery(
+            $sql,
+            [$taskNames],
+            [ArrayParameterType::STRING]
+        )->fetchAllAssociative();
+
+        $items = array_map(static function (array $row): array {
+            return [
+                'country' => $row['country'] ?? null,
+                'siteId' => $row['site_id'] ?? null,
+                'siteName' => $row['site_name'] ?? null,
+                'taskName' => $row['task_name'] ?? null,
+                'startDate' => $row['start_date'] ?? null,
+                'endDate' => $row['end_date'] ?? null,
+            ];
+        }, $rows);
+
+        return $this->json(['items' => $items]);
+    }
+
     private function normalizeTaskTrackerDate(string $value): ?string
     {
         $value = trim($value);
