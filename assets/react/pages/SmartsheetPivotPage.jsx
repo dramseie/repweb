@@ -1328,7 +1328,7 @@ const SmartsheetPivotPage = () => {
         },
       },
       navigator: { enabled: true },
-      rangeSelector: { enabled: true, selected: 0 },
+      rangeSelector: { enabled: true, selected: 5 },
       tooltip: {
         pointFormat: '<b>{point.name}</b><br/>Start: {point.start:%Y-%m-%d}<br/>End: {point.end:%Y-%m-%d}',
       },

@@ -195,6 +195,7 @@
   text-align: right;
   color: #6c757d;
   font-variant-numeric: tabular-nums;
+  justify-self: end;
 }
 
 /* Remove hover fill and keep text black */
