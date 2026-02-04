@@ -216,6 +216,35 @@
   font-weight: 600;
   line-height: 1;
   border: 1px solid #f2d9a6;
+  position: relative;
+  cursor: help;
+}
+
+.gantt-change-badge[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #fff;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  z-index: 9999;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+
+.gantt-change-badge[data-tooltip]:hover::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1f2937;
 }
 
 .gantt-col-changed {

@@ -1342,9 +1342,9 @@ const SmartsheetPivotPage = () => {
             if (startInfo?.currentRun || endInfo?.currentRun) {
               infoParts.push(`Current: ${startInfo?.currentRun || endInfo?.currentRun}`);
             }
-            const badgeTitle = infoParts.length ? ` title="${escapeHtml(infoParts.join('\n'))}"` : '';
+            const badgeTip = infoParts.length ? escapeHtml(infoParts.join(' | ')) : '';
             const badge = data?.startChanged || data?.endChanged
-              ? `<span class=\"gantt-change-badge\"${badgeTitle}>Changed</span>`
+              ? `<span class=\"gantt-change-badge\" data-tooltip=\"${badgeTip}\">Changed</span>`
               : '';
             return `
               <span class="gantt-row-label">
