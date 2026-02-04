@@ -1267,8 +1267,8 @@ const SmartsheetPivotPage = () => {
 
   const ganttCountryTaskSelected = React.useMemo(() => new Set(ganttCountryTasks), [ganttCountryTasks]);
   const ganttCountryTasksForQuery = React.useMemo(
-    () => Array.from(new Set([...ganttCountryDefaultTasks, ...ganttCountryTasks])),
-    [ganttCountryDefaultTasks, ganttCountryTasks]
+    () => Array.from(new Set(ganttCountryTasks)),
+    [ganttCountryTasks]
   );
 
   const ganttSeries = React.useMemo(() => {
@@ -5102,11 +5102,8 @@ const SmartsheetPivotPage = () => {
                                   className="task-tracker-multiselect__action"
                                   onClick={() => {
                                     if (ganttCountryShowAll || ganttCountryTaskFilteredOptions.length === 0) return;
-                                    const removable = ganttCountryTaskFilteredOptions.filter(
-                                      (task) => !ganttCountryDefaultTasks.includes(task)
-                                    );
                                     setGanttCountryTasks((prev) =>
-                                      prev.filter((task) => !removable.includes(task))
+                                      prev.filter((task) => !ganttCountryTaskFilteredOptions.includes(task))
                                     );
                                   }}
                                   disabled={ganttCountryShowAll}
@@ -5131,16 +5128,16 @@ const SmartsheetPivotPage = () => {
                                 <div className="task-tracker-multiselect__empty">No matching tasks</div>
                               )}
                               {!ganttCountryTaskLoading && ganttCountryTaskFilteredOptions.map((task) => {
+                                const checked = ganttCountryTaskSelected.has(task);
                                 const isDefault = ganttCountryDefaultTasks.includes(task);
-                                const checked = isDefault || ganttCountryTaskSelected.has(task);
                                 return (
                                   <label key={`country-gantt-task-${task}`} className="task-tracker-multiselect__item">
                                     <input
                                       type="checkbox"
                                       checked={checked}
-                                      disabled={ganttCountryShowAll || isDefault}
+                                      disabled={ganttCountryShowAll}
                                       onChange={() => {
-                                        if (ganttCountryShowAll || isDefault) return;
+                                        if (ganttCountryShowAll) return;
                                         setGanttCountryTasks((prev) => {
                                           if (checked) {
                                             return prev.filter((value) => value !== task);
@@ -5160,7 +5157,7 @@ const SmartsheetPivotPage = () => {
                       <div className="form-text text-muted">
                         {ganttCountryShowAll
                           ? 'All tasks are shown for each site.'
-                          : 'Default tasks are always shown.'}
+                          : 'Select any tasks to show.'}
                       </div>
                       {ganttCountryTaskError && (
                         <div className="form-text text-danger">{ganttCountryTaskError}</div>
