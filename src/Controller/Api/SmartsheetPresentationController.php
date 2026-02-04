@@ -59,6 +59,10 @@ class SmartsheetPresentationController extends AbstractController
     private const HISTORY_TASK_ID_CANDIDATES = ['task_id', 'Task_ID', 'Task Id', 'TaskID'];
     private const HISTORY_COLUMN_NAME_CANDIDATES = ['column_name', 'Column_Name', 'Column Name', 'field_name', 'Field_Name', 'Field Name', 'field', 'column'];
     private const HISTORY_CHANGE_TYPE_CANDIDATES = ['change_type', 'Change_Type', 'Change Type', 'type'];
+    private const HISTORY_OLD_START_CANDIDATES = ['old_start_date', 'Old_Start_Date', 'Old Start Date'];
+    private const HISTORY_NEW_START_CANDIDATES = ['new_start_date', 'New_Start_Date', 'New Start Date'];
+    private const HISTORY_OLD_END_CANDIDATES = ['old_end_date', 'Old_End_Date', 'Old End Date'];
+    private const HISTORY_NEW_END_CANDIDATES = ['new_end_date', 'New_End_Date', 'New End Date'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
@@ -2097,53 +2101,99 @@ class SmartsheetPresentationController extends AbstractController
         $historyTaskIdColumn = $historyColumns['taskId'] ?? null;
         $historyColumnColumn = $historyColumns['columnName'] ?? null;
         $historyChangeTypeColumn = $historyColumns['changeType'] ?? null;
-        if (!$historyTaskIdColumn || !$historyColumnColumn || !$historyChangeTypeColumn) {
+        $historyOldStart = $historyColumns['oldStart'] ?? null;
+        $historyNewStart = $historyColumns['newStart'] ?? null;
+        $historyOldEnd = $historyColumns['oldEnd'] ?? null;
+        $historyNewEnd = $historyColumns['newEnd'] ?? null;
+        if (!$historyTaskIdColumn || !$historyChangeTypeColumn) {
             return [];
         }
-
-        $startCandidates = array_filter(array_unique(array_merge(
-            $startColumn ? [$startColumn] : [],
-            self::START_DATE_CANDIDATES
-        )));
-        $endCandidates = array_filter(array_unique(array_merge(
-            $endColumn ? [$endColumn] : [],
-            self::END_DATE_CANDIDATES
-        )));
-        $startLower = array_values(array_unique(array_map('mb_strtolower', $startCandidates)));
-        $endLower = array_values(array_unique(array_map('mb_strtolower', $endCandidates)));
-        $allLower = array_values(array_unique(array_merge($startLower, $endLower)));
-        if (!$allLower) {
-            return [];
-        }
-
-        $sql = sprintf(
-            'SELECT `%s` AS task_id, `%s` AS column_name FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = :changeType AND LOWER(`%s`) IN (?)',
-            $historyTaskIdColumn,
-            $historyColumnColumn,
-            $historyTable['qualified'],
-            $historyTaskIdColumn,
-            $historyChangeTypeColumn,
-            $historyColumnColumn
-        );
-
-        $historyRows = $this->connection->executeQuery(
-            $sql,
-            [array_keys($taskIds), 'changed', $allLower],
-            [Connection::PARAM_STR_ARRAY, ParameterType::STRING, Connection::PARAM_STR_ARRAY]
-        )->fetchAllAssociative();
 
         $map = [];
-        foreach ($historyRows as $row) {
-            $taskId = trim((string) ($row['task_id'] ?? ''));
-            $column = mb_strtolower(trim((string) ($row['column_name'] ?? '')));
-            if ($taskId === '' || $column === '') {
-                continue;
+
+        if ($historyColumnColumn) {
+            $startCandidates = array_filter(array_unique(array_merge(
+                $startColumn ? [$startColumn] : [],
+                self::START_DATE_CANDIDATES
+            )));
+            $endCandidates = array_filter(array_unique(array_merge(
+                $endColumn ? [$endColumn] : [],
+                self::END_DATE_CANDIDATES
+            )));
+            $startLower = array_values(array_unique(array_map('mb_strtolower', $startCandidates)));
+            $endLower = array_values(array_unique(array_map('mb_strtolower', $endCandidates)));
+            $allLower = array_values(array_unique(array_merge($startLower, $endLower)));
+            if ($allLower) {
+                $sql = sprintf(
+                    'SELECT `%s` AS task_id, `%s` AS column_name FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = :changeType AND LOWER(`%s`) IN (?)',
+                    $historyTaskIdColumn,
+                    $historyColumnColumn,
+                    $historyTable['qualified'],
+                    $historyTaskIdColumn,
+                    $historyChangeTypeColumn,
+                    $historyColumnColumn
+                );
+
+                $historyRows = $this->connection->executeQuery(
+                    $sql,
+                    [array_keys($taskIds), 'changed', $allLower],
+                    [Connection::PARAM_STR_ARRAY, ParameterType::STRING, Connection::PARAM_STR_ARRAY]
+                )->fetchAllAssociative();
+
+                foreach ($historyRows as $row) {
+                    $taskId = trim((string) ($row['task_id'] ?? ''));
+                    $column = mb_strtolower(trim((string) ($row['column_name'] ?? '')));
+                    if ($taskId === '' || $column === '') {
+                        continue;
+                    }
+                    if (in_array($column, $startLower, true)) {
+                        $map[$taskId]['start'] = true;
+                    }
+                    if (in_array($column, $endLower, true)) {
+                        $map[$taskId]['end'] = true;
+                    }
+                }
             }
-            if (in_array($column, $startLower, true)) {
-                $map[$taskId]['start'] = true;
-            }
-            if (in_array($column, $endLower, true)) {
-                $map[$taskId]['end'] = true;
+        }
+
+        if ($historyOldStart && $historyNewStart) {
+            $sql = sprintf(
+                'SELECT `%s` AS task_id, `%s` AS old_start, `%s` AS new_start, `%s` AS old_end, `%s` AS new_end FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = :changeType',
+                $historyTaskIdColumn,
+                $historyOldStart,
+                $historyNewStart,
+                $historyOldEnd ?? $historyOldStart,
+                $historyNewEnd ?? $historyNewStart,
+                $historyTable['qualified'],
+                $historyTaskIdColumn,
+                $historyChangeTypeColumn
+            );
+
+            $historyRows = $this->connection->executeQuery(
+                $sql,
+                [array_keys($taskIds), 'changed'],
+                [Connection::PARAM_STR_ARRAY, ParameterType::STRING]
+            )->fetchAllAssociative();
+
+            foreach ($historyRows as $row) {
+                $taskId = trim((string) ($row['task_id'] ?? ''));
+                if ($taskId === '') {
+                    continue;
+                }
+                $oldStart = trim((string) ($row['old_start'] ?? ''));
+                $newStart = trim((string) ($row['new_start'] ?? ''));
+                $oldEnd = trim((string) ($row['old_end'] ?? ''));
+                $newEnd = trim((string) ($row['new_end'] ?? ''));
+                if ($oldStart !== '' || $newStart !== '') {
+                    if ($oldStart !== $newStart) {
+                        $map[$taskId]['start'] = true;
+                    }
+                }
+                if ($oldEnd !== '' || $newEnd !== '') {
+                    if ($oldEnd !== $newEnd) {
+                        $map[$taskId]['end'] = true;
+                    }
+                }
             }
         }
 
@@ -2193,6 +2243,10 @@ class SmartsheetPresentationController extends AbstractController
             'taskId' => $this->findColumnName($columns, self::HISTORY_TASK_ID_CANDIDATES),
             'columnName' => $this->findColumnName($columns, self::HISTORY_COLUMN_NAME_CANDIDATES),
             'changeType' => $this->findColumnName($columns, self::HISTORY_CHANGE_TYPE_CANDIDATES),
+            'oldStart' => $this->findColumnName($columns, self::HISTORY_OLD_START_CANDIDATES),
+            'newStart' => $this->findColumnName($columns, self::HISTORY_NEW_START_CANDIDATES),
+            'oldEnd' => $this->findColumnName($columns, self::HISTORY_OLD_END_CANDIDATES),
+            'newEnd' => $this->findColumnName($columns, self::HISTORY_NEW_END_CANDIDATES),
         ];
     }
 
