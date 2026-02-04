@@ -2159,7 +2159,7 @@ class SmartsheetPresentationController extends AbstractController
 
         if ($historyOldStart && $historyNewStart) {
             $sql = sprintf(
-                'SELECT `%s` AS task_id, `%s` AS old_start, `%s` AS new_start, `%s` AS old_end, `%s` AS new_end FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = :changeType',
+                'SELECT `%s` AS task_id, `%s` AS old_start, `%s` AS new_start, `%s` AS old_end, `%s` AS new_end FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = ?',
                 $historyTaskIdColumn,
                 $historyOldStart,
                 $historyNewStart,
