@@ -1202,7 +1202,7 @@ const SmartsheetPivotPage = () => {
       const nodeMap = new Map();
       const ensureNode = (id) => {
         if (!nodeMap.has(id)) {
-          const node = { id };
+          const node = { id, collapsed: false };
           nodeMap.set(id, node);
           data.push(node);
         }
@@ -1232,10 +1232,27 @@ const SmartsheetPivotPage = () => {
           const parentNode = ensureNode(parentId);
           if (!parentNode.name) {
             parentNode.name = taskNameById.get(parentId) || `Task ${parentId}`;
-            parentNode.collapsed = true;
+            parentNode.collapsed = false;
           }
         }
       });
+
+      const rootTaskIds = data
+        .filter((node) => !node.parent && typeof node.name === 'string' && /^Task\s+\d+$/.test(node.name))
+        .map((node) => node.id);
+      if (rootTaskIds.length > 0) {
+        const rootSet = new Set(rootTaskIds);
+        data.forEach((node) => {
+          if (node.parent && rootSet.has(node.parent)) {
+            node.parent = null;
+          }
+        });
+        for (let i = data.length - 1; i >= 0; i -= 1) {
+          if (rootSet.has(data[i].id)) {
+            data.splice(i, 1);
+          }
+        }
+      }
 
       return { data };
     }
@@ -1275,7 +1292,34 @@ const SmartsheetPivotPage = () => {
       chart: { type: 'gantt', height },
       title: { text: '' },
       xAxis: { currentDateIndicator: true },
-      yAxis: { type: 'treegrid', uniqueNames: true },
+      yAxis: {
+        type: 'treegrid',
+        uniqueNames: true,
+        grid: {
+          columns: [
+            {
+              title: { text: 'Task' },
+              labels: { format: '{point.name}' },
+            },
+            {
+              title: { text: 'Start' },
+              labels: {
+                formatter() {
+                  return this.point?.start ? Highcharts.dateFormat('%Y-%m-%d', this.point.start) : '';
+                },
+              },
+            },
+            {
+              title: { text: 'End' },
+              labels: {
+                formatter() {
+                  return this.point?.end ? Highcharts.dateFormat('%Y-%m-%d', this.point.end) : '';
+                },
+              },
+            },
+          ],
+        },
+      },
       navigator: { enabled: true },
       rangeSelector: { enabled: true, selected: 0 },
       tooltip: {
