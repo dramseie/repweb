@@ -1325,7 +1325,7 @@ class SmartsheetPresentationController extends AbstractController
         }
         $taskNames = array_filter(array_map('strtolower', $taskNames));
         if ($taskNames === []) {
-            $taskNames = ['assessment execution', 'installation execution', 'store sign off'];
+            $taskNames = ['assessment execution', 'installation execution', 'store sign off completed'];
         }
         $sql = sprintf(
             'SELECT %s FROM %s WHERE `%s` IS NOT NULL AND `%s` IS NOT NULL AND LOWER(`%s`) IN (?)',
