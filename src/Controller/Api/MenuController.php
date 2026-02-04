@@ -14,9 +14,6 @@ final class MenuController extends AbstractController
     public function menu(EntityManagerInterface $em): JsonResponse
     {
         $qb = $em->getRepository(MenuItem::class)->createQueryBuilder('m');
-        $userRoles = $this->getUser()?->getRoles() ?? [];
-        $hasIkeaRole = in_array('ROLE_IKEA', $userRoles, true);
-        $allowedRoles = $hasIkeaRole ? ['ROLE_IKEA'] : $userRoles;
 
         // Pull scalars + parent id for stable tree building
         $rows = $qb
@@ -76,15 +73,6 @@ final class MenuController extends AbstractController
                 'external'       => (bool) $r['external'],
             ];
         }, $rows);
-
-        // Filter by roles
-        $items = array_values(array_filter($items, function (array $item) use ($allowedRoles, $hasIkeaRole): bool {
-            $roles = $item['roles'] ?? [];
-            if (!$roles) {
-                return !$hasIkeaRole;
-            }
-            return (bool) array_intersect($allowedRoles, $roles);
-        }));
 
         // Group by parent_id
         $byParent = [];
