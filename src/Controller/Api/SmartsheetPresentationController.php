@@ -1449,14 +1449,14 @@ class SmartsheetPresentationController extends AbstractController
         $from = trim((string) $request->query->get('from', ''));
         $to = trim((string) $request->query->get('to', ''));
         if ($from !== '') {
-            $whereParts[] = sprintf('`%s` <= :to_date OR :to_date IS NULL', $startColumn);
-            $params['to_date'] = $to !== '' ? $to : null;
-            $types['to_date'] = ParameterType::STRING;
+            $whereParts[] = sprintf('`%s` >= :from_date', $endColumn);
+            $params['from_date'] = $from;
+            $types['from_date'] = ParameterType::STRING;
         }
         if ($to !== '') {
-            $whereParts[] = sprintf('`%s` >= :from_date OR :from_date IS NULL', $endColumn);
-            $params['from_date'] = $from !== '' ? $from : null;
-            $types['from_date'] = ParameterType::STRING;
+            $whereParts[] = sprintf('`%s` <= :to_date', $startColumn);
+            $params['to_date'] = $to;
+            $types['to_date'] = ParameterType::STRING;
         }
 
         $sql = sprintf(

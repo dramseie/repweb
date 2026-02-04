@@ -407,6 +407,7 @@ const SmartsheetPivotPage = () => {
   const ganttCountryTaskSelectRef = useRef(null);
   const [wonderfulFrom, setWonderfulFrom] = useState('');
   const [wonderfulTo, setWonderfulTo] = useState('');
+  const [wonderfulTimeframe, setWonderfulTimeframe] = useState('this-week');
   const [wonderfulTask, setWonderfulTask] = useState('');
   const [wonderfulState, setWonderfulState] = useState('');
   const [wonderfulItems, setWonderfulItems] = useState([]);
@@ -1868,6 +1869,67 @@ const SmartsheetPivotPage = () => {
     }
     fetchWonderfulData();
   }, [ganttSelectorTab, fetchWonderfulData, fetchWonderfulStates, wonderfulStates.length, wonderfulStatesLoading]);
+
+  useEffect(() => {
+    const today = new Date();
+    const startOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = (day === 0 ? -6 : 1) - day;
+      d.setDate(d.getDate() + diff);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+    const endOfWeek = (date) => {
+      const d = startOfWeek(date);
+      d.setDate(d.getDate() + 6);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    };
+    const startOfMonth = (date) => {
+      const d = new Date(date.getFullYear(), date.getMonth(), 1);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+    const endOfMonth = (date) => {
+      const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    };
+
+    let fromDate = null;
+    let toDate = null;
+    if (wonderfulTimeframe === 'this-week') {
+      fromDate = startOfWeek(today);
+      toDate = endOfWeek(today);
+    } else if (wonderfulTimeframe === 'prev-week') {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 7);
+      fromDate = startOfWeek(d);
+      toDate = endOfWeek(d);
+    } else if (wonderfulTimeframe === 'next-week') {
+      const d = new Date(today);
+      d.setDate(d.getDate() + 7);
+      fromDate = startOfWeek(d);
+      toDate = endOfWeek(d);
+    } else if (wonderfulTimeframe === 'this-month') {
+      fromDate = startOfMonth(today);
+      toDate = endOfMonth(today);
+    } else if (wonderfulTimeframe === 'prev-month') {
+      const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      fromDate = startOfMonth(d);
+      toDate = endOfMonth(d);
+    } else if (wonderfulTimeframe === 'next-month') {
+      const d = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      fromDate = startOfMonth(d);
+      toDate = endOfMonth(d);
+    }
+
+    if (fromDate && toDate) {
+      setWonderfulFrom(formatYmd(fromDate));
+      setWonderfulTo(formatYmd(toDate));
+    }
+  }, [wonderfulTimeframe]);
 
   const fieldOptions = [
     { value: 'Start_Date', label: 'Start Date' },
@@ -5385,12 +5447,29 @@ const SmartsheetPivotPage = () => {
                 <div className="d-flex flex-column gap-3">
                   <div className="row g-3 align-items-end">
                     <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">Timeframe</label>
+                      <select
+                        className="form-select"
+                        value={wonderfulTimeframe}
+                        onChange={(event) => setWonderfulTimeframe(event.target.value)}
+                      >
+                        <option value="this-week">This week</option>
+                        <option value="prev-week">Previous week</option>
+                        <option value="next-week">Next week</option>
+                        <option value="this-month">This month</option>
+                        <option value="prev-month">Previous month</option>
+                        <option value="next-month">Next month</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">From</label>
                       <input
                         type="date"
                         className="form-control"
                         value={wonderfulFrom}
                         onChange={(event) => setWonderfulFrom(event.target.value)}
+                        disabled={wonderfulTimeframe !== 'custom'}
                       />
                     </div>
                     <div className="col-12 col-md-3">
@@ -5400,6 +5479,7 @@ const SmartsheetPivotPage = () => {
                         className="form-control"
                         value={wonderfulTo}
                         onChange={(event) => setWonderfulTo(event.target.value)}
+                        disabled={wonderfulTimeframe !== 'custom'}
                       />
                     </div>
                     <div className="col-12 col-md-3">
