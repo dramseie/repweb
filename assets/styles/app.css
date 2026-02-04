@@ -201,6 +201,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.gantt-col-changed {
+  color: #7a5b00;
+  background: #fff3cd;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
 /* Remove hover fill and keep text black */
 .dt-buttons .dt-button:hover,
 .dt-buttons .btn:hover {

@@ -55,6 +55,10 @@ class SmartsheetPresentationController extends AbstractController
     private const TASK_ID_CANDIDATES = ['task_id', 'Task_ID', 'Task Id', 'TaskID'];
     private const PARENT_ID_CANDIDATES = ['parent_id', 'Parent_ID', 'Parent Id', 'ParentID', 'Parent_Task_ID', 'Parent Task Id'];
     private const PHASE_CANDIDATES = ['Phase', 'phase'];
+    private const HISTORY_TABLE_NAME = 'smartsheet_master_data_history_changes';
+    private const HISTORY_TASK_ID_CANDIDATES = ['task_id', 'Task_ID', 'Task Id', 'TaskID'];
+    private const HISTORY_COLUMN_NAME_CANDIDATES = ['column_name', 'Column_Name', 'Column Name', 'field_name', 'Field_Name', 'Field Name', 'field', 'column'];
+    private const HISTORY_CHANGE_TYPE_CANDIDATES = ['change_type', 'Change_Type', 'Change Type', 'type'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
@@ -1221,19 +1225,26 @@ class SmartsheetPresentationController extends AbstractController
 
         $rows = $this->connection->fetchAllAssociative($sql, ['country' => $country, 'site' => $siteKey]);
 
-        $items = array_map(static function (array $row): array {
-            return [
+        $changeMap = $this->resolveHistoryChangeMap($rows, $taskIdColumn, $startColumn, $endColumn);
+
+        $items = [];
+        foreach ($rows as $row) {
+            $taskId = isset($row['task_id']) ? (string) $row['task_id'] : null;
+            $changes = $taskId ? ($changeMap[$taskId] ?? []) : [];
+            $items[] = [
                 'country' => $row['country'] ?? null,
                 'siteId' => $row['site_id'] ?? null,
                 'siteName' => $row['site_name'] ?? null,
-                'taskId' => isset($row['task_id']) ? (string) $row['task_id'] : null,
+                'taskId' => $taskId,
                 'parentId' => isset($row['parent_id']) ? (string) $row['parent_id'] : null,
                 'taskName' => $row['task_name'] ?? null,
                 'phase' => $row['phase'] ?? null,
                 'startDate' => $row['start_date'] ?? null,
                 'endDate' => $row['end_date'] ?? null,
+                'startChanged' => (bool) ($changes['start'] ?? false),
+                'endChanged' => (bool) ($changes['end'] ?? false),
             ];
-        }, $rows);
+        }
 
         return $this->json(['items' => $items]);
     }
@@ -2054,6 +2065,135 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, array{start?: bool, end?: bool}>
+     */
+    private function resolveHistoryChangeMap(array $rows, ?string $taskIdColumn, ?string $startColumn, ?string $endColumn): array
+    {
+        if (!$taskIdColumn) {
+            return [];
+        }
+
+        $taskIds = [];
+        foreach ($rows as $row) {
+            $taskId = trim((string) ($row['task_id'] ?? ''));
+            if ($taskId !== '') {
+                $taskIds[$taskId] = true;
+            }
+        }
+
+        if (!$taskIds) {
+            return [];
+        }
+
+        $historyTable = $this->resolveHistoryTable();
+        if (!$historyTable) {
+            return [];
+        }
+
+        $historyColumns = $this->resolveHistoryColumns($historyTable['schema'], $historyTable['table']);
+        $historyTaskIdColumn = $historyColumns['taskId'] ?? null;
+        $historyColumnColumn = $historyColumns['columnName'] ?? null;
+        $historyChangeTypeColumn = $historyColumns['changeType'] ?? null;
+        if (!$historyTaskIdColumn || !$historyColumnColumn || !$historyChangeTypeColumn) {
+            return [];
+        }
+
+        $startCandidates = array_filter(array_unique(array_merge(
+            $startColumn ? [$startColumn] : [],
+            self::START_DATE_CANDIDATES
+        )));
+        $endCandidates = array_filter(array_unique(array_merge(
+            $endColumn ? [$endColumn] : [],
+            self::END_DATE_CANDIDATES
+        )));
+        $startLower = array_values(array_unique(array_map('mb_strtolower', $startCandidates)));
+        $endLower = array_values(array_unique(array_map('mb_strtolower', $endCandidates)));
+        $allLower = array_values(array_unique(array_merge($startLower, $endLower)));
+        if (!$allLower) {
+            return [];
+        }
+
+        $sql = sprintf(
+            'SELECT `%s` AS task_id, `%s` AS column_name FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = :changeType AND LOWER(`%s`) IN (?)',
+            $historyTaskIdColumn,
+            $historyColumnColumn,
+            $historyTable['qualified'],
+            $historyTaskIdColumn,
+            $historyChangeTypeColumn,
+            $historyColumnColumn
+        );
+
+        $historyRows = $this->connection->executeQuery(
+            $sql,
+            [array_keys($taskIds), 'changed', $allLower],
+            [Connection::PARAM_STR_ARRAY, ParameterType::STRING, Connection::PARAM_STR_ARRAY]
+        )->fetchAllAssociative();
+
+        $map = [];
+        foreach ($historyRows as $row) {
+            $taskId = trim((string) ($row['task_id'] ?? ''));
+            $column = mb_strtolower(trim((string) ($row['column_name'] ?? '')));
+            if ($taskId === '' || $column === '') {
+                continue;
+            }
+            if (in_array($column, $startLower, true)) {
+                $map[$taskId]['start'] = true;
+            }
+            if (in_array($column, $endLower, true)) {
+                $map[$taskId]['end'] = true;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array{schema: string, table: string, qualified: string}|null
+     */
+    private function resolveHistoryTable(): ?array
+    {
+        $row = $this->connection->fetchAssociative(
+            'SELECT TABLE_SCHEMA AS schema_name, TABLE_NAME AS table_name FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = :table ORDER BY (TABLE_SCHEMA = :preferred) DESC LIMIT 1',
+            [
+                'table' => self::HISTORY_TABLE_NAME,
+                'preferred' => 'nifi',
+            ]
+        );
+
+        $schema = $row['schema_name'] ?? null;
+        $table = $row['table_name'] ?? null;
+        if (!$schema || !$table) {
+            return null;
+        }
+
+        return [
+            'schema' => $schema,
+            'table' => $table,
+            'qualified' => sprintf('%s.%s', $schema, $table),
+        ];
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private function resolveHistoryColumns(string $schema, string $table): array
+    {
+        $columns = $this->connection->fetchFirstColumn(
+            'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table',
+            [
+                'schema' => $schema,
+                'table' => $table,
+            ]
+        );
+
+        return [
+            'taskId' => $this->findColumnName($columns, self::HISTORY_TASK_ID_CANDIDATES),
+            'columnName' => $this->findColumnName($columns, self::HISTORY_COLUMN_NAME_CANDIDATES),
+            'changeType' => $this->findColumnName($columns, self::HISTORY_CHANGE_TYPE_CANDIDATES),
+        ];
     }
 
     private function pickWorstRag(?string $current, ?string $incoming): ?string

@@ -1238,6 +1238,8 @@ const SmartsheetPivotPage = () => {
         if (start && end) {
           node.start = start.getTime();
           node.end = end.getTime();
+          node.startChanged = Boolean(item.startChanged);
+          node.endChanged = Boolean(item.endChanged);
         }
 
         if (parentId) {
@@ -1292,6 +1294,8 @@ const SmartsheetPivotPage = () => {
         name: taskName,
         start: start.getTime(),
         end: end.getTime(),
+        startChanged: Boolean(item.startChanged),
+        endChanged: Boolean(item.endChanged),
       });
     });
 
@@ -1317,11 +1321,13 @@ const SmartsheetPivotPage = () => {
             const endValue = data?.end ?? data?.x2 ?? null;
             const start = startValue ? Highcharts.dateFormat('%Y-%m-%d', startValue) : '';
             const end = endValue ? Highcharts.dateFormat('%Y-%m-%d', endValue) : '';
+            const startClass = data?.startChanged ? ' gantt-col-changed' : '';
+            const endClass = data?.endChanged ? ' gantt-col-changed' : '';
             return `
               <span class="gantt-row-label">
                 <span class="gantt-col-task">${name}</span>
-                <span class="gantt-col-start">${start}</span>
-                <span class="gantt-col-end">${end}</span>
+                <span class="gantt-col-start${startClass}">${start}</span>
+                <span class="gantt-col-end${endClass}">${end}</span>
               </span>
             `;
           },
