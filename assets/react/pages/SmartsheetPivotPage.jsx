@@ -1187,38 +1187,46 @@ const SmartsheetPivotPage = () => {
 
   const ganttSeries = React.useMemo(() => {
     const items = Array.isArray(ganttData.items) ? ganttData.items : [];
-    const taskIndexMap = new Map();
-    const categories = [];
+    const phaseMap = new Map();
     const data = [];
 
     items.forEach((item) => {
       const start = parseDateValue(item.startDate);
       const end = parseDateValue(item.endDate);
       if (!start || !end) return;
+      const phaseName = item.phase || 'Tasks';
       const taskName = item.taskName || 'Task';
-      if (!taskIndexMap.has(taskName)) {
-        taskIndexMap.set(taskName, categories.length);
-        categories.push(taskName);
+      const phaseId = `phase:${phaseName}`;
+      if (!phaseMap.has(phaseId)) {
+        phaseMap.set(phaseId, true);
+        data.push({
+          id: phaseId,
+          name: phaseName,
+          collapsed: true,
+        });
       }
-      const y = taskIndexMap.get(taskName);
+      const taskId = `task:${item.taskId || taskName}-${start.getTime()}`;
       data.push({
+        id: taskId,
+        parent: phaseId,
         name: taskName,
         start: start.getTime(),
         end: end.getTime(),
-        y,
       });
     });
 
-    return { categories, data };
+    return { data };
   }, [ganttData.items]);
 
   const ganttOptions = React.useMemo(() => {
-    const height = Math.max(420, ganttSeries.categories.length * 28 + 160);
+    const height = Math.max(520, ganttSeries.data.length * 18 + 220);
     return {
       chart: { type: 'gantt', height },
       title: { text: '' },
       xAxis: { currentDateIndicator: true },
-      yAxis: { type: 'category', categories: ganttSeries.categories },
+      yAxis: { type: 'treegrid', uniqueNames: true },
+      navigator: { enabled: true },
+      rangeSelector: { enabled: true, selected: 0 },
       tooltip: {
         pointFormat: '<b>{point.name}</b><br/>Start: {point.start:%Y-%m-%d}<br/>End: {point.end:%Y-%m-%d}',
       },
@@ -1226,7 +1234,7 @@ const SmartsheetPivotPage = () => {
         {
           name: 'Tasks',
           data: ganttSeries.data,
-          dataLabels: { enabled: true, format: '{point.name}', style: { textOutline: 'none', fontSize: '10px' } },
+          dataLabels: { enabled: false },
         },
       ],
       accessibility: { enabled: false },

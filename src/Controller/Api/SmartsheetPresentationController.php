@@ -53,6 +53,7 @@ class SmartsheetPresentationController extends AbstractController
     private const SITE_ID_CANDIDATES = ['Site_ID', 'Site Id', 'SiteID', 'Site Id', 'Site'];
     private const SITE_NAME_CANDIDATES = ['Site_Name', 'Site Name', 'SiteName', 'Site'];
     private const TASK_ID_CANDIDATES = ['task_id', 'Task_ID', 'Task Id', 'TaskID'];
+    private const PHASE_CANDIDATES = ['Phase', 'phase'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
@@ -158,6 +159,7 @@ class SmartsheetPresentationController extends AbstractController
         $taskNameColumn = $columns['taskName'] ?? null;
         $startColumn = $columns['startDate'] ?? null;
         $endColumn = $columns['endDate'] ?? null;
+        $phaseColumn = $columns['phase'] ?? null;
 
         $commentOverridesRow = $this->connection->fetchAssociative(
             sprintf('SELECT content FROM %s WHERE section = :section ORDER BY created_at DESC LIMIT 1', self::CONTENT_TABLE),
@@ -771,6 +773,9 @@ class SmartsheetPresentationController extends AbstractController
         if ($siteIdColumn) {
             $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
         }
+        if ($phaseColumn) {
+            $selectParts[] = sprintf('`%s` AS phase', $phaseColumn);
+        }
         if ($taskIdColumn) {
             $selectParts[] = sprintf('`%s` AS task_id', $taskIdColumn);
         }
@@ -1206,6 +1211,7 @@ class SmartsheetPresentationController extends AbstractController
                 'siteId' => $row['site_id'] ?? null,
                 'siteName' => $row['site_name'] ?? null,
                 'taskName' => $row['task_name'] ?? null,
+                'phase' => $row['phase'] ?? null,
                 'startDate' => $row['start_date'] ?? null,
                 'endDate' => $row['end_date'] ?? null,
             ];
@@ -1962,6 +1968,7 @@ class SmartsheetPresentationController extends AbstractController
             'siteId' => $this->findColumnName($columns, self::SITE_ID_CANDIDATES),
             'siteName' => $this->findColumnName($columns, self::SITE_NAME_CANDIDATES),
             'taskId' => $this->findColumnName($columns, self::TASK_ID_CANDIDATES),
+            'phase' => $this->findColumnName($columns, self::PHASE_CANDIDATES),
             'taskName' => $this->findColumnName($columns, self::TASK_NAME_CANDIDATES),
             'startDate' => $this->findColumnName($columns, self::START_DATE_CANDIDATES),
             'endDate' => $this->findColumnName($columns, self::END_DATE_CANDIDATES),
