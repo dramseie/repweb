@@ -192,10 +192,11 @@
 
 .gantt-col-start,
 .gantt-col-end {
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
   color: #6c757d;
   font-variant-numeric: tabular-nums;
-  justify-self: end;
 }
 
 /* Remove hover fill and keep text black */
