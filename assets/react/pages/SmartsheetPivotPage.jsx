@@ -395,6 +395,7 @@ const SmartsheetPivotPage = () => {
   const [ganttCountryTasks, setGanttCountryTasks] = useState(ganttCountryDefaultTasks);
   const [ganttCountryTaskFilter, setGanttCountryTaskFilter] = useState('');
   const [ganttCountryTaskSelectOpen, setGanttCountryTaskSelectOpen] = useState(false);
+  const [ganttCountryShowAll, setGanttCountryShowAll] = useState(true);
   const ganttCountryTaskSelectRef = useRef(null);
 
   const [taskTrackerItems, setTaskTrackerItems] = useState([]);
@@ -826,8 +827,15 @@ const SmartsheetPivotPage = () => {
     setGanttCountryLoading(true);
     setGanttCountryError(null);
     try {
-      console.log('Country Gantt: showing all tasks');
-      const response = await fetch('/api/smartsheet/presentation/gantt-country');
+      let response;
+      if (ganttCountryShowAll) {
+        response = await fetch('/api/smartsheet/presentation/gantt-country');
+      } else {
+        const params = new URLSearchParams();
+        ganttCountryTasksForQuery.forEach((task) => params.append('tasks', task));
+        const query = params.toString();
+        response = await fetch(`/api/smartsheet/presentation/gantt-country${query ? `?${query}` : ''}`);
+      }
       if (!response.ok) {
         throw new Error(`Failed to load country gantt data (HTTP ${response.status}).`);
       }
@@ -838,7 +846,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setGanttCountryLoading(false);
     }
-  }, []);
+  }, [ganttCountryShowAll, ganttCountryTasksForQuery]);
 
   const fetchReportMeta = useCallback(async (repid) => {
     if (!repid) {
@@ -5035,13 +5043,128 @@ const SmartsheetPivotPage = () => {
                         <button
                           type="button"
                           className="task-tracker-multiselect__toggle"
-                          disabled
+                          onClick={() =>
+                            setGanttCountryTaskSelectOpen((prev) => {
+                              const next = !prev;
+                              if (next && ganttCountryTaskOptions.length === 0 && !ganttCountryTaskLoading) {
+                                fetchGanttCountryTaskOptions();
+                              }
+                              return next;
+                            })
+                          }
                         >
-                          <span>All tasks shown</span>
+                          <span>
+                            {ganttCountryShowAll
+                              ? 'All tasks shown'
+                              : (ganttCountryTasksForQuery.length
+                                ? `${ganttCountryTasksForQuery.length} shown`
+                                : 'Select task names')}
+                          </span>
                           <span className="task-tracker-multiselect__caret" />
                         </button>
+                        {ganttCountryTaskSelectOpen && (
+                          <div className="task-tracker-multiselect__menu">
+                            <div className="task-tracker-multiselect__filter">
+                              <label className="task-tracker-multiselect__filter-label">Filter:</label>
+                              <input
+                                type="text"
+                                className="task-tracker-multiselect__filter-input"
+                                placeholder="Task Name"
+                                value={ganttCountryTaskFilter}
+                                onChange={(event) => setGanttCountryTaskFilter(event.target.value)}
+                                disabled={ganttCountryShowAll}
+                              />
+                              <div className="task-tracker-multiselect__actions">
+                                <button
+                                  type="button"
+                                  className="task-tracker-multiselect__action"
+                                  onClick={() => setGanttCountryShowAll((prev) => !prev)}
+                                >
+                                  {ganttCountryShowAll ? 'Use selected tasks' : 'Show all tasks'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="task-tracker-multiselect__action"
+                                  onClick={() => {
+                                    if (ganttCountryShowAll) return;
+                                    const additions = ganttCountryTaskFilteredOptions.filter(
+                                      (task) => !ganttCountryTaskSelected.has(task)
+                                    );
+                                    if (additions.length === 0) return;
+                                    setGanttCountryTasks((prev) => [...prev, ...additions]);
+                                  }}
+                                  disabled={ganttCountryShowAll}
+                                >
+                                  Check all
+                                </button>
+                                <button
+                                  type="button"
+                                  className="task-tracker-multiselect__action"
+                                  onClick={() => {
+                                    if (ganttCountryShowAll || ganttCountryTaskFilteredOptions.length === 0) return;
+                                    const removable = ganttCountryTaskFilteredOptions.filter(
+                                      (task) => !ganttCountryDefaultTasks.includes(task)
+                                    );
+                                    setGanttCountryTasks((prev) =>
+                                      prev.filter((task) => !removable.includes(task))
+                                    );
+                                  }}
+                                  disabled={ganttCountryShowAll}
+                                >
+                                  Uncheck all
+                                </button>
+                                <button
+                                  type="button"
+                                  className="task-tracker-multiselect__action"
+                                  onClick={() => setGanttCountryTaskFilter('')}
+                                  disabled={ganttCountryShowAll || !ganttCountryTaskFilter}
+                                >
+                                  Clear filter
+                                </button>
+                              </div>
+                            </div>
+                            <div className="task-tracker-multiselect__list">
+                              {ganttCountryTaskLoading && (
+                                <div className="task-tracker-multiselect__empty">Loading…</div>
+                              )}
+                              {!ganttCountryTaskLoading && ganttCountryTaskFilteredOptions.length === 0 && (
+                                <div className="task-tracker-multiselect__empty">No matching tasks</div>
+                              )}
+                              {!ganttCountryTaskLoading && ganttCountryTaskFilteredOptions.map((task) => {
+                                const isDefault = ganttCountryDefaultTasks.includes(task);
+                                const checked = isDefault || ganttCountryTaskSelected.has(task);
+                                return (
+                                  <label key={`country-gantt-task-${task}`} className="task-tracker-multiselect__item">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={ganttCountryShowAll || isDefault}
+                                      onChange={() => {
+                                        if (ganttCountryShowAll || isDefault) return;
+                                        setGanttCountryTasks((prev) => {
+                                          if (checked) {
+                                            return prev.filter((value) => value !== task);
+                                          }
+                                          return [...prev, task];
+                                        });
+                                      }}
+                                    />
+                                    <span>{task}{isDefault ? ' (default)' : ''}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="form-text text-muted">All tasks are shown for each site.</div>
+                      <div className="form-text text-muted">
+                        {ganttCountryShowAll
+                          ? 'All tasks are shown for each site.'
+                          : 'Default tasks are always shown.'}
+                      </div>
+                      {ganttCountryTaskError && (
+                        <div className="form-text text-danger">{ganttCountryTaskError}</div>
+                      )}
                     </div>
                   </div>
 
