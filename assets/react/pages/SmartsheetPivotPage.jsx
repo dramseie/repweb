@@ -1381,7 +1381,38 @@ const SmartsheetPivotPage = () => {
       navigator: { enabled: true },
       rangeSelector: { enabled: true, selected: 5 },
       tooltip: {
-        pointFormat: '<b>{point.name}</b><br/>Start: {point.start:%Y-%m-%d}<br/>End: {point.end:%Y-%m-%d}',
+        useHTML: true,
+        formatter() {
+          const point = this.point || {};
+          const name = escapeHtml(point.name ?? '');
+          const start = point.start ? Highcharts.dateFormat('%Y-%m-%d', point.start) : '—';
+          const end = point.end ? Highcharts.dateFormat('%Y-%m-%d', point.end) : '—';
+          const startChange = point.startChange || null;
+          const endChange = point.endChange || null;
+          const startFrom = startChange?.old || '—';
+          const startTo = startChange?.new || '—';
+          const endFrom = endChange?.old || '—';
+          const endTo = endChange?.new || '—';
+          const changeDate = startChange?.currentRun || endChange?.currentRun || '—';
+
+          const changeParts = [];
+          if (startChange?.old || startChange?.new) {
+            changeParts.push(`Start: ${escapeHtml(startFrom)} → ${escapeHtml(startTo)}`);
+          }
+          if (endChange?.old || endChange?.new) {
+            changeParts.push(`End: ${escapeHtml(endFrom)} → ${escapeHtml(endTo)}`);
+          }
+
+          return `
+            <div class="gantt-tooltip">
+              <div><strong>${name}</strong></div>
+              <div>From: ${start}</div>
+              <div>To: ${end}</div>
+              <div>Change date: ${escapeHtml(String(changeDate))}</div>
+              ${changeParts.length ? `<div>${changeParts.join('<br/>')}</div>` : ''}
+            </div>
+          `;
+        },
       },
       series: [
         {
