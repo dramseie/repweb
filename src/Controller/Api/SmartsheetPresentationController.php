@@ -3,6 +3,7 @@
 namespace App\Controller\Api;
 
 use DateTimeImmutable;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -2137,7 +2138,7 @@ class SmartsheetPresentationController extends AbstractController
                 $historyRows = $this->connection->executeQuery(
                     $sql,
                     [array_keys($taskIds), 'changed', $allLower],
-                    [Connection::PARAM_STR_ARRAY, ParameterType::STRING, Connection::PARAM_STR_ARRAY]
+                    [ArrayParameterType::STRING, ParameterType::STRING, ArrayParameterType::STRING]
                 )->fetchAllAssociative();
 
                 foreach ($historyRows as $row) {
@@ -2172,7 +2173,7 @@ class SmartsheetPresentationController extends AbstractController
             $historyRows = $this->connection->executeQuery(
                 $sql,
                 [array_keys($taskIds), 'changed'],
-                [Connection::PARAM_STR_ARRAY, ParameterType::STRING]
+                [ArrayParameterType::STRING, ParameterType::STRING]
             )->fetchAllAssociative();
 
             foreach ($historyRows as $row) {
