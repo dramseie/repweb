@@ -1436,15 +1436,15 @@ const SmartsheetPivotPage = () => {
   }, [ganttCountryData.items]);
 
   const countryGanttOptions = React.useMemo(() => {
-    const rowHeight = 8;
-    const height = Math.max(320, countryGanttSeries.data.length * rowHeight + 140);
+    const rowHeight = 10;
+    const height = Math.max(360, countryGanttSeries.data.length * rowHeight + 160);
     return {
       ...ganttOptions,
       chart: {
         type: 'gantt',
         height,
         scrollablePlotArea: {
-          minHeight: Math.max(320, countryGanttSeries.data.length * rowHeight + 120),
+          minHeight: Math.max(360, countryGanttSeries.data.length * rowHeight + 140),
           scrollPositionY: 0,
         },
       },
