@@ -1258,8 +1258,37 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json(['items' => $items]);
     }
 
+    #[Route('/gantt-country-tasks', name: 'presentation_gantt_country_tasks', methods: ['GET'])]
+    public function ganttCountryTasks(): JsonResponse
+    {
+        $columns = $this->resolveMasterColumns();
+        $taskNameColumn = $columns['taskName'] ?? null;
+        $phaseColumn = $columns['phase'] ?? null;
+
+        if (!$taskNameColumn || !$phaseColumn) {
+            return $this->json(['items' => []]);
+        }
+
+        $sql = sprintf(
+            'SELECT DISTINCT `%s` AS task_name FROM %s WHERE `%s` IS NOT NULL AND `%s` <> "" AND IFNULL(`%s`, "") NOT IN (\'Store\', \'Country\') ORDER BY `%s`',
+            $taskNameColumn,
+            self::MASTER_TABLE,
+            $taskNameColumn,
+            $taskNameColumn,
+            $phaseColumn,
+            $taskNameColumn
+        );
+
+        $items = $this->connection->executeQuery($sql)->fetchFirstColumn();
+        $items = array_values(array_filter(array_map('trim', $items), static fn (?string $value) => $value !== null && $value !== ''));
+
+        return $this->json(['items' => $items]);
+    }
+
     #[Route('/gantt-country', name: 'presentation_gantt_country', methods: ['GET'])]
-    public function ganttCountry(): JsonResponse
+    public function ganttCountry(
+        \Symfony\Component\HttpFoundation\Request $request
+    ): JsonResponse
     {
         $columns = $this->resolveMasterColumns();
         $countryColumn = $columns['country'] ?? null;
@@ -1286,7 +1315,10 @@ class SmartsheetPresentationController extends AbstractController
             $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
         }
 
-        $taskNames = ['assessment execution', 'installation execution'];
+        $taskNames = array_filter(array_map('strtolower', $request->query->all('tasks')));
+        if ($taskNames === []) {
+            $taskNames = ['assessment execution', 'installation execution', 'store sign off'];
+        }
         $sql = sprintf(
             'SELECT %s FROM %s WHERE `%s` IS NOT NULL AND `%s` IS NOT NULL AND LOWER(`%s`) IN (?)',
             implode(', ', $selectParts),

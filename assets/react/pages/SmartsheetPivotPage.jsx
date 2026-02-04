@@ -370,6 +370,10 @@ const SmartsheetPivotPage = () => {
   const [plannedWeekLoading, setPlannedWeekLoading] = useState(false);
   const [plannedWeekError, setPlannedWeekError] = useState(null);
 
+  const ganttCountryDefaultTasks = React.useMemo(
+    () => ['Assessment Execution', 'Installation Execution', 'Store Sign Off'],
+    []
+  );
   const [ganttCountries, setGanttCountries] = useState([]);
   const [ganttCountriesLoading, setGanttCountriesLoading] = useState(false);
   const [ganttCountriesError, setGanttCountriesError] = useState(null);
@@ -385,6 +389,13 @@ const SmartsheetPivotPage = () => {
   const [ganttCountryData, setGanttCountryData] = useState({ items: [] });
   const [ganttCountryLoading, setGanttCountryLoading] = useState(false);
   const [ganttCountryError, setGanttCountryError] = useState(null);
+  const [ganttCountryTaskOptions, setGanttCountryTaskOptions] = useState([]);
+  const [ganttCountryTaskLoading, setGanttCountryTaskLoading] = useState(false);
+  const [ganttCountryTaskError, setGanttCountryTaskError] = useState(null);
+  const [ganttCountryTasks, setGanttCountryTasks] = useState(ganttCountryDefaultTasks);
+  const [ganttCountryTaskFilter, setGanttCountryTaskFilter] = useState('');
+  const [ganttCountryTaskSelectOpen, setGanttCountryTaskSelectOpen] = useState(false);
+  const ganttCountryTaskSelectRef = useRef(null);
 
   const [taskTrackerItems, setTaskTrackerItems] = useState([]);
   const [taskTrackerLoading, setTaskTrackerLoading] = useState(false);
@@ -790,11 +801,35 @@ const SmartsheetPivotPage = () => {
     }
   }, []);
 
+  const fetchGanttCountryTaskOptions = useCallback(async () => {
+    setGanttCountryTaskLoading(true);
+    setGanttCountryTaskError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/gantt-country-tasks');
+      if (!response.ok) {
+        throw new Error(`Failed to load country gantt task names (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setGanttCountryTaskOptions(items);
+      if (ganttCountryTasks.length === 0 && ganttCountryDefaultTasks.length > 0) {
+        setGanttCountryTasks(ganttCountryDefaultTasks);
+      }
+    } catch (error) {
+      setGanttCountryTaskError(error.message || 'Unable to load country gantt task names.');
+    } finally {
+      setGanttCountryTaskLoading(false);
+    }
+  }, [ganttCountryDefaultTasks, ganttCountryTasks.length]);
+
   const fetchGanttCountryData = useCallback(async () => {
     setGanttCountryLoading(true);
     setGanttCountryError(null);
     try {
-      const response = await fetch('/api/smartsheet/presentation/gantt-country');
+      const params = new URLSearchParams();
+      ganttCountryTasks.forEach((task) => params.append('tasks', task));
+      const query = params.toString();
+      const response = await fetch(`/api/smartsheet/presentation/gantt-country${query ? `?${query}` : ''}`);
       if (!response.ok) {
         throw new Error(`Failed to load country gantt data (HTTP ${response.status}).`);
       }
@@ -805,7 +840,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setGanttCountryLoading(false);
     }
-  }, []);
+  }, [ganttCountryTasks]);
 
   const fetchReportMeta = useCallback(async (repid) => {
     if (!repid) {
@@ -1217,6 +1252,14 @@ const SmartsheetPivotPage = () => {
     });
     return map;
   }, [taskTrackerOptions]);
+
+  const ganttCountryTaskFilteredOptions = React.useMemo(() => {
+    const filter = ganttCountryTaskFilter.trim().toLowerCase();
+    if (!filter) return ganttCountryTaskOptions;
+    return ganttCountryTaskOptions.filter((task) => String(task).toLowerCase().includes(filter));
+  }, [ganttCountryTaskFilter, ganttCountryTaskOptions]);
+
+  const ganttCountryTaskSelected = React.useMemo(() => new Set(ganttCountryTasks), [ganttCountryTasks]);
 
   const ganttSeries = React.useMemo(() => {
     const items = Array.isArray(ganttData.items) ? ganttData.items : [];
@@ -1660,6 +1703,18 @@ const SmartsheetPivotPage = () => {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [taskTrackerSelectOpen]);
+
+  useEffect(() => {
+    if (!ganttCountryTaskSelectOpen) return;
+    const handleClick = (event) => {
+      if (!ganttCountryTaskSelectRef.current) return;
+      if (!ganttCountryTaskSelectRef.current.contains(event.target)) {
+        setGanttCountryTaskSelectOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [ganttCountryTaskSelectOpen]);
 
   const fieldOptions = [
     { value: 'Start_Date', label: 'Start Date' },
@@ -3522,9 +3577,19 @@ const SmartsheetPivotPage = () => {
 
   useEffect(() => {
     if (activeTab === 'gantt' && ganttSelectorTab === 'country') {
+      if (ganttCountryTaskOptions.length === 0 && !ganttCountryTaskLoading) {
+        fetchGanttCountryTaskOptions();
+      }
       fetchGanttCountryData();
     }
-  }, [activeTab, ganttSelectorTab, fetchGanttCountryData]);
+  }, [
+    activeTab,
+    ganttSelectorTab,
+    ganttCountryTaskOptions.length,
+    ganttCountryTaskLoading,
+    fetchGanttCountryTaskOptions,
+    fetchGanttCountryData,
+  ]);
 
   return (
     <div className="smartsheet-pivot">
@@ -4961,6 +5026,114 @@ const SmartsheetPivotPage = () => {
 
               {ganttSelectorTab === 'country' && (
                 <div className="d-flex flex-column gap-3">
+                  <div className="row g-3 align-items-end">
+                    <div className="col-12 col-lg-6">
+                      <label className="form-label fw-medium">Task names</label>
+                      <div className="task-tracker-multiselect" ref={ganttCountryTaskSelectRef}>
+                        <button
+                          type="button"
+                          className="task-tracker-multiselect__toggle"
+                          onClick={() =>
+                            setGanttCountryTaskSelectOpen((prev) => {
+                              const next = !prev;
+                              if (next && ganttCountryTaskOptions.length === 0 && !ganttCountryTaskLoading) {
+                                fetchGanttCountryTaskOptions();
+                              }
+                              return next;
+                            })
+                          }
+                        >
+                          <span>
+                            {ganttCountryTasks.length
+                              ? `${ganttCountryTasks.length} selected`
+                              : 'Select task names'}
+                          </span>
+                          <span className="task-tracker-multiselect__caret" />
+                        </button>
+                        {ganttCountryTaskSelectOpen && (
+                          <div className="task-tracker-multiselect__menu">
+                            <div className="task-tracker-multiselect__filter">
+                              <label className="task-tracker-multiselect__filter-label">Filter:</label>
+                              <input
+                                type="text"
+                                className="task-tracker-multiselect__filter-input"
+                                placeholder="Task Name"
+                                value={ganttCountryTaskFilter}
+                                onChange={(event) => setGanttCountryTaskFilter(event.target.value)}
+                              />
+                              <div className="task-tracker-multiselect__actions">
+                                <button
+                                  type="button"
+                                  className="task-tracker-multiselect__action"
+                                  onClick={() => {
+                                    const additions = ganttCountryTaskFilteredOptions.filter(
+                                      (task) => !ganttCountryTaskSelected.has(task)
+                                    );
+                                    if (additions.length === 0) return;
+                                    setGanttCountryTasks((prev) => [...prev, ...additions]);
+                                  }}
+                                >
+                                  Check all
+                                </button>
+                                <button
+                                  type="button"
+                                  className="task-tracker-multiselect__action"
+                                  onClick={() => {
+                                    if (ganttCountryTaskFilteredOptions.length === 0) return;
+                                    setGanttCountryTasks((prev) =>
+                                      prev.filter((task) => !ganttCountryTaskFilteredOptions.includes(task))
+                                    );
+                                  }}
+                                >
+                                  Uncheck all
+                                </button>
+                                <button
+                                  type="button"
+                                  className="task-tracker-multiselect__action"
+                                  onClick={() => setGanttCountryTaskFilter('')}
+                                  disabled={!ganttCountryTaskFilter}
+                                >
+                                  Clear filter
+                                </button>
+                              </div>
+                            </div>
+                            <div className="task-tracker-multiselect__list">
+                              {ganttCountryTaskLoading && (
+                                <div className="task-tracker-multiselect__empty">Loading…</div>
+                              )}
+                              {!ganttCountryTaskLoading && ganttCountryTaskFilteredOptions.length === 0 && (
+                                <div className="task-tracker-multiselect__empty">No matching tasks</div>
+                              )}
+                              {!ganttCountryTaskLoading && ganttCountryTaskFilteredOptions.map((task) => {
+                                const checked = ganttCountryTaskSelected.has(task);
+                                return (
+                                  <label key={`country-gantt-task-${task}`} className="task-tracker-multiselect__item">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        setGanttCountryTasks((prev) => {
+                                          if (checked) {
+                                            return prev.filter((value) => value !== task);
+                                          }
+                                          return [...prev, task];
+                                        });
+                                      }}
+                                    />
+                                    <span>{task}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {ganttCountryTaskError && (
+                        <div className="form-text text-danger">{ganttCountryTaskError}</div>
+                      )}
+                    </div>
+                  </div>
+
                   {ganttCountryError && (
                     <div className="alert alert-warning" role="alert">
                       {ganttCountryError}
