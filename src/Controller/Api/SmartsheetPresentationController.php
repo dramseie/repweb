@@ -1323,12 +1323,12 @@ class SmartsheetPresentationController extends AbstractController
         } else {
             $taskNames = [];
         }
-        $taskNames = array_filter(array_map('strtolower', $taskNames));
+        $taskNames = array_filter(array_map(static fn ($value) => strtolower(trim((string) $value)), $taskNames));
         if ($taskNames === []) {
             $taskNames = ['assessment execution', 'installation execution', 'store sign off completed'];
         }
         $sql = sprintf(
-            'SELECT %s FROM %s WHERE `%s` IS NOT NULL AND `%s` IS NOT NULL AND LOWER(`%s`) IN (?)',
+            'SELECT %s FROM %s WHERE `%s` IS NOT NULL AND `%s` IS NOT NULL AND TRIM(LOWER(`%s`)) IN (?)',
             implode(', ', $selectParts),
             self::MASTER_TABLE,
             $startColumn,
