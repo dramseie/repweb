@@ -64,6 +64,8 @@ class SmartsheetPresentationController extends AbstractController
     private const HISTORY_NEW_START_CANDIDATES = ['new_start_date', 'New_Start_Date', 'New Start Date'];
     private const HISTORY_OLD_END_CANDIDATES = ['old_end_date', 'Old_End_Date', 'Old End Date'];
     private const HISTORY_NEW_END_CANDIDATES = ['new_end_date', 'New_End_Date', 'New End Date'];
+    private const HISTORY_PREVIOUS_RUN_CANDIDATES = ['previous_run', 'Previous_Run', 'Previous Run', 'previous_run_at', 'previous_run_date'];
+    private const HISTORY_CURRENT_RUN_CANDIDATES = ['current_run', 'Current_Run', 'Current Run', 'current_run_at', 'current_run_date'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
@@ -1248,6 +1250,8 @@ class SmartsheetPresentationController extends AbstractController
                 'endDate' => $row['end_date'] ?? null,
                 'startChanged' => (bool) ($changes['start'] ?? false),
                 'endChanged' => (bool) ($changes['end'] ?? false),
+                'startChange' => $changes['startInfo'] ?? null,
+                'endChange' => $changes['endInfo'] ?? null,
             ];
         }
 
@@ -2106,6 +2110,8 @@ class SmartsheetPresentationController extends AbstractController
         $historyNewStart = $historyColumns['newStart'] ?? null;
         $historyOldEnd = $historyColumns['oldEnd'] ?? null;
         $historyNewEnd = $historyColumns['newEnd'] ?? null;
+        $historyPreviousRun = $historyColumns['previousRun'] ?? null;
+        $historyCurrentRun = $historyColumns['currentRun'] ?? null;
         if (!$historyTaskIdColumn || !$historyChangeTypeColumn) {
             return [];
         }
@@ -2158,13 +2164,23 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         if ($historyOldStart && $historyNewStart) {
+            $selectParts = [
+                sprintf('`%s` AS task_id', $historyTaskIdColumn),
+                sprintf('`%s` AS old_start', $historyOldStart),
+                sprintf('`%s` AS new_start', $historyNewStart),
+                sprintf('`%s` AS old_end', $historyOldEnd ?? $historyOldStart),
+                sprintf('`%s` AS new_end', $historyNewEnd ?? $historyNewStart),
+            ];
+            if ($historyPreviousRun) {
+                $selectParts[] = sprintf('`%s` AS previous_run', $historyPreviousRun);
+            }
+            if ($historyCurrentRun) {
+                $selectParts[] = sprintf('`%s` AS current_run', $historyCurrentRun);
+            }
+
             $sql = sprintf(
-                'SELECT `%s` AS task_id, `%s` AS old_start, `%s` AS new_start, `%s` AS old_end, `%s` AS new_end FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = ?',
-                $historyTaskIdColumn,
-                $historyOldStart,
-                $historyNewStart,
-                $historyOldEnd ?? $historyOldStart,
-                $historyNewEnd ?? $historyNewStart,
+                'SELECT %s FROM %s WHERE `%s` IN (?) AND LOWER(`%s`) = ?',
+                implode(', ', $selectParts),
                 $historyTable['qualified'],
                 $historyTaskIdColumn,
                 $historyChangeTypeColumn
@@ -2185,14 +2201,28 @@ class SmartsheetPresentationController extends AbstractController
                 $newStart = trim((string) ($row['new_start'] ?? ''));
                 $oldEnd = trim((string) ($row['old_end'] ?? ''));
                 $newEnd = trim((string) ($row['new_end'] ?? ''));
+                $previousRun = $row['previous_run'] ?? null;
+                $currentRun = $row['current_run'] ?? null;
                 if ($oldStart !== '' || $newStart !== '') {
                     if ($oldStart !== $newStart) {
                         $map[$taskId]['start'] = true;
+                        $map[$taskId]['startInfo'] = [
+                            'old' => $oldStart ?: null,
+                            'new' => $newStart ?: null,
+                            'previousRun' => $previousRun,
+                            'currentRun' => $currentRun,
+                        ];
                     }
                 }
                 if ($oldEnd !== '' || $newEnd !== '') {
                     if ($oldEnd !== $newEnd) {
                         $map[$taskId]['end'] = true;
+                        $map[$taskId]['endInfo'] = [
+                            'old' => $oldEnd ?: null,
+                            'new' => $newEnd ?: null,
+                            'previousRun' => $previousRun,
+                            'currentRun' => $currentRun,
+                        ];
                     }
                 }
             }
@@ -2248,6 +2278,8 @@ class SmartsheetPresentationController extends AbstractController
             'newStart' => $this->findColumnName($columns, self::HISTORY_NEW_START_CANDIDATES),
             'oldEnd' => $this->findColumnName($columns, self::HISTORY_OLD_END_CANDIDATES),
             'newEnd' => $this->findColumnName($columns, self::HISTORY_NEW_END_CANDIDATES),
+            'previousRun' => $this->findColumnName($columns, self::HISTORY_PREVIOUS_RUN_CANDIDATES),
+            'currentRun' => $this->findColumnName($columns, self::HISTORY_CURRENT_RUN_CANDIDATES),
         ];
     }
 

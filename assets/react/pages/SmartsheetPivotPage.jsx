@@ -1240,6 +1240,8 @@ const SmartsheetPivotPage = () => {
           node.end = end.getTime();
           node.startChanged = Boolean(item.startChanged);
           node.endChanged = Boolean(item.endChanged);
+          node.startChange = item.startChange || null;
+          node.endChange = item.endChange || null;
         }
 
         if (parentId) {
@@ -1296,6 +1298,8 @@ const SmartsheetPivotPage = () => {
         end: end.getTime(),
         startChanged: Boolean(item.startChanged),
         endChanged: Boolean(item.endChanged),
+        startChange: item.startChange || null,
+        endChange: item.endChange || null,
       });
     });
 
@@ -1323,7 +1327,25 @@ const SmartsheetPivotPage = () => {
             const end = endValue ? Highcharts.dateFormat('%Y-%m-%d', endValue) : '';
             const startClass = data?.startChanged ? ' gantt-col-changed' : '';
             const endClass = data?.endChanged ? ' gantt-col-changed' : '';
-            const badge = data?.startChanged || data?.endChanged ? '<span class="gantt-change-badge">Changed</span>' : '';
+            const startInfo = data?.startChange || null;
+            const endInfo = data?.endChange || null;
+            const infoParts = [];
+            if (startInfo?.old || startInfo?.new) {
+              infoParts.push(`Start: ${startInfo?.old || '—'} → ${startInfo?.new || '—'}`);
+            }
+            if (endInfo?.old || endInfo?.new) {
+              infoParts.push(`End: ${endInfo?.old || '—'} → ${endInfo?.new || '—'}`);
+            }
+            if (startInfo?.previousRun || endInfo?.previousRun) {
+              infoParts.push(`Previous: ${startInfo?.previousRun || endInfo?.previousRun}`);
+            }
+            if (startInfo?.currentRun || endInfo?.currentRun) {
+              infoParts.push(`Current: ${startInfo?.currentRun || endInfo?.currentRun}`);
+            }
+            const badgeTitle = infoParts.length ? ` title="${escapeHtml(infoParts.join('\n'))}"` : '';
+            const badge = data?.startChanged || data?.endChanged
+              ? `<span class=\"gantt-change-badge\"${badgeTitle}>Changed</span>`
+              : '';
             return `
               <span class="gantt-row-label">
                 <span class="gantt-col-task">${name}</span>
