@@ -395,7 +395,7 @@ const SmartsheetPivotPage = () => {
   const [ganttCountryTasks, setGanttCountryTasks] = useState(ganttCountryDefaultTasks);
   const [ganttCountryTaskFilter, setGanttCountryTaskFilter] = useState('');
   const [ganttCountryTaskSelectOpen, setGanttCountryTaskSelectOpen] = useState(false);
-  const [ganttCountryShowAll, setGanttCountryShowAll] = useState(true);
+  const [ganttCountryShowAll, setGanttCountryShowAll] = useState(false);
   const ganttCountryTaskSelectRef = useRef(null);
 
   const [taskTrackerItems, setTaskTrackerItems] = useState([]);
