@@ -362,6 +362,10 @@ const SmartsheetPivotPage = () => {
   const [ganttCountriesLoading, setGanttCountriesLoading] = useState(false);
   const [ganttCountriesError, setGanttCountriesError] = useState(null);
   const [ganttCountry, setGanttCountry] = useState('');
+  const [ganttSites, setGanttSites] = useState([]);
+  const [ganttSitesLoading, setGanttSitesLoading] = useState(false);
+  const [ganttSitesError, setGanttSitesError] = useState(null);
+  const [ganttSiteKey, setGanttSiteKey] = useState('');
   const [ganttData, setGanttData] = useState({ items: [] });
   const [ganttLoading, setGanttLoading] = useState(false);
   const [ganttError, setGanttError] = useState(null);
@@ -727,11 +731,11 @@ const SmartsheetPivotPage = () => {
   }, [ganttCountry]);
 
   const fetchGanttData = useCallback(async (country) => {
-    if (!country) return;
+    if (!country || !ganttSiteKey) return;
     setGanttLoading(true);
     setGanttError(null);
     try {
-      const params = new URLSearchParams({ country });
+      const params = new URLSearchParams({ country, site: ganttSiteKey });
       const response = await fetch(`/api/smartsheet/presentation/gantt?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to load gantt data (HTTP ${response.status}).`);
@@ -742,6 +746,31 @@ const SmartsheetPivotPage = () => {
       setGanttError(error.message || 'Unable to load gantt data.');
     } finally {
       setGanttLoading(false);
+    }
+  }, [ganttSiteKey]);
+
+  const fetchGanttSites = useCallback(async (country) => {
+    if (!country) return;
+    setGanttSitesLoading(true);
+    setGanttSitesError(null);
+    try {
+      const params = new URLSearchParams({ country });
+      const response = await fetch(`/api/smartsheet/presentation/gantt-sites?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Failed to load gantt sites (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setGanttSites(items);
+      if (items.length > 0) {
+        setGanttSiteKey(String(items[0].key));
+      } else {
+        setGanttSiteKey('');
+      }
+    } catch (error) {
+      setGanttSitesError(error.message || 'Unable to load gantt sites.');
+    } finally {
+      setGanttSitesLoading(false);
     }
   }, []);
 
@@ -1158,7 +1187,7 @@ const SmartsheetPivotPage = () => {
 
   const ganttSeries = React.useMemo(() => {
     const items = Array.isArray(ganttData.items) ? ganttData.items : [];
-    const siteIndexMap = new Map();
+    const taskIndexMap = new Map();
     const categories = [];
     const data = [];
 
@@ -1166,14 +1195,14 @@ const SmartsheetPivotPage = () => {
       const start = parseDateValue(item.startDate);
       const end = parseDateValue(item.endDate);
       if (!start || !end) return;
-      const siteName = cleanTaskTrackerSiteName(item.siteName || '') || item.siteId || 'Site';
-      if (!siteIndexMap.has(siteName)) {
-        siteIndexMap.set(siteName, categories.length);
-        categories.push(siteName);
+      const taskName = item.taskName || 'Task';
+      if (!taskIndexMap.has(taskName)) {
+        taskIndexMap.set(taskName, categories.length);
+        categories.push(taskName);
       }
-      const y = siteIndexMap.get(siteName);
+      const y = taskIndexMap.get(taskName);
       data.push({
-        name: item.taskName || 'Task',
+        name: taskName,
         start: start.getTime(),
         end: end.getTime(),
         y,
@@ -3235,9 +3264,15 @@ const SmartsheetPivotPage = () => {
 
   useEffect(() => {
     if (activeTab === 'gantt' && ganttCountry) {
+      fetchGanttSites(ganttCountry);
+    }
+  }, [activeTab, ganttCountry, fetchGanttSites]);
+
+  useEffect(() => {
+    if (activeTab === 'gantt' && ganttCountry && ganttSiteKey) {
       fetchGanttData(ganttCountry);
     }
-  }, [activeTab, ganttCountry, fetchGanttData]);
+  }, [activeTab, ganttCountry, ganttSiteKey, fetchGanttData]);
 
   return (
     <div className="smartsheet-pivot">
@@ -4653,7 +4688,11 @@ const SmartsheetPivotPage = () => {
                   <select
                     className="form-select"
                     value={ganttCountry}
-                    onChange={(event) => setGanttCountry(event.target.value)}
+                    onChange={(event) => {
+                      setGanttCountry(event.target.value);
+                      setGanttSites([]);
+                      setGanttSiteKey('');
+                    }}
                     disabled={ganttCountriesLoading}
                   >
                     <option value="">Select a country…</option>
@@ -4662,6 +4701,21 @@ const SmartsheetPivotPage = () => {
                     ))}
                   </select>
                   {ganttCountriesError && <div className="form-text text-danger">{ganttCountriesError}</div>}
+                </div>
+                <div className="col-12 col-md-4">
+                  <label className="form-label fw-medium">Site</label>
+                  <select
+                    className="form-select"
+                    value={ganttSiteKey}
+                    onChange={(event) => setGanttSiteKey(event.target.value)}
+                    disabled={!ganttCountry || ganttSitesLoading}
+                  >
+                    <option value="">Select a site…</option>
+                    {ganttSites.map((site) => (
+                      <option key={site.key} value={site.key}>{site.label}</option>
+                    ))}
+                  </select>
+                  {ganttSitesError && <div className="form-text text-danger">{ganttSitesError}</div>}
                 </div>
               </div>
 
@@ -4673,7 +4727,7 @@ const SmartsheetPivotPage = () => {
 
               {ganttLoading && <div className="text-muted mt-3">Loading gantt…</div>}
 
-              {!ganttLoading && ganttCountry && ganttSeries.data.length === 0 && (
+              {!ganttLoading && ganttCountry && ganttSiteKey && ganttSeries.data.length === 0 && (
                 <div className="text-muted mt-3">No gantt tasks found.</div>
               )}
 

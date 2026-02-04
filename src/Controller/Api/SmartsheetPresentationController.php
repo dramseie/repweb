@@ -1090,11 +1090,67 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json(['items' => $items]);
     }
 
+    #[Route('/gantt-sites', name: 'presentation_gantt_sites', methods: ['GET'])]
+    public function ganttSites(Request $request): JsonResponse
+    {
+        $country = trim((string) $request->query->get('country', ''));
+        if ($country === '') {
+            return $this->json(['items' => []]);
+        }
+
+        $columns = $this->resolveMasterColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+
+        if (!$countryColumn || (!$siteNameColumn && !$siteIdColumn)) {
+            return $this->json(['items' => []]);
+        }
+
+        $selectParts = [];
+        if ($siteNameColumn) {
+            $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
+        }
+        if ($siteIdColumn) {
+            $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
+        }
+
+        $sql = sprintf(
+            'SELECT DISTINCT %s FROM %s WHERE `%s` = :country',
+            implode(', ', $selectParts),
+            self::MASTER_TABLE,
+            $countryColumn
+        );
+
+        $rows = $this->connection->fetchAllAssociative($sql, ['country' => $country]);
+        $items = [];
+        foreach ($rows as $row) {
+            $siteName = trim((string) ($row['site_name'] ?? ''));
+            $siteId = trim((string) ($row['site_id'] ?? ''));
+            $key = $siteId !== '' ? $siteId : $siteName;
+            $label = $siteName !== '' ? $siteName : $siteId;
+            if ($key === '' || $label === '') {
+                continue;
+            }
+            $items[] = [
+                'key' => $key,
+                'label' => $label,
+                'siteName' => $siteName ?: null,
+                'siteId' => $siteId ?: null,
+            ];
+        }
+
+        usort($items, static fn (array $a, array $b): int => strcasecmp($a['label'], $b['label']));
+
+        return $this->json(['items' => $items]);
+    }
+
     #[Route('/gantt', name: 'presentation_gantt', methods: ['GET'])]
     public function gantt(Request $request): JsonResponse
     {
         $country = trim((string) $request->query->get('country', ''));
-        if ($country === '') {
+        $siteKey = trim((string) $request->query->get('site', ''));
+        if ($country === '' || $siteKey === '') {
             return $this->json(['items' => []]);
         }
 
@@ -1106,7 +1162,7 @@ class SmartsheetPresentationController extends AbstractController
         $startColumn = $columns['startDate'] ?? null;
         $endColumn = $columns['endDate'] ?? null;
 
-        if (!$countryColumn || !$taskNameColumn || !$startColumn || !$endColumn) {
+        if (!$countryColumn || !$taskNameColumn || !$startColumn || !$endColumn || (!$siteNameColumn && !$siteIdColumn)) {
             return $this->json(['items' => []]);
         }
 
@@ -1124,16 +1180,25 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         $sql = sprintf(
-            'SELECT %s FROM %s WHERE `%s` = :country AND `%s` IS NOT NULL AND `%s` IS NOT NULL ORDER BY `%s`',
+            'SELECT %s FROM %s WHERE `%s` = :country AND `%s` IS NOT NULL AND `%s` IS NOT NULL',
             implode(', ', $selectParts),
             self::MASTER_TABLE,
             $countryColumn,
             $startColumn,
-            $endColumn,
-            $startColumn
+            $endColumn
         );
 
-        $rows = $this->connection->fetchAllAssociative($sql, ['country' => $country]);
+        if ($siteNameColumn && $siteIdColumn) {
+            $sql .= sprintf(' AND (`%s` = :site OR `%s` = :site)', $siteNameColumn, $siteIdColumn);
+        } elseif ($siteNameColumn) {
+            $sql .= sprintf(' AND `%s` = :site', $siteNameColumn);
+        } else {
+            $sql .= sprintf(' AND `%s` = :site', $siteIdColumn);
+        }
+
+        $sql .= sprintf(' ORDER BY `%s`', $startColumn);
+
+        $rows = $this->connection->fetchAllAssociative($sql, ['country' => $country, 'site' => $siteKey]);
 
         $items = array_map(static function (array $row): array {
             return [
