@@ -790,9 +790,6 @@ class SmartsheetPresentationController extends AbstractController
         if ($siteIdColumn) {
             $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
         }
-        if ($phaseColumn) {
-            $selectParts[] = sprintf('`%s` AS phase', $phaseColumn);
-        }
         if ($taskIdColumn) {
             $selectParts[] = sprintf('`%s` AS task_id', $taskIdColumn);
         }
