@@ -826,11 +826,8 @@ const SmartsheetPivotPage = () => {
     setGanttCountryLoading(true);
     setGanttCountryError(null);
     try {
-      console.log('Country Gantt selected tasks:', ganttCountryTasksForQuery);
-      const params = new URLSearchParams();
-      ganttCountryTasksForQuery.forEach((task) => params.append('tasks', task));
-      const query = params.toString();
-      const response = await fetch(`/api/smartsheet/presentation/gantt-country${query ? `?${query}` : ''}`);
+      console.log('Country Gantt: showing all tasks');
+      const response = await fetch('/api/smartsheet/presentation/gantt-country');
       if (!response.ok) {
         throw new Error(`Failed to load country gantt data (HTTP ${response.status}).`);
       }
@@ -841,7 +838,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setGanttCountryLoading(false);
     }
-  }, [ganttCountryTasksForQuery]);
+  }, []);
 
   const fetchReportMeta = useCallback(async (repid) => {
     if (!repid) {
@@ -5038,111 +5035,13 @@ const SmartsheetPivotPage = () => {
                         <button
                           type="button"
                           className="task-tracker-multiselect__toggle"
-                          onClick={() =>
-                            setGanttCountryTaskSelectOpen((prev) => {
-                              const next = !prev;
-                              if (next && ganttCountryTaskOptions.length === 0 && !ganttCountryTaskLoading) {
-                                fetchGanttCountryTaskOptions();
-                              }
-                              return next;
-                            })
-                          }
+                          disabled
                         >
-                          <span>
-                            {ganttCountryTasksForQuery.length
-                              ? `${ganttCountryTasksForQuery.length} shown`
-                              : 'Select task names'}
-                          </span>
+                          <span>All tasks shown</span>
                           <span className="task-tracker-multiselect__caret" />
                         </button>
-                        {ganttCountryTaskSelectOpen && (
-                          <div className="task-tracker-multiselect__menu">
-                            <div className="task-tracker-multiselect__filter">
-                              <label className="task-tracker-multiselect__filter-label">Filter:</label>
-                              <input
-                                type="text"
-                                className="task-tracker-multiselect__filter-input"
-                                placeholder="Task Name"
-                                value={ganttCountryTaskFilter}
-                                onChange={(event) => setGanttCountryTaskFilter(event.target.value)}
-                              />
-                              <div className="task-tracker-multiselect__actions">
-                                <button
-                                  type="button"
-                                  className="task-tracker-multiselect__action"
-                                  onClick={() => {
-                                    const additions = ganttCountryTaskFilteredOptions.filter(
-                                      (task) => !ganttCountryTaskSelected.has(task)
-                                    );
-                                    if (additions.length === 0) return;
-                                    setGanttCountryTasks((prev) => [...prev, ...additions]);
-                                  }}
-                                >
-                                  Check all
-                                </button>
-                                <button
-                                  type="button"
-                                  className="task-tracker-multiselect__action"
-                                  onClick={() => {
-                                    if (ganttCountryTaskFilteredOptions.length === 0) return;
-                                    const removable = ganttCountryTaskFilteredOptions.filter(
-                                      (task) => !ganttCountryDefaultTasks.includes(task)
-                                    );
-                                    setGanttCountryTasks((prev) =>
-                                      prev.filter((task) => !removable.includes(task))
-                                    );
-                                  }}
-                                >
-                                  Uncheck all
-                                </button>
-                                <button
-                                  type="button"
-                                  className="task-tracker-multiselect__action"
-                                  onClick={() => setGanttCountryTaskFilter('')}
-                                  disabled={!ganttCountryTaskFilter}
-                                >
-                                  Clear filter
-                                </button>
-                              </div>
-                            </div>
-                            <div className="task-tracker-multiselect__list">
-                              {ganttCountryTaskLoading && (
-                                <div className="task-tracker-multiselect__empty">Loading…</div>
-                              )}
-                              {!ganttCountryTaskLoading && ganttCountryTaskFilteredOptions.length === 0 && (
-                                <div className="task-tracker-multiselect__empty">No matching tasks</div>
-                              )}
-                              {!ganttCountryTaskLoading && ganttCountryTaskFilteredOptions.map((task) => {
-                                const isDefault = ganttCountryDefaultTasks.includes(task);
-                                const checked = isDefault || ganttCountryTaskSelected.has(task);
-                                return (
-                                  <label key={`country-gantt-task-${task}`} className="task-tracker-multiselect__item">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={isDefault}
-                                      onChange={() => {
-                                        if (isDefault) return;
-                                        setGanttCountryTasks((prev) => {
-                                          if (checked) {
-                                            return prev.filter((value) => value !== task);
-                                          }
-                                          return [...prev, task];
-                                        });
-                                      }}
-                                    />
-                                    <span>{task}{isDefault ? ' (default)' : ''}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
                       </div>
-                      <div className="form-text text-muted">Default tasks are always shown.</div>
-                      {ganttCountryTaskError && (
-                        <div className="form-text text-danger">{ganttCountryTaskError}</div>
-                      )}
+                      <div className="form-text text-muted">All tasks are shown for each site.</div>
                     </div>
                   </div>
 

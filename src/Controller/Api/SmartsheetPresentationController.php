@@ -1329,9 +1329,11 @@ class SmartsheetPresentationController extends AbstractController
             $taskNames = ['assessment execution', 'installation execution', 'store sign off completed'];
         }
         $sql = sprintf(
-            'SELECT %s FROM %s WHERE `%s` IS NOT NULL AND `%s` IS NOT NULL AND TRIM(LOWER(`%s`)) IN (?)',
+            'SELECT %s FROM %s WHERE `%s` IS NOT NULL AND `%s` IS NOT NULL AND TRIM(`%s`) <> "" AND TRIM(`%s`) <> "" AND TRIM(LOWER(`%s`)) IN (?)',
             implode(', ', $selectParts),
             self::COUNTRY_GANTT_VIEW,
+            $startColumn,
+            $endColumn,
             $startColumn,
             $endColumn,
             $taskNameColumn
