@@ -3,6 +3,7 @@ import $ from 'jquery';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import HighchartsXRange from 'highcharts/modules/xrange';
+import HighchartsGridAxis from 'highcharts/modules/grid-axis';
 import HighchartsGantt from 'highcharts/modules/gantt';
 import DataTablesReport from '../../components/DataTablesReport.jsx';
 import TrumboField from '../components/common/TrumboField.jsx';
@@ -11,6 +12,10 @@ if (typeof Highcharts === 'object') {
   const initXRange = HighchartsXRange?.default || HighchartsXRange;
   if (typeof initXRange === 'function') {
     initXRange(Highcharts);
+  }
+  const initGridAxis = HighchartsGridAxis?.default || HighchartsGridAxis;
+  if (typeof initGridAxis === 'function') {
+    initGridAxis(Highcharts);
   }
   const initGantt = HighchartsGantt?.default || HighchartsGantt;
   if (typeof initGantt === 'function') {
