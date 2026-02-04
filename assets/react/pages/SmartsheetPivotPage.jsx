@@ -1688,7 +1688,7 @@ const SmartsheetPivotPage = () => {
     return String(task);
   }
 
-  const cleanTaskTrackerSiteName = (value) => {
+  function cleanTaskTrackerSiteName(value) {
     if (!value) return '';
     return String(value)
       .replace(/IKEAStore\s*-\s*/gi, '')
@@ -1700,7 +1700,7 @@ const SmartsheetPivotPage = () => {
       .replace(/^\s*-\s*/g, '')
       .replace(/\s*-\s*/g, ' ')
       .trim();
-  };
+  }
 
   const renderTaskTrackerTask = (task, index) => {
     const label = getTaskTrackerTaskLabel(task);
