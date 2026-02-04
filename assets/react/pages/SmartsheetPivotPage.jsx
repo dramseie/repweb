@@ -45,6 +45,13 @@ const formatYmd = (value) => {
 
 const formatLongDate = (value) => formatYmd(value);
 
+const escapeHtml = (value) => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 const resolveCellValue = (row, key) => {
   if (!row || !key) return null;
   return row[key] ?? null;
@@ -1300,22 +1307,20 @@ const SmartsheetPivotPage = () => {
       yAxis: {
         type: 'treegrid',
         uniqueNames: true,
-        grid: {
-          enabled: true,
-          columns: [
-            {
-              title: { text: 'Task' },
-              labels: { format: '{point.name}' },
-            },
-            {
-              title: { text: 'Start' },
-              labels: { format: '{point.start:%Y-%m-%d}' },
-            },
-            {
-              title: { text: 'End' },
-              labels: { format: '{point.end:%Y-%m-%d}' },
-            },
-          ],
+        labels: {
+          useHTML: true,
+          formatter() {
+            const name = escapeHtml(this.point?.name ?? '');
+            const start = this.point?.start ? Highcharts.dateFormat('%Y-%m-%d', this.point.start) : '';
+            const end = this.point?.end ? Highcharts.dateFormat('%Y-%m-%d', this.point.end) : '';
+            return `
+              <span class="gantt-row-label">
+                <span class="gantt-col-task">${name}</span>
+                <span class="gantt-col-start">${start}</span>
+                <span class="gantt-col-end">${end}</span>
+              </span>
+            `;
+          },
         },
       },
       navigator: { enabled: true },

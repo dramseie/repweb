@@ -175,6 +175,21 @@
   margin-top: 0.35rem;
 }
 
+.gantt-row-label {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 110px 110px;
+  gap: 12px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.gantt-col-start,
+.gantt-col-end {
+  text-align: right;
+  color: #6c757d;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Remove hover fill and keep text black */
 .dt-buttons .dt-button:hover,
 .dt-buttons .btn:hover {
