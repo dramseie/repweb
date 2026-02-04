@@ -1256,7 +1256,7 @@ const SmartsheetPivotPage = () => {
         const rootSet = new Set(rootTaskIds);
         data.forEach((node) => {
           if (node.parent && rootSet.has(node.parent)) {
-            node.parent = null;
+            delete node.parent;
           }
         });
         for (let i = data.length - 1; i >= 0; i -= 1) {
