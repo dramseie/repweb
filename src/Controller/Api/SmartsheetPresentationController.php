@@ -1168,6 +1168,9 @@ class SmartsheetPresentationController extends AbstractController
         $siteIdColumn = $columns['siteId'] ?? null;
         $siteNameColumn = $columns['siteName'] ?? null;
         $taskNameColumn = $columns['taskName'] ?? null;
+        $taskIdColumn = $columns['taskId'] ?? null;
+        $parentIdColumn = $columns['parentId'] ?? null;
+        $phaseColumn = $columns['phase'] ?? null;
         $startColumn = $columns['startDate'] ?? null;
         $endColumn = $columns['endDate'] ?? null;
 
