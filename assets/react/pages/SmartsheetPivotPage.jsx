@@ -5124,7 +5124,7 @@ const SmartsheetPivotPage = () => {
                                         });
                                       }}
                                     />
-                                    <span>{task}{isDefault ? ' (default)' : ''}</span>
+                                    <span>{task}</span>
                                   </label>
                                 );
                               })}
