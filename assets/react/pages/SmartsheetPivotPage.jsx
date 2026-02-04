@@ -1310,9 +1310,13 @@ const SmartsheetPivotPage = () => {
         labels: {
           useHTML: true,
           formatter() {
-            const name = escapeHtml(this.point?.name ?? '');
-            const start = this.point?.start ? Highcharts.dateFormat('%Y-%m-%d', this.point.start) : '';
-            const end = this.point?.end ? Highcharts.dateFormat('%Y-%m-%d', this.point.end) : '';
+            const node = this.axis?.treeGrid?.mapOfPosToGridNode?.[this.pos];
+            const data = node?.nodes?.[0]?.data;
+            const name = escapeHtml(this.value ?? '');
+            const startValue = data?.start ?? data?.x ?? null;
+            const endValue = data?.end ?? data?.x2 ?? null;
+            const start = startValue ? Highcharts.dateFormat('%Y-%m-%d', startValue) : '';
+            const end = endValue ? Highcharts.dateFormat('%Y-%m-%d', endValue) : '';
             return `
               <span class="gantt-row-label">
                 <span class="gantt-col-task">${name}</span>
