@@ -177,7 +177,7 @@
 
 .gantt-row-label {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 95px 95px;
+  grid-template-columns: minmax(240px, 1fr) 95px 95px 86px;
   gap: 12px;
   align-items: center;
   white-space: nowrap;
@@ -199,6 +199,23 @@
   text-align: right;
   color: #6c757d;
   font-variant-numeric: tabular-nums;
+}
+
+.gantt-col-badge {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.gantt-change-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #fff3cd;
+  color: #7a5b00;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid #f2d9a6;
 }
 
 .gantt-col-changed {

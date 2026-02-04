@@ -1323,11 +1323,13 @@ const SmartsheetPivotPage = () => {
             const end = endValue ? Highcharts.dateFormat('%Y-%m-%d', endValue) : '';
             const startClass = data?.startChanged ? ' gantt-col-changed' : '';
             const endClass = data?.endChanged ? ' gantt-col-changed' : '';
+            const badge = data?.startChanged || data?.endChanged ? '<span class="gantt-change-badge">Changed</span>' : '';
             return `
               <span class="gantt-row-label">
                 <span class="gantt-col-task">${name}</span>
                 <span class="gantt-col-start${startClass}">${start}</span>
                 <span class="gantt-col-end${endClass}">${end}</span>
+                <span class="gantt-col-badge">${badge}</span>
               </span>
             `;
           },
