@@ -183,6 +183,7 @@
   white-space: nowrap;
   font-size: 0.85rem;
   line-height: 1.2;
+  width: 100%;
 }
 
 .gantt-col-task {
@@ -192,9 +193,10 @@
 
 .gantt-col-start,
 .gantt-col-end {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
+  display: inline-block;
+  width: 95px;
+  min-width: 95px;
+  text-align: right;
   color: #6c757d;
   font-variant-numeric: tabular-nums;
 }
