@@ -1187,9 +1187,60 @@ const SmartsheetPivotPage = () => {
 
   const ganttSeries = React.useMemo(() => {
     const items = Array.isArray(ganttData.items) ? ganttData.items : [];
-    const phaseMap = new Map();
     const data = [];
+    const taskNameById = new Map();
+    items.forEach((item) => {
+      if (item.taskId) {
+        const key = String(item.taskId);
+        const name = item.taskName || `Task ${key}`;
+        if (!taskNameById.has(key)) taskNameById.set(key, name);
+      }
+    });
 
+    const hasParentTree = items.some((item) => item.taskId && item.parentId);
+    if (hasParentTree) {
+      const nodeMap = new Map();
+      const ensureNode = (id) => {
+        if (!nodeMap.has(id)) {
+          const node = { id };
+          nodeMap.set(id, node);
+          data.push(node);
+        }
+        return nodeMap.get(id);
+      };
+
+      items.forEach((item) => {
+        if (!item.taskId) return;
+        const taskId = String(item.taskId);
+        const parentId = item.parentId ? String(item.parentId) : null;
+        const node = ensureNode(taskId);
+        if (!node.name) {
+          node.name = item.taskName || taskNameById.get(taskId) || `Task ${taskId}`;
+        }
+        if (parentId) {
+          node.parent = parentId;
+        }
+
+        const start = parseDateValue(item.startDate);
+        const end = parseDateValue(item.endDate);
+        if (start && end) {
+          node.start = start.getTime();
+          node.end = end.getTime();
+        }
+
+        if (parentId) {
+          const parentNode = ensureNode(parentId);
+          if (!parentNode.name) {
+            parentNode.name = taskNameById.get(parentId) || `Task ${parentId}`;
+            parentNode.collapsed = true;
+          }
+        }
+      });
+
+      return { data };
+    }
+
+    const phaseMap = new Map();
     items.forEach((item) => {
       const start = parseDateValue(item.startDate);
       const end = parseDateValue(item.endDate);

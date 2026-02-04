@@ -53,6 +53,7 @@ class SmartsheetPresentationController extends AbstractController
     private const SITE_ID_CANDIDATES = ['Site_ID', 'Site Id', 'SiteID', 'Site Id', 'Site'];
     private const SITE_NAME_CANDIDATES = ['Site_Name', 'Site Name', 'SiteName', 'Site'];
     private const TASK_ID_CANDIDATES = ['task_id', 'Task_ID', 'Task Id', 'TaskID'];
+    private const PARENT_ID_CANDIDATES = ['parent_id', 'Parent_ID', 'Parent Id', 'ParentID', 'Parent_Task_ID', 'Parent Task Id'];
     private const PHASE_CANDIDATES = ['Phase', 'phase'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
@@ -157,6 +158,9 @@ class SmartsheetPresentationController extends AbstractController
         $siteIdColumn = $columns['siteId'] ?? null;
         $siteNameColumn = $columns['siteName'] ?? null;
         $taskNameColumn = $columns['taskName'] ?? null;
+        $taskIdColumn = $columns['taskId'] ?? null;
+        $parentIdColumn = $columns['parentId'] ?? null;
+        $phaseColumn = $columns['phase'] ?? null;
         $startColumn = $columns['startDate'] ?? null;
         $endColumn = $columns['endDate'] ?? null;
         $phaseColumn = $columns['phase'] ?? null;
@@ -1177,6 +1181,15 @@ class SmartsheetPresentationController extends AbstractController
             sprintf('`%s` AS start_date', $startColumn),
             sprintf('`%s` AS end_date', $endColumn),
         ];
+        if ($taskIdColumn) {
+            $selectParts[] = sprintf('`%s` AS task_id', $taskIdColumn);
+        }
+        if ($parentIdColumn) {
+            $selectParts[] = sprintf('`%s` AS parent_id', $parentIdColumn);
+        }
+        if ($phaseColumn) {
+            $selectParts[] = sprintf('`%s` AS phase', $phaseColumn);
+        }
         if ($siteNameColumn) {
             $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
         }
@@ -1210,6 +1223,8 @@ class SmartsheetPresentationController extends AbstractController
                 'country' => $row['country'] ?? null,
                 'siteId' => $row['site_id'] ?? null,
                 'siteName' => $row['site_name'] ?? null,
+                'taskId' => isset($row['task_id']) ? (string) $row['task_id'] : null,
+                'parentId' => isset($row['parent_id']) ? (string) $row['parent_id'] : null,
                 'taskName' => $row['task_name'] ?? null,
                 'phase' => $row['phase'] ?? null,
                 'startDate' => $row['start_date'] ?? null,
@@ -1968,6 +1983,7 @@ class SmartsheetPresentationController extends AbstractController
             'siteId' => $this->findColumnName($columns, self::SITE_ID_CANDIDATES),
             'siteName' => $this->findColumnName($columns, self::SITE_NAME_CANDIDATES),
             'taskId' => $this->findColumnName($columns, self::TASK_ID_CANDIDATES),
+            'parentId' => $this->findColumnName($columns, self::PARENT_ID_CANDIDATES),
             'phase' => $this->findColumnName($columns, self::PHASE_CANDIDATES),
             'taskName' => $this->findColumnName($columns, self::TASK_NAME_CANDIDATES),
             'startDate' => $this->findColumnName($columns, self::START_DATE_CANDIDATES),
