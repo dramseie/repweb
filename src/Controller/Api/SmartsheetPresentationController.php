@@ -1066,6 +1066,89 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json($this->programmeOverviewData());
     }
 
+    #[Route('/gantt-countries', name: 'presentation_gantt_countries', methods: ['GET'])]
+    public function ganttCountries(): JsonResponse
+    {
+        $columns = $this->resolveMasterColumns();
+        $countryColumn = $columns['country'] ?? null;
+        if (!$countryColumn) {
+            return $this->json(['items' => []]);
+        }
+
+        $rows = $this->connection->fetchFirstColumn(
+            sprintf('SELECT DISTINCT `%s` AS country FROM %s WHERE `%s` IS NOT NULL AND `%s` <> "" ORDER BY `%s`',
+                $countryColumn,
+                self::MASTER_TABLE,
+                $countryColumn,
+                $countryColumn,
+                $countryColumn
+            )
+        );
+
+        $items = array_values(array_filter(array_map(static fn ($value) => trim((string) $value), $rows)));
+
+        return $this->json(['items' => $items]);
+    }
+
+    #[Route('/gantt', name: 'presentation_gantt', methods: ['GET'])]
+    public function gantt(Request $request): JsonResponse
+    {
+        $country = trim((string) $request->query->get('country', ''));
+        if ($country === '') {
+            return $this->json(['items' => []]);
+        }
+
+        $columns = $this->resolveMasterColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $taskNameColumn = $columns['taskName'] ?? null;
+        $startColumn = $columns['startDate'] ?? null;
+        $endColumn = $columns['endDate'] ?? null;
+
+        if (!$countryColumn || !$taskNameColumn || !$startColumn || !$endColumn) {
+            return $this->json(['items' => []]);
+        }
+
+        $selectParts = [
+            sprintf('`%s` AS country', $countryColumn),
+            sprintf('`%s` AS task_name', $taskNameColumn),
+            sprintf('`%s` AS start_date', $startColumn),
+            sprintf('`%s` AS end_date', $endColumn),
+        ];
+        if ($siteNameColumn) {
+            $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
+        }
+        if ($siteIdColumn) {
+            $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
+        }
+
+        $sql = sprintf(
+            'SELECT %s FROM %s WHERE `%s` = :country AND `%s` IS NOT NULL AND `%s` IS NOT NULL ORDER BY `%s`',
+            implode(', ', $selectParts),
+            self::MASTER_TABLE,
+            $countryColumn,
+            $startColumn,
+            $endColumn,
+            $startColumn
+        );
+
+        $rows = $this->connection->fetchAllAssociative($sql, ['country' => $country]);
+
+        $items = array_map(static function (array $row): array {
+            return [
+                'country' => $row['country'] ?? null,
+                'siteId' => $row['site_id'] ?? null,
+                'siteName' => $row['site_name'] ?? null,
+                'taskName' => $row['task_name'] ?? null,
+                'startDate' => $row['start_date'] ?? null,
+                'endDate' => $row['end_date'] ?? null,
+            ];
+        }, $rows);
+
+        return $this->json(['items' => $items]);
+    }
+
     private function normalizeTaskTrackerDate(string $value): ?string
     {
         $value = trim($value);
