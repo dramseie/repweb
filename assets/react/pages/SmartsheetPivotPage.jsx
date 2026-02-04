@@ -77,15 +77,24 @@ const getRowField = (row, keys) => {
 
 const cleanSiteName = (value) => {
   if (!value) return '';
-  return String(value).replace(/^IKEAStore\s*-\s*/i, '').trim();
+  return String(value)
+    .replace(/IKEAStore\s*-\s*/gi, '')
+    .replace(/IKEA\s*-\s*/gi, '')
+    .replace(/Store\s*-\s*/gi, '')
+    .replace(/\bIKEAStore\b/gi, '')
+    .replace(/\bIKEA\b/gi, '')
+    .replace(/\bStore\b/gi, '')
+    .replace(/^\s*-\s*/g, '')
+    .replace(/\s*-\s*/g, ' ')
+    .trim();
 };
 
 const formatSiteLabel = (site) => {
   if (!site) return '—';
   const cleanedName = cleanSiteName(site.siteName || '') || site.siteName || '';
   const siteId = site.siteId || '';
-  if (cleanedName && siteId) {
-    return `${cleanedName} (${siteId})`;
+  if (siteId) {
+    return `${cleanedName || siteId} (${siteId})`;
   }
   return cleanedName || siteId || '—';
 };
@@ -396,6 +405,15 @@ const SmartsheetPivotPage = () => {
   const [ganttCountryTaskFilter, setGanttCountryTaskFilter] = useState('');
   const [ganttCountryTaskSelectOpen, setGanttCountryTaskSelectOpen] = useState(false);
   const ganttCountryTaskSelectRef = useRef(null);
+  const [wonderfulFrom, setWonderfulFrom] = useState('');
+  const [wonderfulTo, setWonderfulTo] = useState('');
+  const [wonderfulTask, setWonderfulTask] = useState('');
+  const [wonderfulState, setWonderfulState] = useState('');
+  const [wonderfulItems, setWonderfulItems] = useState([]);
+  const [wonderfulLoading, setWonderfulLoading] = useState(false);
+  const [wonderfulError, setWonderfulError] = useState(null);
+  const [wonderfulStates, setWonderfulStates] = useState([]);
+  const [wonderfulStatesLoading, setWonderfulStatesLoading] = useState(false);
 
   const [taskTrackerItems, setTaskTrackerItems] = useState([]);
   const [taskTrackerLoading, setTaskTrackerLoading] = useState(false);
@@ -841,6 +859,47 @@ const SmartsheetPivotPage = () => {
       setGanttCountryLoading(false);
     }
   }, [ganttCountryTasksForQuery]);
+
+  const fetchWonderfulStates = useCallback(async () => {
+    setWonderfulStatesLoading(true);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/wonderful-states');
+      if (!response.ok) {
+        throw new Error(`Failed to load states (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setWonderfulStates(items);
+    } catch (error) {
+      setWonderfulStates([]);
+    } finally {
+      setWonderfulStatesLoading(false);
+    }
+  }, []);
+
+  const fetchWonderfulData = useCallback(async () => {
+    setWonderfulLoading(true);
+    setWonderfulError(null);
+    try {
+      const params = new URLSearchParams();
+      if (wonderfulFrom) params.set('from', wonderfulFrom);
+      if (wonderfulTo) params.set('to', wonderfulTo);
+      if (wonderfulTask) params.set('task', wonderfulTask);
+      if (wonderfulState) params.set('state', wonderfulState);
+      const query = params.toString();
+      const response = await fetch(`/api/smartsheet/presentation/wonderful${query ? `?${query}` : ''}`);
+      if (!response.ok) {
+        throw new Error(`Failed to load wonderful report (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setWonderfulItems(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setWonderfulError(error.message || 'Unable to load wonderful report.');
+      setWonderfulItems([]);
+    } finally {
+      setWonderfulLoading(false);
+    }
+  }, [wonderfulFrom, wonderfulTo, wonderfulTask, wonderfulState]);
 
   const fetchReportMeta = useCallback(async (repid) => {
     if (!repid) {
@@ -1520,9 +1579,10 @@ const SmartsheetPivotPage = () => {
       if (!start || !end) return;
       const countryName = item.country || 'Unknown';
       const siteKey = item.siteId || item.siteName || 'Unknown';
-      const siteLabel = item.siteName
-        ? (item.siteId ? `${item.siteName} (${item.siteId})` : item.siteName)
-        : siteKey;
+      const cleanedSiteName = cleanSiteName(item.siteName || '') || item.siteName || '';
+      const siteLabel = item.siteId
+        ? `${cleanedSiteName || siteKey} (${item.siteId})`
+        : (cleanedSiteName || siteKey);
       const taskName = item.taskName || 'Task';
       const taskValue = normalizeTask(taskName);
       const siteRangeKey = `${countryName}||${siteKey}`;
@@ -1800,6 +1860,14 @@ const SmartsheetPivotPage = () => {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [ganttCountryTaskSelectOpen]);
+
+  useEffect(() => {
+    if (ganttSelectorTab !== 'wonderful') return;
+    if (wonderfulStates.length === 0 && !wonderfulStatesLoading) {
+      fetchWonderfulStates();
+    }
+    fetchWonderfulData();
+  }, [ganttSelectorTab, fetchWonderfulData, fetchWonderfulStates, wonderfulStates.length, wonderfulStatesLoading]);
 
   const fieldOptions = [
     { value: 'Start_Date', label: 'Start Date' },
@@ -5107,6 +5175,17 @@ const SmartsheetPivotPage = () => {
                     Site
                   </button>
                 </li>
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link ${ganttSelectorTab === 'wonderful' ? 'active' : ''}`}
+                    role="tab"
+                    aria-selected={ganttSelectorTab === 'wonderful'}
+                    onClick={() => setGanttSelectorTab('wonderful')}
+                  >
+                    Wonderful
+                  </button>
+                </li>
               </ul>
 
               {ganttSelectorTab === 'country' && (
@@ -5300,6 +5379,99 @@ const SmartsheetPivotPage = () => {
                     </div>
                   )}
                 </>
+              )}
+
+              {ganttSelectorTab === 'wonderful' && (
+                <div className="d-flex flex-column gap-3">
+                  <div className="row g-3 align-items-end">
+                    <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">From</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={wonderfulFrom}
+                        onChange={(event) => setWonderfulFrom(event.target.value)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">To</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={wonderfulTo}
+                        onChange={(event) => setWonderfulTo(event.target.value)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">Task name</label>
+                      <select
+                        className="form-select"
+                        value={wonderfulTask}
+                        onChange={(event) => setWonderfulTask(event.target.value)}
+                      >
+                        <option value="">All tasks</option>
+                        {ganttCountryTaskOptions.map((task) => (
+                          <option key={`wonderful-task-${task}`} value={task}>{task}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">State</label>
+                      <select
+                        className="form-select"
+                        value={wonderfulState}
+                        onChange={(event) => setWonderfulState(event.target.value)}
+                        disabled={wonderfulStatesLoading}
+                      >
+                        <option value="">All states</option>
+                        {wonderfulStates.map((state) => (
+                          <option key={`wonderful-state-${state}`} value={state}>{state}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {wonderfulError && (
+                    <div className="alert alert-warning" role="alert">
+                      {wonderfulError}
+                    </div>
+                  )}
+
+                  {wonderfulLoading && <div className="text-muted">Loading wonderful report…</div>}
+
+                  {!wonderfulLoading && wonderfulItems.length === 0 && (
+                    <div className="text-muted">No achievements found.</div>
+                  )}
+
+                  {!wonderfulLoading && wonderfulItems.length > 0 && (
+                    <div className="table-responsive">
+                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Country</th>
+                            <th>Site</th>
+                            <th>Task</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>State</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {wonderfulItems.map((row, index) => (
+                            <tr key={`${row.country ?? 'country'}-${row.siteId ?? row.siteName ?? 'site'}-${row.taskName ?? 'task'}-${index}`}>
+                              <td>{formatDisplayValue(row.country)}</td>
+                              <td>{formatSiteLabel({ siteName: row.siteName, siteId: row.siteId })}</td>
+                              <td>{formatDisplayValue(row.taskName)}</td>
+                              <td>{formatDateDisplay(row.startDate)}</td>
+                              <td>{formatDateDisplay(row.endDate)}</td>
+                              <td>{formatDisplayValue(row.status)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

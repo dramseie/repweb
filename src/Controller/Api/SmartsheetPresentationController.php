@@ -72,6 +72,7 @@ class SmartsheetPresentationController extends AbstractController
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
     private const STATUS_CANDIDATES = ['Status', 'Task_Status', 'Task Status'];
     private const TASK_NAME_CANDIDATES = ['Task_Name', 'Task Name', 'task_name', 'task name'];
+    private const ROW_NUM_CANDIDATES = ['row_num', 'Row_Num', 'Row Num', 'Row_Number', 'Row Number', 'Row'];
     private const COMMENT_CANDIDATES = ['Comment', 'Comments', 'Notes', 'Note'];
     private const RAG_CANDIDATES = ['Status (RAG)', 'Status_RAG', 'RAG', 'Rag', 'rag'];
     private const SHEET_NAME_CANDIDATES = ['sheet_name', 'Sheet_Name', 'Sheet Name', 'Sheet'];
@@ -1298,6 +1299,7 @@ class SmartsheetPresentationController extends AbstractController
         $taskNameColumn = $columns['taskName'] ?? null;
         $startColumn = $columns['startDate'] ?? null;
         $endColumn = $columns['endDate'] ?? null;
+        $rowNumColumn = $columns['rowNum'] ?? null;
 
         if (!$countryColumn || !$taskNameColumn || !$startColumn || !$endColumn || (!$siteNameColumn && !$siteIdColumn)) {
             return $this->json(['items' => []]);
@@ -1349,6 +1351,9 @@ class SmartsheetPresentationController extends AbstractController
         } elseif ($siteIdColumn) {
             $orderParts[] = sprintf('`%s`', $siteIdColumn);
         }
+        if ($rowNumColumn) {
+            $orderParts[] = sprintf('`%s`', $rowNumColumn);
+        }
         $orderParts[] = sprintf('`%s`', $taskNameColumn);
         $orderParts[] = sprintf('`%s`', $startColumn);
 
@@ -1368,6 +1373,147 @@ class SmartsheetPresentationController extends AbstractController
                 'endDate' => $row['end_date'] ?? null,
             ];
         }, $rows);
+
+        return $this->json(['items' => $items]);
+    }
+
+    #[Route('/wonderful-states', name: 'presentation_wonderful_states', methods: ['GET'])]
+    public function wonderfulStates(): JsonResponse
+    {
+        return $this->json(['items' => ['Done', 'In progress', 'Not started']]);
+    }
+
+    #[Route('/wonderful', name: 'presentation_wonderful', methods: ['GET'])]
+    public function wonderfulReport(Request $request): JsonResponse
+    {
+        $columns = $this->resolveCountryGanttColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $taskNameColumn = $columns['taskName'] ?? null;
+        $startColumn = $columns['startDate'] ?? null;
+        $endColumn = $columns['endDate'] ?? null;
+        $statusColumn = $columns['status'] ?? null;
+        $rowNumColumn = $columns['rowNum'] ?? null;
+
+        if (!$countryColumn || !$taskNameColumn || !$startColumn || !$endColumn || (!$siteNameColumn && !$siteIdColumn)) {
+            return $this->json(['items' => []]);
+        }
+
+        $selectParts = [
+            sprintf('`%s` AS country', $countryColumn),
+            sprintf('`%s` AS task_name', $taskNameColumn),
+            sprintf('`%s` AS start_date', $startColumn),
+            sprintf('`%s` AS end_date', $endColumn),
+        ];
+        if ($siteNameColumn) {
+            $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
+        }
+        if ($siteIdColumn) {
+            $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
+        }
+        if ($statusColumn) {
+            $selectParts[] = sprintf('`%s` AS status', $statusColumn);
+        }
+
+        $whereParts = [
+            sprintf('`%s` IS NOT NULL', $startColumn),
+            sprintf('`%s` IS NOT NULL', $endColumn),
+            sprintf('TRIM(`%s`) <> ""', $startColumn),
+            sprintf('TRIM(`%s`) <> ""', $endColumn),
+        ];
+        $params = [];
+        $types = [];
+
+        $taskParam = $request->query->get('task');
+        if (is_array($taskParam)) {
+            $taskNames = $taskParam;
+        } elseif (is_string($taskParam) && $taskParam !== '') {
+            $taskNames = [$taskParam];
+        } else {
+            $taskNames = [];
+        }
+        $taskNames = array_filter(array_map(static fn ($value) => strtolower(trim((string) $value)), $taskNames));
+        if ($taskNames !== []) {
+            $whereParts[] = sprintf('TRIM(LOWER(`%s`)) IN (?)', $taskNameColumn);
+            $params[] = $taskNames;
+            $types[] = ArrayParameterType::STRING;
+        }
+
+        $stateParam = $request->query->get('state');
+        $stateFilter = null;
+        if ($stateParam !== null && $stateParam !== '') {
+            $stateFilter = strtolower(trim((string) (is_array($stateParam) ? ($stateParam[0] ?? '') : $stateParam)));
+        }
+
+        $from = trim((string) $request->query->get('from', ''));
+        $to = trim((string) $request->query->get('to', ''));
+        if ($from !== '') {
+            $whereParts[] = sprintf('`%s` <= :to_date OR :to_date IS NULL', $startColumn);
+            $params['to_date'] = $to !== '' ? $to : null;
+            $types['to_date'] = ParameterType::STRING;
+        }
+        if ($to !== '') {
+            $whereParts[] = sprintf('`%s` >= :from_date OR :from_date IS NULL', $endColumn);
+            $params['from_date'] = $from !== '' ? $from : null;
+            $types['from_date'] = ParameterType::STRING;
+        }
+
+        $sql = sprintf(
+            'SELECT %s FROM %s WHERE %s',
+            implode(', ', $selectParts),
+            self::COUNTRY_GANTT_VIEW,
+            implode(' AND ', $whereParts)
+        );
+
+        $orderParts = [
+            sprintf('`%s`', $countryColumn),
+        ];
+        if ($siteNameColumn && $siteIdColumn) {
+            $orderParts[] = sprintf('COALESCE(`%s`, `%s`)', $siteNameColumn, $siteIdColumn);
+        } elseif ($siteNameColumn) {
+            $orderParts[] = sprintf('`%s`', $siteNameColumn);
+        } elseif ($siteIdColumn) {
+            $orderParts[] = sprintf('`%s`', $siteIdColumn);
+        }
+        if ($rowNumColumn) {
+            $orderParts[] = sprintf('`%s`', $rowNumColumn);
+        }
+        $orderParts[] = sprintf('`%s`', $taskNameColumn);
+        $orderParts[] = sprintf('`%s`', $startColumn);
+
+        $rows = $this->connection->executeQuery(
+            $sql . ' ORDER BY ' . implode(', ', $orderParts),
+            $params,
+            $types
+        )->fetchAllAssociative();
+
+        $items = array_values(array_filter(array_map(static function (array $row) use ($stateFilter): ?array {
+            $rawStatus = isset($row['status']) ? (string) $row['status'] : '';
+            $statusLower = strtolower(trim($rawStatus));
+            $normalizedStatus = 'Not started';
+            if ($statusLower !== '') {
+                if (str_contains($statusLower, 'done') || str_contains($statusLower, 'complete') || str_contains($statusLower, 'completed')) {
+                    $normalizedStatus = 'Done';
+                } elseif (str_contains($statusLower, 'progress') || str_contains($statusLower, 'ongoing') || str_contains($statusLower, 'in progress')) {
+                    $normalizedStatus = 'In progress';
+                }
+            }
+
+            if ($stateFilter !== null && strtolower($normalizedStatus) !== $stateFilter) {
+                return null;
+            }
+
+            return [
+                'country' => $row['country'] ?? null,
+                'siteId' => $row['site_id'] ?? null,
+                'siteName' => $row['site_name'] ?? null,
+                'taskName' => $row['task_name'] ?? null,
+                'startDate' => $row['start_date'] ?? null,
+                'endDate' => $row['end_date'] ?? null,
+                'status' => $normalizedStatus,
+            ];
+        }, $rows)));
 
         return $this->json(['items' => $items]);
     }
@@ -2152,6 +2298,8 @@ class SmartsheetPresentationController extends AbstractController
             'taskName' => $this->findColumnName($columns, self::TASK_NAME_CANDIDATES),
             'startDate' => $this->findColumnName($columns, self::START_DATE_CANDIDATES),
             'endDate' => $this->findColumnName($columns, self::END_DATE_CANDIDATES),
+            'rowNum' => $this->findColumnName($columns, self::ROW_NUM_CANDIDATES),
+            'status' => $this->findColumnName($columns, self::STATUS_CANDIDATES),
         ];
     }
 
