@@ -177,10 +177,17 @@
 
 .gantt-row-label {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 110px 110px;
+  grid-template-columns: minmax(260px, 1fr) 95px 95px;
   gap: 12px;
   align-items: center;
   white-space: nowrap;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.gantt-col-task {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gantt-col-start,
