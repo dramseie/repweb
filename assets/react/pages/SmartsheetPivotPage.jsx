@@ -1303,19 +1303,11 @@ const SmartsheetPivotPage = () => {
             },
             {
               title: { text: 'Start' },
-              labels: {
-                formatter() {
-                  return this.point?.start ? Highcharts.dateFormat('%Y-%m-%d', this.point.start) : '';
-                },
-              },
+              labels: { format: '{point.start:%Y-%m-%d}' },
             },
             {
               title: { text: 'End' },
-              labels: {
-                formatter() {
-                  return this.point?.end ? Highcharts.dateFormat('%Y-%m-%d', this.point.end) : '';
-                },
-              },
+              labels: { format: '{point.end:%Y-%m-%d}' },
             },
           ],
         },
