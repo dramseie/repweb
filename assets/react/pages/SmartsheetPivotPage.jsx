@@ -1301,6 +1301,7 @@ const SmartsheetPivotPage = () => {
         type: 'treegrid',
         uniqueNames: true,
         grid: {
+          enabled: true,
           columns: [
             {
               title: { text: 'Task' },
