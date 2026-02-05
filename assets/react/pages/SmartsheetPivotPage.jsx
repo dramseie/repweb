@@ -378,6 +378,7 @@ const SmartsheetPivotPage = () => {
   const [plannedWeekRows, setPlannedWeekRows] = useState([]);
   const [plannedWeekLoading, setPlannedWeekLoading] = useState(false);
   const [plannedWeekError, setPlannedWeekError] = useState(null);
+  const [plannedWeekLoaded, setPlannedWeekLoaded] = useState(false);
 
   const ganttCountryDefaultTasks = React.useMemo(
     () => ['Assessment Execution', 'Installation execution', 'Store Sign off Completed'],
@@ -585,7 +586,7 @@ const SmartsheetPivotPage = () => {
   }, [highlightsLoaded, highlightsLoading]);
 
   const fetchPlannedWeek = useCallback(async () => {
-    if (plannedWeekLoading) return;
+    if (plannedWeekLoaded || plannedWeekLoading) return;
     setPlannedWeekLoading(true);
     setPlannedWeekError(null);
     try {
@@ -594,14 +595,22 @@ const SmartsheetPivotPage = () => {
         throw new Error(`Failed to load planned week status (HTTP ${response.status}).`);
       }
       const payload = await response.json();
-      setPlannedWeekRows(Array.isArray(payload) ? payload : []);
+      if (Array.isArray(payload)) {
+        setPlannedWeekRows(payload);
+      } else if (Array.isArray(payload?.items)) {
+        setPlannedWeekRows(payload.items);
+      } else {
+        setPlannedWeekRows([]);
+      }
+      setPlannedWeekLoaded(true);
     } catch (error) {
       setPlannedWeekError(error.message || 'Unable to load planned week status.');
       setPlannedWeekRows([]);
+      setPlannedWeekLoaded(true);
     } finally {
       setPlannedWeekLoading(false);
     }
-  }, [plannedWeekLoading]);
+  }, [plannedWeekLoaded, plannedWeekLoading]);
 
   const fetchTrendOverrides = useCallback(async () => {
     if (trendLoaded || trendLoading) return;
