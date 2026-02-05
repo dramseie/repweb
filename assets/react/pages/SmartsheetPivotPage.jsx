@@ -276,6 +276,22 @@ const confidenceColor = (value) => {
   return '';
 };
 
+const ragColor = (value) => {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized.includes('green')) return '#198754';
+  if (normalized.includes('amber') || normalized.includes('yellow')) return '#ffc107';
+  if (normalized.includes('red')) return '#dc3545';
+  return '#6c757d';
+};
+
+const renderStatusDot = (color, title) => (
+  <span
+    className="d-inline-block rounded-circle"
+    style={{ width: 12, height: 12, backgroundColor: color || '#6c757d' }}
+    title={title || ''}
+  />
+);
+
 const SmartsheetPivotPage = () => {
   const [activeTab, setActiveTab] = useState('explorer');
 
@@ -2673,12 +2689,9 @@ const SmartsheetPivotPage = () => {
                       <option value="Low">Low</option>
                     </select>
                   ) : (
-                    (getPresentationDraft(entry, scope, country).confidence || entry.confidence) ? (
-                      <span className={`badge bg-${confidenceVariant(getPresentationDraft(entry, scope, country).confidence || entry.confidence)}`}>
-                        {formatDisplayValue(getPresentationDraft(entry, scope, country).confidence || entry.confidence)}
-                      </span>
-                    ) : (
-                      '—'
+                    renderStatusDot(
+                      confidenceColor(getPresentationDraft(entry, scope, country).confidence || entry.confidence),
+                      getPresentationDraft(entry, scope, country).confidence || entry.confidence || ''
                     )
                   )}
                 </td>
@@ -3278,9 +3291,7 @@ const SmartsheetPivotPage = () => {
                               <option value="Red">Red</option>
                             </select>
                           ) : (
-                            <span className={`badge bg-${ragClass}`}>
-                              {formatDisplayValue(ragLabel)}
-                            </span>
+                            renderStatusDot(ragColor(ragLabel), ragLabel)
                           )}
                         </td>
                         <td className="text-muted small">
@@ -3762,7 +3773,7 @@ const SmartsheetPivotPage = () => {
                       <thead className="table-light">
                         <tr>
                           <th>Country</th>
-                          <th>Total</th>
+                          <th>Stores</th>
                           <th>Assessments</th>
                           <th>Ongoing Installation</th>
                           <th>Stores Installed</th>
@@ -3783,6 +3794,36 @@ const SmartsheetPivotPage = () => {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot>
+                        {(() => {
+                          const totals = group.reduce(
+                            (acc, row) => {
+                              acc.stores += Number(row.stores || 0);
+                              acc.assessed += Number(row.assessed || 0);
+                              acc.ongoingInstallations += Number(row.ongoingInstallations || 0);
+                              acc.storesInstalled += Number(row.storesInstalled || 0);
+                              return acc;
+                            },
+                            {
+                              stores: 0,
+                              assessed: 0,
+                              ongoingInstallations: 0,
+                              storesInstalled: 0,
+                            }
+                          );
+
+                          return (
+                            <tr className="table-light fw-semibold">
+                              <td>Total</td>
+                              <td>{formatDisplayValue(totals.stores)}</td>
+                              <td>{formatDisplayValue(totals.assessed)}</td>
+                              <td>{formatDisplayValue(totals.ongoingInstallations)}</td>
+                              <td>{formatDisplayValue(totals.storesInstalled)}</td>
+                              <td></td>
+                            </tr>
+                          );
+                        })()}
+                      </tfoot>
                     </table>
                   </div>
                   <div className="trend-traffic-light" data-variant={meta.key}>
