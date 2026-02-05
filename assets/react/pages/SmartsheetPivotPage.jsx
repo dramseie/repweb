@@ -584,6 +584,25 @@ const SmartsheetPivotPage = () => {
     }
   }, [highlightsLoaded, highlightsLoading]);
 
+  const fetchPlannedWeek = useCallback(async () => {
+    if (plannedWeekLoading) return;
+    setPlannedWeekLoading(true);
+    setPlannedWeekError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/planned-week');
+      if (!response.ok) {
+        throw new Error(`Failed to load planned week status (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setPlannedWeekRows(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      setPlannedWeekError(error.message || 'Unable to load planned week status.');
+      setPlannedWeekRows([]);
+    } finally {
+      setPlannedWeekLoading(false);
+    }
+  }, [plannedWeekLoading]);
+
   const fetchTrendOverrides = useCallback(async () => {
     if (trendLoaded || trendLoading) return;
     setTrendLoading(true);
@@ -3042,8 +3061,17 @@ const SmartsheetPivotPage = () => {
       fetchOverviewOverrides();
       fetchGeneralIssuesOverrides();
       fetchPlannedWeekCommentOverrides();
+      fetchPlannedWeek();
     }
-  }, [activeTab, fetchHighlights, fetchTrendOverrides, fetchOverviewOverrides, fetchGeneralIssuesOverrides, fetchPlannedWeekCommentOverrides]);
+  }, [
+    activeTab,
+    fetchHighlights,
+    fetchTrendOverrides,
+    fetchOverviewOverrides,
+    fetchGeneralIssuesOverrides,
+    fetchPlannedWeekCommentOverrides,
+    fetchPlannedWeek,
+  ]);
 
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
