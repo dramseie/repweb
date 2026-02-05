@@ -24,6 +24,7 @@ class SmartsheetPresentationController extends AbstractController
 {
     private const MASTER_TABLE = 'nifi.smartsheet_master_data';
     private const COUNTRY_GANTT_VIEW = 'nifi.smartsheet_country_gantt_view';
+    private const PLANNED_WEEK_VIEW = 'nifi.smartsheet_planned_week_view';
     private const DEFAULT_TASK_NAME = 'Assessment Execution';
     private const POST_DEPLOYMENT_TASK = 'Post-Deployment Survey and Correction Process';
     private const SIGN_OFF_TASK = 'Store Sign off Completed';
@@ -3084,17 +3085,8 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function plannedWeekData(?array $countries = null): array
     {
-        $sql = sprintf(
-            "SELECT * FROM %s WHERE (Task_Name = :assessment OR LOWER(Task_Name) LIKE :installPattern) AND (DATE(Start_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY) OR DATE(End_Date) BETWEEN DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY))",
-            self::MASTER_TABLE
-        );
-
-        $params = [
-            'assessment' => 'Assessment',
-            'installPattern' => '%installation execution%',
-        ];
-
-        $rows = $this->connection->fetchAllAssociative($sql, $params);
+        $sql = sprintf('SELECT * FROM %s', self::PLANNED_WEEK_VIEW);
+        $rows = $this->connection->fetchAllAssociative($sql);
         if ($countries === null || $countries === []) {
             return $rows;
         }
