@@ -3345,6 +3345,22 @@ const SmartsheetPivotPage = () => {
         const endDate = toDate(getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']));
         return endDate && endDate >= lastWeekStart && endDate <= lastWeekEnd;
       });
+      const sortByCountryAndSite = (rows) =>
+        [...rows].sort((left, right) => {
+          const leftCountry = String(getRowField(left, ['country', 'Country']) || '').toLowerCase();
+          const rightCountry = String(getRowField(right, ['country', 'Country']) || '').toLowerCase();
+          if (leftCountry !== rightCountry) {
+            return leftCountry.localeCompare(rightCountry);
+          }
+
+          const leftSite = cleanSiteName(getRowField(left, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '')
+            .toLowerCase();
+          const rightSite = cleanSiteName(getRowField(right, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '')
+            .toLowerCase();
+          return leftSite.localeCompare(rightSite);
+        });
+      const sortedStartedLastWeekRows = sortByCountryAndSite(startedLastWeekRows);
+      const sortedFinishedLastWeekRows = sortByCountryAndSite(finishedLastWeekRows);
       const renderStatusRows = (rows, prefix) =>
         rows.map((row, index) => {
           const country = getRowField(row, ['country', 'Country']) || '—';
@@ -3428,7 +3444,7 @@ const SmartsheetPivotPage = () => {
                         <th>Comment</th>
                       </tr>
                     </thead>
-                    <tbody>{renderStatusRows(startedLastWeekRows, 'start')}</tbody>
+                    <tbody>{renderStatusRows(sortedStartedLastWeekRows, 'start')}</tbody>
                   </table>
                 </div>
               )}
@@ -3459,7 +3475,7 @@ const SmartsheetPivotPage = () => {
                         <th>Comment</th>
                       </tr>
                     </thead>
-                    <tbody>{renderStatusRows(finishedLastWeekRows, 'finish')}</tbody>
+                    <tbody>{renderStatusRows(sortedFinishedLastWeekRows, 'finish')}</tbody>
                   </table>
                 </div>
               )}
