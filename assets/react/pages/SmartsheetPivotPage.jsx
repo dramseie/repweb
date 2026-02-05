@@ -3244,12 +3244,12 @@ const SmartsheetPivotPage = () => {
                 <thead className="table-light">
                   <tr>
                     <th>Country</th>
-                    <th>Stores</th>
-                    <th>Assessed</th>
-                    <th>Ongoing Installations</th>
-                    <th>Installed</th>
-                    <th>Sign-off</th>
-                    <th>RAG</th>
+                    <th className="text-end">Stores</th>
+                    <th className="text-end">Assessed</th>
+                    <th className="text-end">Ongoing Installations</th>
+                    <th className="text-end">Installed</th>
+                    <th className="text-end">Sign-off</th>
+                    <th className="text-center">RAG</th>
                     <th>Comment</th>
                   </tr>
                 </thead>
@@ -3273,12 +3273,12 @@ const SmartsheetPivotPage = () => {
                         <td className="fw-semibold">
                           <CountryAnchor country={row.country} />
                         </td>
-                        <td>{formatDisplayValue(row.stores)}</td>
-                        <td>{formatDisplayValue(row.assessed)}</td>
-                        <td>{formatDisplayValue(row.ongoingInstallations)}</td>
-                        <td>{formatDisplayValue(row.storesInstalled)}</td>
-                        <td>{formatDisplayValue(row.storeSignoff)}</td>
-                        <td>
+                        <td className="text-end">{formatDisplayValue(row.stores)}</td>
+                        <td className="text-end">{formatDisplayValue(row.assessed)}</td>
+                        <td className="text-end">{formatDisplayValue(row.ongoingInstallations)}</td>
+                        <td className="text-end">{formatDisplayValue(row.storesInstalled)}</td>
+                        <td className="text-end">{formatDisplayValue(row.storeSignoff)}</td>
+                        <td className="text-center">
                           {presentationEditMode ? (
                             <select
                               className="form-select form-select-sm"
@@ -3313,12 +3313,12 @@ const SmartsheetPivotPage = () => {
                 <tfoot>
                   <tr className="table-light fw-semibold">
                     <td>Total</td>
-                    <td>{formatDisplayValue(overviewTotals.stores)}</td>
-                    <td>{formatDisplayValue(overviewTotals.assessed)}</td>
-                    <td>{formatDisplayValue(overviewTotals.ongoingInstallations)}</td>
-                    <td>{formatDisplayValue(overviewTotals.storesInstalled)}</td>
-                    <td>{formatDisplayValue(overviewTotals.storeSignoff)}</td>
-                    <td>—</td>
+                    <td className="text-end">{formatDisplayValue(overviewTotals.stores)}</td>
+                    <td className="text-end">{formatDisplayValue(overviewTotals.assessed)}</td>
+                    <td className="text-end">{formatDisplayValue(overviewTotals.ongoingInstallations)}</td>
+                    <td className="text-end">{formatDisplayValue(overviewTotals.storesInstalled)}</td>
+                    <td className="text-end">{formatDisplayValue(overviewTotals.storeSignoff)}</td>
+                    <td className="text-center">—</td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -3788,10 +3788,10 @@ const SmartsheetPivotPage = () => {
                       <thead className="table-light">
                         <tr>
                           <th>Country</th>
-                          <th>Stores</th>
-                          <th>Assessments</th>
-                          <th>Ongoing Installation</th>
-                          <th>Stores Installed</th>
+                          <th className="text-end">Stores</th>
+                          <th className="text-end">Assessments</th>
+                          <th className="text-end">Ongoing Installation</th>
+                          <th className="text-end">Stores Installed</th>
                           <th>Comment</th>
                         </tr>
                       </thead>
@@ -3801,10 +3801,10 @@ const SmartsheetPivotPage = () => {
                             <td className="fw-semibold">
                               <CountryAnchor country={row.country} />
                             </td>
-                            <td>{formatDisplayValue(row.stores)}</td>
-                            <td>{formatDisplayValue(row.assessed)}</td>
-                            <td>{formatDisplayValue(row.ongoingInstallations)}</td>
-                            <td>{formatDisplayValue(row.storesInstalled)}</td>
+                            <td className="text-end">{formatDisplayValue(row.stores)}</td>
+                            <td className="text-end">{formatDisplayValue(row.assessed)}</td>
+                            <td className="text-end">{formatDisplayValue(row.ongoingInstallations)}</td>
+                            <td className="text-end">{formatDisplayValue(row.storesInstalled)}</td>
                             <td className="text-muted small">{formatDisplayValue(row.comment)}</td>
                           </tr>
                         ))}
@@ -3830,10 +3830,10 @@ const SmartsheetPivotPage = () => {
                           return (
                             <tr className="table-light fw-semibold">
                               <td>Total</td>
-                              <td>{formatDisplayValue(totals.stores)}</td>
-                              <td>{formatDisplayValue(totals.assessed)}</td>
-                              <td>{formatDisplayValue(totals.ongoingInstallations)}</td>
-                              <td>{formatDisplayValue(totals.storesInstalled)}</td>
+                              <td className="text-end">{formatDisplayValue(totals.stores)}</td>
+                              <td className="text-end">{formatDisplayValue(totals.assessed)}</td>
+                              <td className="text-end">{formatDisplayValue(totals.ongoingInstallations)}</td>
+                              <td className="text-end">{formatDisplayValue(totals.storesInstalled)}</td>
                               <td></td>
                             </tr>
                           );
