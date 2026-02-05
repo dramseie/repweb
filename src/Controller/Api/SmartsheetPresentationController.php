@@ -15,14 +15,14 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Routing\Annotation\Route;
-use OpenSpout\Writer\XLSX\Writer as XlsxWriter;
-use OpenSpout\Common\Entity\Row;
-use OpenSpout\Common\Entity\Style\Style;
-use OpenSpout\Common\Entity\Style\Border;
-use OpenSpout\Common\Entity\Style\BorderPart;
-use OpenSpout\Common\Entity\Style\CellAlignment;
-use OpenSpout\Common\Entity\Style\CellVerticalAlignment;
-use OpenSpout\Common\Entity\Style\Color;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Worksheet\Table;
+use PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border as SheetBorder;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 #[Route('/api/smartsheet/presentation', name: 'api_smartsheet_presentation_')]
 class SmartsheetPresentationController extends AbstractController
@@ -728,110 +728,159 @@ class SmartsheetPresentationController extends AbstractController
         $tmpWithExt = $tmp . '.xlsx';
         @rename($tmp, $tmpWithExt);
 
-        $writer = new XlsxWriter();
-        $writer->openToFile($tmpWithExt);
-        $border = new Border(
-            new BorderPart(Border::LEFT, 'D1D5DB', Border::WIDTH_THIN),
-            new BorderPart(Border::RIGHT, 'D1D5DB', Border::WIDTH_THIN),
-            new BorderPart(Border::TOP, 'D1D5DB', Border::WIDTH_THIN),
-            new BorderPart(Border::BOTTOM, 'D1D5DB', Border::WIDTH_THIN)
-        );
-        $headerStyle = (new Style())
-            ->setFontBold()
-            ->setBackgroundColor('E5E7EB')
-            ->setBorder($border)
-            ->setCellAlignment(CellAlignment::CENTER)
-            ->setCellVerticalAlignment(CellVerticalAlignment::CENTER)
-            ->setShouldWrapText();
-        $rowStyle = (new Style())
-            ->setBorder($border)
-            ->setCellVerticalAlignment(CellVerticalAlignment::TOP)
-            ->setShouldWrapText();
-        $zebraStyle = (new Style())
-            ->setBorder($border)
-            ->setBackgroundColor('F8FAFC')
-            ->setCellVerticalAlignment(CellVerticalAlignment::TOP)
-            ->setShouldWrapText();
+        $spreadsheet = new Spreadsheet();
         $sheetIndex = 0;
 
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'color' => ['rgb' => 'E5E7EB'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+                'wrapText' => true,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => SheetBorder::BORDER_THIN,
+                    'color' => ['rgb' => 'D1D5DB'],
+                ],
+            ],
+        ];
+        $rowStyle = [
+            'alignment' => [
+                'vertical' => Alignment::VERTICAL_TOP,
+                'wrapText' => true,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => SheetBorder::BORDER_THIN,
+                    'color' => ['rgb' => 'D1D5DB'],
+                ],
+            ],
+        ];
+        $zebraStyle = [
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'color' => ['rgb' => 'F8FAFC'],
+            ],
+            'alignment' => [
+                'vertical' => Alignment::VERTICAL_TOP,
+                'wrapText' => true,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => SheetBorder::BORDER_THIN,
+                    'color' => ['rgb' => 'D1D5DB'],
+                ],
+            ],
+        ];
+
         $addSheet = static function (
-            XlsxWriter $writer,
-            Style $headerStyle,
-            Style $rowStyle,
-            Style $zebraStyle,
+            Spreadsheet $spreadsheet,
+            array $headerStyle,
+            array $rowStyle,
+            array $zebraStyle,
             int &$sheetIndex,
             string $name,
             array $headers,
             array $rows,
-            array $columnWidths
+            array $columnWidths,
+            string $tableStyleName
         ): void {
-            if ($sheetIndex === 0) {
-                $writer->getCurrentSheet()->setName($name);
-            } else {
-                $writer->addNewSheetAndMakeItCurrent();
-                $writer->getCurrentSheet()->setName($name);
-            }
+            $sheet = $sheetIndex === 0
+                ? $spreadsheet->getActiveSheet()
+                : $spreadsheet->createSheet();
+            $sheet->setTitle($name);
             $sheetIndex += 1;
-            $sheet = $writer->getCurrentSheet();
+
             foreach ($columnWidths as $index => $width) {
-                $sheet->setColumnWidth($width, $index + 1);
+                $sheet->getColumnDimensionByColumn($index + 1)->setWidth($width);
             }
-            $writer->addRow(Row::fromValues($headers, $headerStyle));
+
+            $sheet->fromArray($headers, null, 'A1');
+            $lastCol = Coordinate::stringFromColumnIndex(count($headers));
+            $sheet->getStyle('A1:' . $lastCol . '1')->applyFromArray($headerStyle);
+            $sheet->freezePane('A2');
+
+            $rowNumber = 2;
             foreach ($rows as $rowIndex => $row) {
+                $sheet->fromArray($row, null, 'A' . $rowNumber);
                 $style = $rowIndex % 2 === 1 ? $zebraStyle : $rowStyle;
-                $writer->addRow(Row::fromValues($row, $style));
+                $sheet->getStyle('A' . $rowNumber . ':' . $lastCol . $rowNumber)->applyFromArray($style);
+                $rowNumber += 1;
+            }
+
+            if ($rowNumber > 2) {
+                $tableRange = 'A1:' . $lastCol . ($rowNumber - 1);
+                $table = new Table($tableRange, $tableStyleName);
+                $tableStyle = new TableStyle();
+                $tableStyle->setTheme(TableStyle::TABLE_STYLE_MEDIUM9);
+                $tableStyle->setShowRowStripes(true);
+                $table->setStyle($tableStyle);
+                $sheet->addTable($table);
             }
         };
 
-        try {
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Programme Overview',
-                ['Country', 'Stores', 'Assessed', 'Ongoing Installations', 'Installed', 'Sign-off', 'RAG', 'Comment'],
-                $overviewRows,
-                [20, 10, 10, 22, 12, 12, 8, 40]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Status Planned',
-                ['Country', 'Site Name', 'Site ID', 'Activity', 'Start', 'End', 'Status', 'Comment'],
-                $plannedWeekExportRows,
-                [18, 28, 12, 26, 12, 12, 16, 45]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Timeline',
-                ['Country', 'Start Date', 'Install End Date', 'End Date'],
-                $timelineRows,
-                [18, 16, 18, 16]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Green',
-                ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
-                $trendGroups['green'],
-                [18, 10, 12, 22, 18, 45]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Amber',
-                ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
-                $trendGroups['amber'],
-                [18, 10, 12, 22, 18, 45]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Red',
-                ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
-                $trendGroups['red'],
-                [18, 10, 12, 22, 18, 45]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'General Issues',
-                ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
-                $generalIssuesRows,
-                [18, 26, 12, 40, 12, 20, 26, 14]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Planned',
-                ['Country', 'Section', 'Month', 'Site Name', 'Site ID', 'Start', 'End', 'Confidence', 'Status'],
-                $allPlannedRows,
-                [18, 20, 16, 26, 12, 12, 12, 14, 30]
-            );
-            $addSheet($writer, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Issues',
-                ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
-                $allIssueRows,
-                [18, 26, 12, 40, 12, 20, 26, 14]
-            );
-        } finally {
-            $writer->close();
-        }
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Programme Overview',
+            ['Country', 'Stores', 'Assessed', 'Ongoing Installations', 'Installed', 'Sign-off', 'RAG', 'Comment'],
+            $overviewRows,
+            [20, 10, 10, 22, 12, 12, 8, 40],
+            'TableProgrammeOverview'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Status Planned',
+            ['Country', 'Site Name', 'Site ID', 'Activity', 'Start', 'End', 'Status', 'Comment'],
+            $plannedWeekExportRows,
+            [18, 28, 12, 26, 12, 12, 16, 45],
+            'TableStatusPlanned'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Timeline',
+            ['Country', 'Start Date', 'Install End Date', 'End Date'],
+            $timelineRows,
+            [18, 16, 18, 16],
+            'TableTimeline'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Green',
+            ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
+            $trendGroups['green'],
+            [18, 10, 12, 22, 18, 45],
+            'TableTrendGreen'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Amber',
+            ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
+            $trendGroups['amber'],
+            [18, 10, 12, 22, 18, 45],
+            'TableTrendAmber'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Red',
+            ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
+            $trendGroups['red'],
+            [18, 10, 12, 22, 18, 45],
+            'TableTrendRed'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'General Issues',
+            ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
+            $generalIssuesRows,
+            [18, 26, 12, 40, 12, 20, 26, 14],
+            'TableGeneralIssues'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Planned',
+            ['Country', 'Section', 'Month', 'Site Name', 'Site ID', 'Start', 'End', 'Confidence', 'Status'],
+            $allPlannedRows,
+            [18, 20, 16, 26, 12, 12, 12, 14, 30],
+            'TableAllPlanned'
+        );
+        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Issues',
+            ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
+            $allIssueRows,
+            [18, 26, 12, 40, 12, 20, 26, 14],
+            'TableAllIssues'
+        );
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tmpWithExt);
 
         $filename = sprintf('presentation-%s.xlsx', (new DateTimeImmutable('now'))->format('Ymd_His'));
         $response = new BinaryFileResponse($tmpWithExt);
