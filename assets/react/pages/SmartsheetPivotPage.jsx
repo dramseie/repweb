@@ -2793,7 +2793,7 @@ const SmartsheetPivotPage = () => {
   const execCardMeta = [
     { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
     { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
-    { key: '__exec_status', title: 'Status planned to start assessments and installations to start/finish CW', body: 'Snapshot of planned assessments and installations status.' },
+    { key: '__exec_status', title: 'Status planned to start', body: 'Snapshot of planned assessments and installations status.' },
     { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
     { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
     { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
@@ -3349,7 +3349,7 @@ const SmartsheetPivotPage = () => {
           {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length > 0 && (
             <>
               <div className="fw-semibold">
-                Status planned to start assessments and installations to start/finish CW{String(lastWeekCW).padStart(2, '0')}
+                Status planned to start
               </div>
               {startedLastWeekRows.length === 0 ? (
                 <div className="text-muted small">No sites started last week.</div>
@@ -3381,9 +3381,7 @@ const SmartsheetPivotPage = () => {
                 </div>
               )}
 
-              <div className="fw-semibold mt-2">
-                Status planned to complete assessments and installations to start/finish CW{String(lastWeekCW).padStart(2, '0')}
-              </div>
+              <div className="fw-semibold mt-2">Status planned to complete</div>
               {finishedLastWeekRows.length === 0 ? (
                 <div className="text-muted small">No sites finished last week.</div>
               ) : (
@@ -4279,9 +4277,7 @@ const SmartsheetPivotPage = () => {
                 <optgroup label="Exec Summary">
                   <option value="__exec_highlights">Highlights</option>
                   <option value="__exec_overview">Programme Overview Per Country</option>
-                  <option value="__exec_status">
-                    {`Status planned to start assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`}
-                  </option>
+                  <option value="__exec_status">Status planned to start</option>
                   <option value="__exec_timeline">Timeline</option>
                 </optgroup>
                 <optgroup label="Country Trend">
@@ -4395,7 +4391,7 @@ const SmartsheetPivotPage = () => {
               >
                 <div className="card-header fw-semibold position-relative">
                   {meta.key === '__exec_status'
-                    ? `Status planned to start assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`
+                    ? `Status of assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`
                     : meta.title}
                   <span
                     className="text-muted small"

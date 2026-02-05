@@ -2154,106 +2154,23 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function programmeOverviewData(): array
     {
-        $columns = $this->resolveProgrammeOverviewColumns();
-        $countryColumn = $columns['country'] ?? null;
-        $siteIdColumn = $columns['siteId'] ?? null;
-        $siteNameColumn = $columns['siteName'] ?? null;
-        $taskNameColumn = $columns['taskName'] ?? null;
-        $statusColumn = $columns['status'] ?? null;
-        $sourceTable = self::PROGRAMME_OVERVIEW_VIEW;
-
-        if ($countryColumn === null || $siteIdColumn === null || $taskNameColumn === null) {
-            $columns = $this->resolveMasterColumns();
-            $countryColumn = $columns['country'] ?? null;
-            $siteIdColumn = $columns['siteId'] ?? null;
-            $siteNameColumn = $columns['siteName'] ?? null;
-            $taskNameColumn = $columns['taskName'] ?? null;
-            $statusColumn = $columns['status'] ?? null;
-            $sourceTable = self::MASTER_TABLE;
-        }
-
-        if ($countryColumn === null || $siteIdColumn === null || $taskNameColumn === null) {
-            return ['items' => []];
-        }
-
-        $selectParts = [
-            sprintf('`%s` AS country', $countryColumn),
-            sprintf('`%s` AS site_id', $siteIdColumn),
-            sprintf('`%s` AS task_name', $taskNameColumn),
-        ];
-        if ($siteNameColumn !== null) {
-            $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
-        }
-        if ($statusColumn !== null) {
-            $selectParts[] = sprintf('`%s` AS status', $statusColumn);
-        }
-        $overviewOverrides = $this->connection->fetchAssociative(
-            sprintf('SELECT content FROM %s WHERE section = :section ORDER BY created_at DESC LIMIT 1', self::CONTENT_TABLE),
-            ['section' => 'overview_overrides']
+        $rows = $this->connection->fetchAllAssociative(
+            sprintf(
+                'SELECT country, stores, assessed, ongoing_installations, stores_installed, store_signoff, rag, comment FROM %s ORDER BY country',
+                self::PROGRAMME_OVERVIEW_VIEW
+            )
         );
-        $overviewOverrideData = json_decode((string) ($overviewOverrides['content'] ?? ''), true);
-        $overviewOverrideData = is_array($overviewOverrideData) ? $overviewOverrideData : [];
 
-        $sql = sprintf('SELECT %s FROM %s', implode(', ', $selectParts), $sourceTable);
-        $rows = $this->connection->fetchAllAssociative($sql);
-
-        $countryData = [];
-        foreach ($rows as $row) {
-            $country = trim((string) ($row['country'] ?? '')) ?: 'Unspecified';
-            $siteId = trim((string) ($row['site_id'] ?? ''));
-            $siteName = trim((string) ($row['site_name'] ?? ''));
-            $siteKey = $siteId !== '' ? $siteId : ($siteName !== '' ? $siteName : null);
-            if ($siteKey === null) {
-                continue;
-            }
-
-            $taskName = trim((string) ($row['task_name'] ?? ''));
-            if ($taskName === '') {
-                continue;
-            }
-
-            $statusClass = $this->classifyProgressStatus($row['status'] ?? null);
-            $countryData[$country]['sites'][$siteKey] = true;
-
-            $taskNormalized = mb_strtolower($taskName);
-            $assessmentTask = 'assessment completed';
-            $installationTask = 'migration & installation completed';
-            $signoffTask = 'store sign off completed';
-
-            if ($taskNormalized === $assessmentTask && $statusClass === 'done') {
-                $countryData[$country]['assessed'][$siteKey] = true;
-            }
-
-            if ($taskNormalized === $installationTask) {
-                if ($statusClass === 'done') {
-                    $countryData[$country]['storesInstalled'][$siteKey] = true;
-                } elseif ($statusClass === 'in_progress') {
-                    $countryData[$country]['ongoingInstallations'][$siteKey] = true;
-                }
-            }
-
-            if ($taskNormalized === $signoffTask && $statusClass === 'done') {
-                $countryData[$country]['storeSignoff'][$siteKey] = true;
-            }
-        }
-
-        $items = [];
-        foreach ($countryData as $country => $data) {
-            $override = $overviewOverrideData[$country] ?? [];
-            $items[] = [
-                'country' => $country,
-                'stores' => count($data['sites'] ?? []),
-                'assessed' => count($data['assessed'] ?? []),
-                'ongoingInstallations' => count($data['ongoingInstallations'] ?? []),
-                'storesInstalled' => count($data['storesInstalled'] ?? []),
-                'defectsCompleted' => count($data['defectsCompleted'] ?? []),
-                'storeSignoff' => count($data['storeSignoff'] ?? []),
-                'comment' => is_array($override) ? ($override['comment'] ?? null) : null,
-                'rag' => is_array($override) ? ($override['rag'] ?? null) : null,
-            ];
-        }
-
-        usort($items, static fn (array $a, array $b): int => strcasecmp($a['country'], $b['country']));
+        $items = array_map(static fn (array $row): array => [
+            'country' => $row['country'] ?? 'Unspecified',
+            'stores' => $row['stores'] ?? 0,
+            'assessed' => $row['assessed'] ?? 0,
+            'ongoingInstallations' => $row['ongoing_installations'] ?? 0,
+            'storesInstalled' => $row['stores_installed'] ?? 0,
+            'storeSignoff' => $row['store_signoff'] ?? 0,
+            'rag' => $row['rag'] ?? null,
+            'comment' => $row['comment'] ?? null,
+        ], $rows);
 
         return ['items' => $items];
     }
