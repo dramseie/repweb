@@ -342,6 +342,7 @@ const SmartsheetPivotPage = () => {
   const [presentationCountryFilter, setPresentationCountryFilter] = useState([]);
   const [presentationExporting, setPresentationExporting] = useState(false);
   const [presentationHtmlExporting, setPresentationHtmlExporting] = useState(false);
+  const [presentationPdfExporting, setPresentationPdfExporting] = useState(false);
   const [presentationXlsxExporting, setPresentationXlsxExporting] = useState(false);
   const [presentationEditMode, setPresentationEditMode] = useState(false);
   const [presentationEdits, setPresentationEdits] = useState({});
@@ -2657,7 +2658,7 @@ const SmartsheetPivotPage = () => {
               <th>Site Name</th>
               <th>Start</th>
               <th>End</th>
-              <th>Confidence</th>
+              <th className="text-center">Confidence</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -2670,7 +2671,7 @@ const SmartsheetPivotPage = () => {
                 </td>
                 <td>{formatDateDisplay(entry.startDate)}</td>
                 <td>{formatDateDisplay(entry.endDate)}</td>
-                <td>
+                <td className="text-center">
                   {presentationEditMode ? (
                     <select
                       className="form-select form-select-sm"
@@ -3936,6 +3937,35 @@ const SmartsheetPivotPage = () => {
     }
   };
 
+  const exportPresentationPdf = async () => {
+    setPresentationPdfExporting(true);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countries: presentationCountryFilter }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || 'presentation-export.pdf';
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.message || 'Failed to export PDF.');
+    } finally {
+      setPresentationPdfExporting(false);
+    }
+  };
+
   const exportPresentationXlsx = async () => {
     setPresentationXlsxExporting(true);
     try {
@@ -4450,6 +4480,14 @@ const SmartsheetPivotPage = () => {
                 disabled={presentationXlsxExporting}
               >
                 {presentationXlsxExporting ? 'Exporting…' : 'Export XLSX'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm"
+                onClick={exportPresentationPdf}
+                disabled={presentationPdfExporting}
+              >
+                {presentationPdfExporting ? 'Exporting…' : 'Export PDF'}
               </button>
               <button
                 type="button"

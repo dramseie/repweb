@@ -6,6 +6,8 @@ use DateTimeImmutable;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -485,6 +487,69 @@ class SmartsheetPresentationController extends AbstractController
         $response->deleteFileAfterSend(true);
 
         return $response;
+    }
+
+    #[Route('/export-pdf', name: 'presentation_export_pdf', methods: ['POST'])]
+    public function exportPresentationPdf(\Symfony\Component\HttpFoundation\Request $request): Response
+    {
+        $payload = json_decode((string) $request->getContent(), true) ?? [];
+        $countries = $this->normalizeCountryFilter($payload['countries'] ?? null);
+
+        $assessments = $this->plannedDataForTask(self::DEFAULT_TASK_NAME, $countries);
+        $installations = $this->plannedDataForTask('Installation Execution', $countries);
+        $postDeployment = $this->postDeploymentData($countries);
+        $issueLog = $this->issueLogData($countries);
+        $overview = $this->programmeOverviewData();
+        $timeline = $this->timelineData($countries);
+        $progress = $this->progressData($countries);
+        $plannedWeekRows = $this->plannedWeekData($countries);
+
+        $highlightsContent = $this->getLatestContent('highlights');
+        $trendOverrides = $this->decodeOverrides($this->getLatestContent('trend_overrides'));
+        $overviewOverrides = $this->decodeOverrides($this->getLatestContent('overview_overrides'));
+
+        $overviewItems = $this->filterItemsByCountries($overview['items'] ?? [], $countries, 'country');
+
+        $assets = [
+            'logo' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/logo.png'),
+            'traffic_green' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/green.png'),
+            'traffic_amber' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/yellow.png'),
+            'traffic_red' => $this->imageToDataUri(dirname(__DIR__, 3) . '/public/images/red.png'),
+        ];
+
+        $html = $this->buildOfflinePresentationHtml([
+            'generatedAt' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+            'countries' => $countries,
+            'plannedAssessments' => $assessments,
+            'plannedInstallations' => $installations,
+            'postDeployment' => $postDeployment,
+            'issueLog' => $issueLog,
+            'overviewItems' => $overviewItems,
+            'timeline' => $timeline,
+            'progress' => $progress,
+            'plannedWeekRows' => $plannedWeekRows,
+            'highlights' => $highlightsContent,
+            'trendOverrides' => $trendOverrides,
+            'overviewOverrides' => $overviewOverrides,
+        ], $assets);
+
+        $options = new Options();
+        $options->set('isRemoteEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        $pdfOutput = $dompdf->output();
+        $filename = sprintf('presentation-%s.pdf', (new DateTimeImmutable('now'))->format('Ymd_His'));
+
+        return new Response($pdfOutput, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => sprintf('attachment; filename="%s"', $filename),
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+        ]);
     }
 
     #[Route('/export-xlsx', name: 'presentation_export_xlsx', methods: ['POST'])]
