@@ -3085,8 +3085,15 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function plannedWeekData(?array $countries = null): array
     {
-        $sql = sprintf('SELECT * FROM %s', self::PLANNED_WEEK_VIEW);
-        $rows = $this->connection->fetchAllAssociative($sql);
+        $sql = sprintf(
+            "SELECT * FROM %s WHERE LOWER(task_name) IN (:assessment, :installation, :signoff)",
+            self::PLANNED_WEEK_VIEW
+        );
+        $rows = $this->connection->fetchAllAssociative($sql, [
+            'assessment' => 'assessment execution',
+            'installation' => 'installation execution',
+            'signoff' => 'store sign off completed',
+        ]);
         if ($countries === null || $countries === []) {
             return $rows;
         }

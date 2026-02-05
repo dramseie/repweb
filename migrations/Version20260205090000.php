@@ -21,7 +21,7 @@ final class Version20260205090000 extends AbstractMigration
             "CREATE VIEW nifi.smartsheet_planned_week_view AS\n" .
             "SELECT *\n" .
             "FROM nifi.smartsheet_master_data\n" .
-            "WHERE (LOWER(Task_Name) LIKE '%assessment%' OR LOWER(Task_Name) LIKE '%installation execution%')\n" .
+            "WHERE LOWER(Task_Name) IN ('assessment execution', 'installation execution', 'store sign off completed')\n" .
             "  AND (\n" .
             "    DATE(Start_Date) BETWEEN\n" .
             "      DATE_SUB(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 7 DAY)\n" .
