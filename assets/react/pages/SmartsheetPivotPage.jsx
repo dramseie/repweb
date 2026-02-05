@@ -477,43 +477,21 @@ const SmartsheetPivotPage = () => {
     }
   }, []);
 
-  const scrollToExecOverview = useCallback(() => {
-    const target = execOverviewRef.current || document.getElementById('exec-overview');
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadPlannedWeek = async () => {
-      setPlannedWeekLoading(true);
-      setPlannedWeekError(null);
-      try {
-        const res = await fetch('/api/smartsheet/presentation/planned-week');
-        if (!res.ok) throw new Error(`Failed to load planned-week (HTTP ${res.status})`);
-        const payload = await res.json();
-        if (!cancelled) setPlannedWeekRows(Array.isArray(payload?.items) ? payload.items : []);
-      } catch (err) {
-        if (!cancelled) setPlannedWeekError(err.message || 'Failed to load planned-week');
-      } finally {
-        if (!cancelled) setPlannedWeekLoading(false);
-      }
-    };
-    loadPlannedWeek();
-    return () => { cancelled = true; };
-  }, []);
-
   const fetchPresentation = useCallback(async () => {
+    if (presentationLoaded || presentationLoading) return;
     setPresentationLoading(true);
-    setPresentationError(null);
     setOverviewLoading(true);
-    setOverviewError(null);
-
+    setPresentationError(null);
     try {
-      const [assessmentsResponse, installationsResponse, postDeploymentResponse, issuesResponse, progressResponse, overviewResponse, timelineResponse] = await Promise.all([
+      const [
+        assessmentsResponse,
+        installationsResponse,
+        postDeploymentResponse,
+        issuesResponse,
+        progressResponse,
+        overviewResponse,
+        timelineResponse,
+      ] = await Promise.all([
         fetch('/api/smartsheet/presentation/planned-assessments'),
         fetch('/api/smartsheet/presentation/planned-installations'),
         fetch('/api/smartsheet/presentation/post-deployment-signoff'),
@@ -529,13 +507,13 @@ const SmartsheetPivotPage = () => {
         throw new Error(`Failed to load planned installations (HTTP ${installationsResponse.status}).`);
       }
       if (!postDeploymentResponse.ok) {
-        throw new Error(`Failed to load post-deployment sign-off (HTTP ${postDeploymentResponse.status}).`);
+        throw new Error(`Failed to load post-deployment data (HTTP ${postDeploymentResponse.status}).`);
       }
       if (!issuesResponse.ok) {
         throw new Error(`Failed to load issue log (HTTP ${issuesResponse.status}).`);
       }
       if (!progressResponse.ok) {
-        throw new Error(`Failed to load progress summary (HTTP ${progressResponse.status}).`);
+        throw new Error(`Failed to load progress data (HTTP ${progressResponse.status}).`);
       }
       if (!overviewResponse.ok) {
         throw new Error(`Failed to load programme overview (HTTP ${overviewResponse.status}).`);
@@ -584,7 +562,7 @@ const SmartsheetPivotPage = () => {
       setPresentationLoading(false);
       setOverviewLoading(false);
     }
-  }, []);
+  }, [presentationLoaded, presentationLoading]);
 
   const fetchHighlights = useCallback(async () => {
     if (highlightsLoaded || highlightsLoading) return;
@@ -1260,7 +1238,7 @@ const SmartsheetPivotPage = () => {
     };
     taskTrackerOptionItems.forEach((item) => {
       const country = String(item?.country || '').trim();
-      const siteName = String(item?.siteName || '').trim();
+      const siteName = cleanSiteName(String(item?.siteName || '').trim());
       const siteId = String(item?.siteId || '').trim();
       const taskName = String(item?.taskName || '').trim();
       const taskId = item?.taskId ? String(item.taskId) : null;
@@ -3213,6 +3191,86 @@ const SmartsheetPivotPage = () => {
     }
 
     if (meta.key === '__exec_status') {
+      const toDate = (value) => {
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        return date;
+      };
+      const startOfLastWeek = () => {
+        const now = new Date();
+        const current = new Date(now);
+        const day = current.getDay();
+        const diffToMonday = (day === 0 ? -6 : 1) - day;
+        current.setDate(current.getDate() + diffToMonday - 7);
+        current.setHours(0, 0, 0, 0);
+        return current;
+      };
+      const endOfLastWeek = () => {
+        const start = startOfLastWeek();
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
+        return end;
+      };
+      const lastWeekStart = startOfLastWeek();
+      const lastWeekEnd = endOfLastWeek();
+      const getCalendarWeek = (date) => {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dayNum = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+      };
+      const lastWeekCW = getCalendarWeek(lastWeekStart);
+
+      const startedLastWeekRows = plannedWeekRows.filter((row) => {
+        const startDate = toDate(getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']));
+        return startDate && startDate >= lastWeekStart && startDate <= lastWeekEnd;
+      });
+      const finishedLastWeekRows = plannedWeekRows.filter((row) => {
+        const endDate = toDate(getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']));
+        return endDate && endDate >= lastWeekStart && endDate <= lastWeekEnd;
+      });
+      const renderStatusRows = (rows, prefix) =>
+        rows.map((row, index) => {
+          const country = getRowField(row, ['country', 'Country']) || '—';
+          const siteName = cleanSiteName(getRowField(row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '');
+          const siteId = getRowField(row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) || '';
+          const taskName = getRowField(row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) || '—';
+          const startDate = getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']);
+          const endDate = getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']);
+          const status = getRowField(row, ['status', 'Status']) || '';
+          const commentKey = buildPlannedWeekCommentKey(country, siteId, siteName, taskName, startDate, endDate);
+          const commentValue = getPlannedWeekCommentDraft(commentKey) || '';
+
+          return (
+            <tr key={`${prefix}-${country}-${siteId || siteName || 'row'}-${index}`}>
+              <td className="fw-semibold">
+                <CountryAnchor country={country} />
+              </td>
+              <td>
+                {siteName || '—'}
+                {siteId ? ` (${siteId})` : ''}
+              </td>
+              <td>{formatDisplayValue(taskName)}</td>
+              <td>{formatDateDisplay(startDate)}</td>
+              <td>{formatDateDisplay(endDate)}</td>
+              <td>{formatDisplayValue(status)}</td>
+              <td className="text-muted small">
+                {presentationEditMode ? (
+                  <textarea
+                    className="form-control form-control-sm"
+                    value={commentValue ?? ''}
+                    onChange={(event) => updatePlannedWeekCommentDraft(commentKey, event.target.value)}
+                  />
+                ) : (
+                  commentValue ? formatDisplayValue(commentValue) : ''
+                )}
+              </td>
+            </tr>
+          );
+        });
+
       return (
         <div className="d-flex flex-column gap-2">
           {plannedWeekLoading && (
@@ -3227,72 +3285,74 @@ const SmartsheetPivotPage = () => {
             <div className="text-muted small">No planned assessments or installations found.</div>
           )}
           {!plannedWeekLoading && !plannedWeekError && plannedWeekRows.length > 0 && (
-            <div className="table-responsive">
-              <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                <colgroup>
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '24%' }} />
-                  <col style={{ width: '16%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '10%' }} />
-                </colgroup>
-                <thead className="table-light">
-                  <tr>
-                    <th>Country</th>
-                    <th>Site Name (Site ID)</th>
-                    <th>Activity</th>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th>Status</th>
-                    <th>Comment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plannedWeekRows.map((row, index) => {
-                    const country = getRowField(row, ['country', 'Country']) || '—';
-                    const siteName = cleanSiteName(getRowField(row, ['site_name', 'siteName', 'Site_Name', 'SiteName']) || '');
-                    const siteId = getRowField(row, ['site_id', 'siteId', 'Site_ID', 'SiteID']) || '';
-                    const taskName = getRowField(row, ['task_name', 'taskName', 'Task_Name', 'TaskName']) || '—';
-                    const startDate = getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']);
-                    const endDate = getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']);
-                    const status = getRowField(row, ['status', 'Status']) || '';
-                    const comment = getRowField(row, ['comment', 'Comment']) || '';
-                    const commentKey = buildPlannedWeekCommentKey(country, siteId, siteName, taskName, startDate, endDate);
-                    const commentValue = getPlannedWeekCommentDraft(commentKey) || '';
-
-                    return (
-                      <tr key={`${country}-${siteId || siteName || 'row'}-${index}`}>
-                        <td className="fw-semibold">
-                          <CountryAnchor country={country} />
-                        </td>
-                        <td>
-                          {siteName || '—'}
-                          {siteId ? ` (${siteId})` : ''}
-                        </td>
-                        <td>{formatDisplayValue(taskName)}</td>
-                        <td>{formatDateDisplay(startDate)}</td>
-                        <td>{formatDateDisplay(endDate)}</td>
-                        <td>{formatDisplayValue(status)}</td>
-                        <td className="text-muted small">
-                          {presentationEditMode ? (
-                            <textarea
-                              className="form-control form-control-sm"
-                              rows={2}
-                              value={commentValue}
-                              onChange={(event) => updatePlannedWeekCommentDraft(commentKey, event.target.value)}
-                            />
-                          ) : (
-                            formatDisplayValue(comment)
-                          )}
-                        </td>
+            <>
+              <div className="fw-semibold">
+                Status planned to start assessments and installations to start/finish CW{String(lastWeekCW).padStart(2, '0')}
+              </div>
+              {startedLastWeekRows.length === 0 ? (
+                <div className="text-muted small">No sites started last week.</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                    <colgroup>
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '24%' }} />
+                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '12%' }} />
+                      <col style={{ width: '10%' }} />
+                    </colgroup>
+                    <thead className="table-light">
+                      <tr>
+                        <th>Country</th>
+                        <th>Site Name (Site ID)</th>
+                        <th>Activity</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Status</th>
+                        <th>Comment</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>{renderStatusRows(startedLastWeekRows, 'start')}</tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="fw-semibold mt-2">
+                Status planned to complete assessments and installations to start/finish CW{String(lastWeekCW).padStart(2, '0')}
+              </div>
+              {finishedLastWeekRows.length === 0 ? (
+                <div className="text-muted small">No sites finished last week.</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                    <colgroup>
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '24%' }} />
+                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '12%' }} />
+                      <col style={{ width: '10%' }} />
+                    </colgroup>
+                    <thead className="table-light">
+                      <tr>
+                        <th>Country</th>
+                        <th>Site Name (Site ID)</th>
+                        <th>Activity</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Status</th>
+                        <th>Comment</th>
+                      </tr>
+                    </thead>
+                    <tbody>{renderStatusRows(finishedLastWeekRows, 'finish')}</tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
           )}
         </div>
       );
@@ -5205,13 +5265,6 @@ const SmartsheetPivotPage = () => {
 
       {activeTab === 'gantt' && (
         <div className="d-flex flex-column gap-3">
-          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
-            <div>
-              <h2 className="h5 mb-0">Graph</h2>
-              <div className="text-muted small">Project plan by country</div>
-            </div>
-          </div>
-
           <div className="card shadow-sm">
             <div className="card-body">
               <ul className="nav nav-tabs mb-3" role="tablist">
@@ -5245,7 +5298,7 @@ const SmartsheetPivotPage = () => {
                     aria-selected={ganttSelectorTab === 'wonderful'}
                     onClick={() => setGanttSelectorTab('wonderful')}
                   >
-                    Wonderful
+                    Accomplishments
                   </button>
                 </li>
               </ul>
