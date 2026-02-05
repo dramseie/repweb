@@ -3324,6 +3324,7 @@ const SmartsheetPivotPage = () => {
                 </tfoot>
               </table>
             </div>
+          )}
         </div>
       );
     }
