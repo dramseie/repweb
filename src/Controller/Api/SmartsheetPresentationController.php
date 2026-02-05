@@ -3325,9 +3325,10 @@ class SmartsheetPresentationController extends AbstractController
         $html[] = '<title>Presentation Export</title>';
         $html[] = '<style>';
         $html[] = 'body{font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:#f4f6f9;color:#1b1f24;}';
-        $html[] = '.page{max-width:1200px;margin:0 auto;padding:32px;}';
+        $html[] = '.page{max-width:none;width:100%;margin:0;padding:24px;}';
         $html[] = '.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}';
-        $html[] = '.card{background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.08);margin-bottom:24px;padding:20px;}';
+        $html[] = '.card{background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.08);margin-bottom:24px;padding:20px;page-break-after:always;break-after:page;page-break-inside:avoid;}';
+        $html[] = '.card:last-child{page-break-after:auto;break-after:auto;}';
         $html[] = '.card h2{margin:0 0 12px;font-size:20px;}';
         $html[] = '.muted{color:#6c7a89;font-size:13px;}';
         $html[] = '.table{width:100%;border-collapse:collapse;font-size:13px;}';
@@ -3351,7 +3352,8 @@ class SmartsheetPresentationController extends AbstractController
         $html[] = '.timeline-bar{flex:1;height:14px;border-radius:6px;background:#eef1f4;position:relative;}';
         $html[] = '.timeline-bar .segment{position:absolute;top:1px;bottom:1px;border-radius:6px;}';
         $html[] = '.traffic-light{width:110px;align-self:center;}';
-        $html[] = '@media print{body{background:#fff;} .card{box-shadow:none;border:1px solid #e5e7eb;}}';
+        $html[] = '@page{size:A2 landscape;margin:12mm;}';
+        $html[] = '@media print{body{background:#fff;} .card{box-shadow:none;border:1px solid #e5e7eb;} .page{padding:0;}}';
         $html[] = '</style>';
         $html[] = '</head>';
         $html[] = '<body>';
