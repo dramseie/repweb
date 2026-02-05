@@ -397,13 +397,35 @@ class SmartsheetPresentationController extends AbstractController
         $payload = json_decode((string) $request->getContent(), true) ?? [];
         $countries = $this->normalizeCountryFilter($payload['countries'] ?? null);
 
+        $assessments = $this->plannedDataForTask(self::DEFAULT_TASK_NAME, $countries);
+        $installations = $this->plannedDataForTask('Installation Execution', $countries);
+        $postDeployment = $this->postDeploymentData($countries);
+        $issueLog = $this->issueLogData($countries);
+        $overview = $this->programmeOverviewData();
+        $timeline = $this->timelineData($countries);
+        $progress = $this->progressData($countries);
+        $plannedWeekRows = $this->plannedWeekData($countries);
+
+        $highlightsContent = $this->getLatestContent('highlights');
+        $trendOverrides = $this->decodeOverrides($this->getLatestContent('trend_overrides'));
+        $overviewOverrides = $this->decodeOverrides($this->getLatestContent('overview_overrides'));
+
+        $overviewItems = $this->filterItemsByCountries($overview['items'] ?? [], $countries, 'country');
+
         $data = [
             'generatedAt' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
             'countries' => $countries,
-            'plannedAssessments' => $this->plannedDataForTask(self::DEFAULT_TASK_NAME, $countries),
-            'plannedInstallations' => $this->plannedDataForTask('Installation Execution', $countries),
-            'postDeployment' => $this->postDeploymentData($countries),
-            'issueLog' => $this->issueLogData($countries),
+            'plannedAssessments' => $assessments,
+            'plannedInstallations' => $installations,
+            'postDeployment' => $postDeployment,
+            'issueLog' => $issueLog,
+            'overviewItems' => $overviewItems,
+            'timeline' => $timeline,
+            'progress' => $progress,
+            'plannedWeekRows' => $plannedWeekRows,
+            'highlights' => $highlightsContent,
+            'trendOverrides' => $trendOverrides,
+            'overviewOverrides' => $overviewOverrides,
         ];
 
         $tmpJson = tempnam(sys_get_temp_dir(), 'rep_ppt_');
