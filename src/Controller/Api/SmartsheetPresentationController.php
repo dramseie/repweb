@@ -3218,38 +3218,50 @@ class SmartsheetPresentationController extends AbstractController
 
     private function getFlagDataUri(string $country): ?string
     {
-        $overviewOverrides = $this->connection->fetchAssociative(
-            sprintf('SELECT content FROM %s WHERE section = :section ORDER BY created_at DESC LIMIT 1', self::CONTENT_TABLE),
-            ['section' => 'overview_overrides']
-        );
-        $overviewOverrideData = json_decode((string) ($overviewOverrides['content'] ?? ''), true);
-        $overviewOverrideData = is_array($overviewOverrideData) ? $overviewOverrideData : [];
+        $normalized = mb_strtolower(trim($country));
+        if ($normalized === '') {
+            return null;
+        }
+        $slug = preg_replace('/[^a-z]+/', '-', $normalized);
+        $slug = trim((string) $slug, '-');
+        if ($slug === '') {
+            return null;
+        }
+        $path = dirname(__DIR__, 3) . '/public/images/flags/' . $slug . '.png';
 
-        $rows = $this->connection->fetchAllAssociative(
-            'SELECT country, stores, assessed, ongoing_installations, stores_installed, store_signoff '
-            . 'FROM nifi.smartsheet_country_trend_view'
-        );
+        return $this->imageToDataUri($path);
+    }
 
-        $items = [];
-        foreach ($rows as $row) {
-            $country = trim((string) ($row['country'] ?? '')) ?: 'Unspecified';
-            $override = $overviewOverrideData[$country] ?? [];
-            $items[] = [
-                'country' => $country,
-                'stores' => (int) ($row['stores'] ?? 0),
-                'assessed' => (int) ($row['assessed'] ?? 0),
-                'ongoingInstallations' => (int) ($row['ongoing_installations'] ?? 0),
-                'storesInstalled' => (int) ($row['stores_installed'] ?? 0),
-                'defectsCompleted' => 0,
-                'storeSignoff' => (int) ($row['store_signoff'] ?? 0),
-                'comment' => is_array($override) ? ($override['comment'] ?? null) : null,
-                'rag' => is_array($override) ? ($override['rag'] ?? null) : null,
-            ];
+    private function buildCountryFlag(string $country): string
+    {
+        $flag = $this->getFlagDataUri($country);
+        if ($flag === null) {
+            return '';
         }
 
-        usort($items, static fn (array $a, array $b): int => strcasecmp($a['country'], $b['country']));
+        return '<img class="flag" src="' . $flag . '" alt="" style="height:14px;" />';
+    }
 
-        return ['items' => $items];
+    private function buildOfflinePresentationHtml(array $data, array $assets = []): string
+    {
+        $generatedAt = (string) ($data['generatedAt'] ?? '');
+        $presentationDate = $generatedAt !== '' ? $generatedAt : (new DateTimeImmutable('now'))->format('Y-m-d');
+        $highlights = (string) ($data['highlights'] ?? '');
+        $overviewItems = $data['overviewItems'] ?? [];
+        $trendOverrides = is_array($data['trendOverrides'] ?? null) ? $data['trendOverrides'] : [];
+        $overviewOverrides = is_array($data['overviewOverrides'] ?? null) ? $data['overviewOverrides'] : [];
+        $plannedWeekRows = $data['plannedWeekRows'] ?? [];
+        $timeline = $data['timeline'] ?? [];
+        $progress = $data['progress'] ?? [];
+        $assessments = $data['plannedAssessments'] ?? [];
+        $installations = $data['plannedInstallations'] ?? [];
+        $postDeployment = $data['postDeployment'] ?? [];
+        $issueLog = $data['issueLog'] ?? [];
+        $trafficLights = [
+            'green' => $assets['traffic_green'] ?? null,
+            'amber' => $assets['traffic_amber'] ?? null,
+            'red' => $assets['traffic_red'] ?? null,
+        ];
 
         $timelineMap = [];
         foreach (($timeline['items'] ?? []) as $row) {
@@ -3283,6 +3295,13 @@ class SmartsheetPresentationController extends AbstractController
         foreach (($postDeployment['items'] ?? []) as $row) {
             if (!empty($row['country'])) {
                 $postDeploymentMap[$row['country']] = $row;
+            }
+        }
+
+        $progressMap = [];
+        foreach (($progress['items'] ?? []) as $row) {
+            if (!empty($row['country'])) {
+                $progressMap[$row['country']] = $row;
             }
         }
 
