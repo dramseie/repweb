@@ -3135,6 +3135,24 @@ const SmartsheetPivotPage = () => {
     }
 
     if (meta.key === '__exec_overview') {
+      const overviewTotals = filteredOverviewItems.reduce(
+        (acc, row) => {
+          acc.stores += Number(row.stores || 0);
+          acc.assessed += Number(row.assessed || 0);
+          acc.ongoingInstallations += Number(row.ongoingInstallations || 0);
+          acc.storesInstalled += Number(row.storesInstalled || 0);
+          acc.storeSignoff += Number(row.storeSignoff || 0);
+          return acc;
+        },
+        {
+          stores: 0,
+          assessed: 0,
+          ongoingInstallations: 0,
+          storesInstalled: 0,
+          storeSignoff: 0,
+        }
+      );
+
       return (
         <div className="d-flex flex-column gap-2">
           {overviewLoading && (
@@ -3240,6 +3258,18 @@ const SmartsheetPivotPage = () => {
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="table-light fw-semibold">
+                    <td>Total</td>
+                    <td>{formatDisplayValue(overviewTotals.stores)}</td>
+                    <td>{formatDisplayValue(overviewTotals.assessed)}</td>
+                    <td>{formatDisplayValue(overviewTotals.ongoingInstallations)}</td>
+                    <td>{formatDisplayValue(overviewTotals.storesInstalled)}</td>
+                    <td>{formatDisplayValue(overviewTotals.storeSignoff)}</td>
+                    <td>—</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}

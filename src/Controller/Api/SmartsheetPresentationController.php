@@ -25,6 +25,7 @@ class SmartsheetPresentationController extends AbstractController
     private const MASTER_TABLE = 'nifi.smartsheet_master_data';
     private const COUNTRY_GANTT_VIEW = 'nifi.smartsheet_country_gantt_view';
     private const PLANNED_WEEK_VIEW = 'nifi.smartsheet_planned_week_view';
+    private const PROGRAMME_OVERVIEW_VIEW = 'nifi.smartsheet_programme_overview_view';
     private const DEFAULT_TASK_NAME = 'Assessment Execution';
     private const POST_DEPLOYMENT_TASK = 'Post-Deployment Survey and Correction Process';
     private const SIGN_OFF_TASK = 'Store Sign off Completed';
@@ -2153,7 +2154,7 @@ class SmartsheetPresentationController extends AbstractController
      */
     private function programmeOverviewData(): array
     {
-        $columns = $this->resolveMasterColumns();
+        $columns = $this->resolveProgrammeOverviewColumns();
         $countryColumn = $columns['country'] ?? null;
         $siteIdColumn = $columns['siteId'] ?? null;
         $siteNameColumn = $columns['siteName'] ?? null;
@@ -2182,7 +2183,7 @@ class SmartsheetPresentationController extends AbstractController
         $overviewOverrideData = json_decode((string) ($overviewOverrides['content'] ?? ''), true);
         $overviewOverrideData = is_array($overviewOverrideData) ? $overviewOverrideData : [];
 
-        $sql = sprintf('SELECT %s FROM %s', implode(', ', $selectParts), self::MASTER_TABLE);
+        $sql = sprintf('SELECT %s FROM %s', implode(', ', $selectParts), self::PROGRAMME_OVERVIEW_VIEW);
         $rows = $this->connection->fetchAllAssociative($sql);
 
         $countryData = [];
@@ -2256,6 +2257,35 @@ class SmartsheetPresentationController extends AbstractController
             [
                 'schema' => 'nifi',
                 'table' => 'smartsheet_master_data',
+            ]
+        );
+
+        return [
+            'country' => $this->findColumnName($columns, self::COUNTRY_CANDIDATES),
+            'siteId' => $this->findColumnName($columns, self::SITE_ID_CANDIDATES),
+            'siteName' => $this->findColumnName($columns, self::SITE_NAME_CANDIDATES),
+            'taskId' => $this->findColumnName($columns, self::TASK_ID_CANDIDATES),
+            'parentId' => $this->findColumnName($columns, self::PARENT_ID_CANDIDATES),
+            'phase' => $this->findColumnName($columns, self::PHASE_CANDIDATES),
+            'taskName' => $this->findColumnName($columns, self::TASK_NAME_CANDIDATES),
+            'startDate' => $this->findColumnName($columns, self::START_DATE_CANDIDATES),
+            'endDate' => $this->findColumnName($columns, self::END_DATE_CANDIDATES),
+            'status' => $this->findColumnName($columns, self::STATUS_CANDIDATES),
+            'comment' => $this->findColumnName($columns, self::COMMENT_CANDIDATES),
+            'rag' => $this->findColumnName($columns, self::RAG_CANDIDATES),
+        ];
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private function resolveProgrammeOverviewColumns(): array
+    {
+        $columns = $this->connection->fetchFirstColumn(
+            'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table',
+            [
+                'schema' => 'nifi',
+                'table' => 'smartsheet_programme_overview_view',
             ]
         );
 
