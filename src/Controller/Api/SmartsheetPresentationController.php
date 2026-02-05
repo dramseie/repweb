@@ -2160,6 +2160,17 @@ class SmartsheetPresentationController extends AbstractController
         $siteNameColumn = $columns['siteName'] ?? null;
         $taskNameColumn = $columns['taskName'] ?? null;
         $statusColumn = $columns['status'] ?? null;
+        $sourceTable = self::PROGRAMME_OVERVIEW_VIEW;
+
+        if ($countryColumn === null || $siteIdColumn === null || $taskNameColumn === null) {
+            $columns = $this->resolveMasterColumns();
+            $countryColumn = $columns['country'] ?? null;
+            $siteIdColumn = $columns['siteId'] ?? null;
+            $siteNameColumn = $columns['siteName'] ?? null;
+            $taskNameColumn = $columns['taskName'] ?? null;
+            $statusColumn = $columns['status'] ?? null;
+            $sourceTable = self::MASTER_TABLE;
+        }
 
         if ($countryColumn === null || $siteIdColumn === null || $taskNameColumn === null) {
             return ['items' => []];
@@ -2183,7 +2194,7 @@ class SmartsheetPresentationController extends AbstractController
         $overviewOverrideData = json_decode((string) ($overviewOverrides['content'] ?? ''), true);
         $overviewOverrideData = is_array($overviewOverrideData) ? $overviewOverrideData : [];
 
-        $sql = sprintf('SELECT %s FROM %s', implode(', ', $selectParts), self::PROGRAMME_OVERVIEW_VIEW);
+        $sql = sprintf('SELECT %s FROM %s', implode(', ', $selectParts), $sourceTable);
         $rows = $this->connection->fetchAllAssociative($sql);
 
         $countryData = [];
