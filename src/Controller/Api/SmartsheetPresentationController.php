@@ -3664,6 +3664,17 @@ class SmartsheetPresentationController extends AbstractController
         return implode("\n", $html);
     }
 
+    private function normalizeRagValue(?string $value): string
+    {
+        $normalized = mb_strtolower(trim((string) $value));
+        return match ($normalized) {
+            'green' => 'green',
+            'amber', 'yellow' => 'amber',
+            'red' => 'red',
+            default => '',
+        };
+    }
+
     private function resolveRowField(array $row, array $keys): mixed
     {
         foreach ($keys as $key) {
