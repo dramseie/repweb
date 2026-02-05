@@ -23,6 +23,8 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border as SheetBorder;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 #[Route('/api/smartsheet/presentation', name: 'api_smartsheet_presentation_')]
 class SmartsheetPresentationController extends AbstractController
@@ -788,7 +790,8 @@ class SmartsheetPresentationController extends AbstractController
             array $headers,
             array $rows,
             array $columnWidths,
-            string $tableStyleName
+            string $tableStyleName,
+            array $dateColumns = []
         ): void {
             $sheet = $sheetIndex === 0
                 ? $spreadsheet->getActiveSheet()
@@ -810,6 +813,22 @@ class SmartsheetPresentationController extends AbstractController
                 $sheet->fromArray($row, null, 'A' . $rowNumber);
                 $style = $rowIndex % 2 === 1 ? $zebraStyle : $rowStyle;
                 $sheet->getStyle('A' . $rowNumber . ':' . $lastCol . $rowNumber)->applyFromArray($style);
+                if ($dateColumns) {
+                    foreach ($dateColumns as $colIndex) {
+                        $value = $row[$colIndex - 1] ?? null;
+                        if ($value === null || $value === '' || $value === '—') {
+                            continue;
+                        }
+                        try {
+                            $date = new \DateTimeImmutable((string) $value);
+                        } catch (\Throwable) {
+                            continue;
+                        }
+                        $cell = Coordinate::stringFromColumnIndex($colIndex) . $rowNumber;
+                        $sheet->setCellValue($cell, ExcelDate::PHPToExcel($date));
+                        $sheet->getStyle($cell)->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_DATE_YYYYMMDD2);
+                    }
+                }
                 $rowNumber += 1;
             }
 
@@ -824,59 +843,64 @@ class SmartsheetPresentationController extends AbstractController
             }
         };
 
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Programme Overview',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Programme Overview',
             ['Country', 'Stores', 'Assessed', 'Ongoing Installations', 'Installed', 'Sign-off', 'RAG', 'Comment'],
             $overviewRows,
             [20, 10, 10, 22, 12, 12, 8, 40],
             'TableProgrammeOverview'
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Status Planned',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Status Planned',
             ['Country', 'Site Name', 'Site ID', 'Activity', 'Start', 'End', 'Status', 'Comment'],
             $plannedWeekExportRows,
             [18, 28, 12, 26, 12, 12, 16, 45],
-            'TableStatusPlanned'
+                'TableStatusPlanned',
+                [5, 6]
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Timeline',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Timeline',
             ['Country', 'Start Date', 'Install End Date', 'End Date'],
             $timelineRows,
             [18, 16, 18, 16],
-            'TableTimeline'
+                'TableTimeline',
+                [2, 3, 4]
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Green',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Green',
             ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
             $trendGroups['green'],
             [18, 10, 12, 22, 18, 45],
             'TableTrendGreen'
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Amber',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Amber',
             ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
             $trendGroups['amber'],
             [18, 10, 12, 22, 18, 45],
             'TableTrendAmber'
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Red',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'Trend Red',
             ['Country', 'Total', 'Assessments', 'Ongoing Installation', 'Stores Installed', 'Comment'],
             $trendGroups['red'],
             [18, 10, 12, 22, 18, 45],
             'TableTrendRed'
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'General Issues',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'General Issues',
             ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
             $generalIssuesRows,
             [18, 26, 12, 40, 12, 20, 26, 14],
-            'TableGeneralIssues'
+                'TableGeneralIssues',
+                [8]
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Planned',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Planned',
             ['Country', 'Section', 'Month', 'Site Name', 'Site ID', 'Start', 'End', 'Confidence', 'Status'],
             $allPlannedRows,
             [18, 20, 16, 26, 12, 12, 12, 14, 30],
-            'TableAllPlanned'
+                'TableAllPlanned',
+                [6, 7]
         );
-        $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Issues',
+            $addSheet($spreadsheet, $headerStyle, $rowStyle, $zebraStyle, $sheetIndex, 'All Issues',
             ['Country', 'Site Name', 'Site ID', 'Description', 'Priority', 'Responsible Party', 'Action', 'Resolve Date'],
             $allIssueRows,
             [18, 26, 12, 40, 12, 20, 26, 14],
-            'TableAllIssues'
+                'TableAllIssues',
+                [8]
         );
 
         $writer = new Xlsx($spreadsheet);
