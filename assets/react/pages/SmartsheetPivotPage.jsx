@@ -270,7 +270,7 @@ const confidenceVariant = (value) => {
 
 const confidenceColor = (value) => {
   const normalized = String(value || '').toLowerCase();
-  if (normalized.includes('high')) return '#198754';
+  if (normalized.includes('high')) return '#32cd32';
   if (normalized.includes('medium')) return '#ffc107';
   if (normalized.includes('low')) return '#dc3545';
   return '';
@@ -278,7 +278,7 @@ const confidenceColor = (value) => {
 
 const ragColor = (value) => {
   const normalized = String(value || '').toLowerCase();
-  if (normalized.includes('green')) return '#198754';
+  if (normalized.includes('green')) return '#32cd32';
   if (normalized.includes('amber') || normalized.includes('yellow')) return '#ffc107';
   if (normalized.includes('red')) return '#dc3545';
   return '#6c757d';
@@ -2898,9 +2898,9 @@ const SmartsheetPivotPage = () => {
         </div>
         <div className="progress" style={{ height: 8 }}>
           <div
-            className="progress-bar bg-success"
+            className="progress-bar"
             role="progressbar"
-            style={{ width: `${donePct}%` }}
+            style={{ width: `${donePct}%`, backgroundColor: '#32cd32' }}
             aria-label={`${task.label} done`}
           />
           <div
