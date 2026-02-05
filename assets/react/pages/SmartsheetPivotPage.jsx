@@ -287,7 +287,7 @@ const ragColor = (value) => {
 const renderStatusDot = (color, title) => (
   <span
     className="d-inline-block rounded-circle"
-    style={{ width: 12, height: 12, backgroundColor: color || '#6c757d', verticalAlign: 'middle' }}
+    style={{ width: 18, height: 18, backgroundColor: color || '#6c757d', verticalAlign: 'middle' }}
     title={title || ''}
   />
 );
