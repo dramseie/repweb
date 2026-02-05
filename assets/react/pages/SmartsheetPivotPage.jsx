@@ -2765,7 +2765,7 @@ const SmartsheetPivotPage = () => {
   const execCardMeta = [
     { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
     { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
-    { key: '__exec_status', title: 'Status planned assessments and installations', body: 'Snapshot of planned assessments and installations status.' },
+    { key: '__exec_status', title: 'Status planned to start assessments and installations to start/finish CW', body: 'Snapshot of planned assessments and installations status.' },
     { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
     { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
     { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
@@ -2927,6 +2927,26 @@ const SmartsheetPivotPage = () => {
       formatPlannedWeekDateKey(startDate),
       formatPlannedWeekDateKey(endDate),
     ].join('||').toLowerCase();
+  };
+
+  const getLastWeekRange = () => {
+    const now = new Date();
+    const current = new Date(now);
+    const day = current.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    current.setDate(current.getDate() + diffToMonday - 7);
+    current.setHours(0, 0, 0, 0);
+    const start = current;
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    const d = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const cw = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+
+    return { start, end, cw };
   };
 
   const getPlannedWeekCommentDraft = (key) => {
@@ -3196,32 +3216,7 @@ const SmartsheetPivotPage = () => {
         if (Number.isNaN(date.getTime())) return null;
         return date;
       };
-      const startOfLastWeek = () => {
-        const now = new Date();
-        const current = new Date(now);
-        const day = current.getDay();
-        const diffToMonday = (day === 0 ? -6 : 1) - day;
-        current.setDate(current.getDate() + diffToMonday - 7);
-        current.setHours(0, 0, 0, 0);
-        return current;
-      };
-      const endOfLastWeek = () => {
-        const start = startOfLastWeek();
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        end.setHours(23, 59, 59, 999);
-        return end;
-      };
-      const lastWeekStart = startOfLastWeek();
-      const lastWeekEnd = endOfLastWeek();
-      const getCalendarWeek = (date) => {
-        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-        const dayNum = d.getUTCDay() || 7;
-        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-        return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-      };
-      const lastWeekCW = getCalendarWeek(lastWeekStart);
+      const { start: lastWeekStart, end: lastWeekEnd, cw: lastWeekCW } = getLastWeekRange();
 
       const startedLastWeekRows = plannedWeekRows.filter((row) => {
         const startDate = toDate(getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']));
@@ -4217,7 +4212,9 @@ const SmartsheetPivotPage = () => {
                 <optgroup label="Exec Summary">
                   <option value="__exec_highlights">Highlights</option>
                   <option value="__exec_overview">Programme Overview Per Country</option>
-                  <option value="__exec_status">Status planned assessments and installations</option>
+                  <option value="__exec_status">
+                    {`Status planned to start assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`}
+                  </option>
                   <option value="__exec_timeline">Timeline</option>
                 </optgroup>
                 <optgroup label="Country Trend">
@@ -4330,7 +4327,9 @@ const SmartsheetPivotPage = () => {
                 ref={meta.key === '__exec_overview' ? execOverviewRef : undefined}
               >
                 <div className="card-header fw-semibold position-relative">
-                  {meta.title}
+                  {meta.key === '__exec_status'
+                    ? `Status planned to start assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`
+                    : meta.title}
                   <span
                     className="text-muted small"
                     style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)' }}
