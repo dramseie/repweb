@@ -6,8 +6,6 @@ use DateTimeImmutable;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
-use Dompdf\Dompdf;
-use Dompdf\Options;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -533,23 +531,30 @@ class SmartsheetPresentationController extends AbstractController
             'overviewOverrides' => $overviewOverrides,
         ], $assets);
 
-        $options = new Options();
-        $options->set('isRemoteEnabled', true);
-        $options->set('defaultFont', 'DejaVu Sans');
+        $tmpHtml = tempnam(sys_get_temp_dir(), 'rep_pdf_') . '.html';
+        $tmpPdf = tempnam(sys_get_temp_dir(), 'rep_pdf_') . '.pdf';
+        file_put_contents($tmpHtml, $html);
 
-        $dompdf = new Dompdf($options);
-        $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->setPaper('A2', 'landscape');
-        $dompdf->render();
+        $script = dirname(__DIR__, 3) . '/scripts/presentation_export_pdf.js';
+        $process = new Process(['node', $script, $tmpHtml, $tmpPdf]);
+        $process->setTimeout(300);
+        $process->run();
 
-        $pdfOutput = $dompdf->output();
+        @unlink($tmpHtml);
+
+        if (!$process->isSuccessful()) {
+            @unlink($tmpPdf);
+            throw new \RuntimeException('PDF export failed: ' . $process->getErrorOutput());
+        }
+
         $filename = sprintf('presentation-%s.pdf', (new DateTimeImmutable('now'))->format('Ymd_His'));
+        $response = new BinaryFileResponse($tmpPdf);
+        $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $filename);
+        $response->headers->set('Content-Type', 'application/pdf');
+        $response->headers->set('Cache-Control', 'no-store');
+        $response->deleteFileAfterSend(true);
 
-        return new Response($pdfOutput, 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => sprintf('attachment; filename="%s"', $filename),
-            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
-        ]);
+        return $response;
     }
 
     #[Route('/export-xlsx', name: 'presentation_export_xlsx', methods: ['POST'])]
