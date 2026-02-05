@@ -483,6 +483,22 @@ const SmartsheetPivotPage = () => {
   const analyseTableRef = useRef(null);
   const execOverviewRef = useRef(null);
 
+  const scrollToPresentationCard = useCallback((key) => {
+    if (!key) return;
+    const target = document.getElementById(key);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
+  const scrollToExecOverview = useCallback(() => {
+    if (execOverviewRef.current) {
+      execOverviewRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    scrollToPresentationCard('__exec_overview');
+  }, [scrollToPresentationCard]);
+
   const destroyTable = useCallback(() => {
     if (datatableRef.current) {
       datatableRef.current.destroy();
@@ -3140,6 +3156,10 @@ const SmartsheetPivotPage = () => {
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
     setPresentationCountryFilter(selected);
+    const selectedSpecial = selected.filter((value) => value.startsWith('__'));
+    if (selectedSpecial.length) {
+      scrollToPresentationCard(selectedSpecial[selectedSpecial.length - 1]);
+    }
   };
 
   const clearTimelineDrilldown = () => setTimelineDrilldownCountry(null);
@@ -3338,11 +3358,18 @@ const SmartsheetPivotPage = () => {
       };
       const { start: lastWeekStart, end: lastWeekEnd, cw: lastWeekCW } = getLastWeekRange();
 
-      const startedLastWeekRows = plannedWeekRows.filter((row) => {
+      const filteredPlannedWeekRows = selectedCountryValues.length
+        ? plannedWeekRows.filter((row) => {
+          const country = getRowField(row, ['country', 'Country']);
+          return country && selectedCountryValues.includes(country);
+        })
+        : plannedWeekRows;
+
+      const startedLastWeekRows = filteredPlannedWeekRows.filter((row) => {
         const startDate = toDate(getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']));
         return startDate && startDate >= lastWeekStart && startDate <= lastWeekEnd;
       });
-      const finishedLastWeekRows = plannedWeekRows.filter((row) => {
+      const finishedLastWeekRows = filteredPlannedWeekRows.filter((row) => {
         const endDate = toDate(getRowField(row, ['end_date', 'endDate', 'End_Date', 'EndDate']));
         return endDate && endDate >= lastWeekStart && endDate <= lastWeekEnd;
       });
@@ -4523,7 +4550,7 @@ const SmartsheetPivotPage = () => {
               <div
                 key={meta.key}
                 className="card shadow-sm"
-                id={meta.key === '__exec_overview' ? 'exec-overview' : undefined}
+                id={meta.key}
                 ref={meta.key === '__exec_overview' ? execOverviewRef : undefined}
               >
                 <div className="card-header fw-semibold position-relative">
@@ -4551,8 +4578,8 @@ const SmartsheetPivotPage = () => {
                   style={{ height: 180 }}
                 >
                 <strong style={{ position: 'relative', zIndex: 2 }}>
-                  <a
-                    href="#exec-overview"
+                    <a
+                      href="#__exec_overview"
                     className="text-decoration-none text-reset"
                     onClick={(event) => {
                       event.preventDefault();

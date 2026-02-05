@@ -742,16 +742,16 @@ class SmartsheetPresentationController extends AbstractController
             ->setBorder($border)
             ->setCellAlignment(CellAlignment::CENTER)
             ->setCellVerticalAlignment(CellVerticalAlignment::CENTER)
-            ->setWrapText();
+            ->setShouldWrapText();
         $rowStyle = (new Style())
             ->setBorder($border)
             ->setCellVerticalAlignment(CellVerticalAlignment::TOP)
-            ->setWrapText();
+            ->setShouldWrapText();
         $zebraStyle = (new Style())
             ->setBorder($border)
             ->setBackgroundColor('F8FAFC')
             ->setCellVerticalAlignment(CellVerticalAlignment::TOP)
-            ->setWrapText();
+            ->setShouldWrapText();
         $sheetIndex = 0;
 
         $addSheet = static function (
