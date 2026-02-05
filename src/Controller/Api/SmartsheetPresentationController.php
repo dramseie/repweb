@@ -539,7 +539,7 @@ class SmartsheetPresentationController extends AbstractController
 
         $dompdf = new Dompdf($options);
         $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->setPaper('A3', 'landscape');
         $dompdf->render();
 
         $pdfOutput = $dompdf->output();
