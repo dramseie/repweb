@@ -34,10 +34,20 @@ const findChromeExecutable = () => {
     process.exit(1);
   }
 
+  const userDataDir = fs.mkdtempSync(path.join('/tmp', 'repweb-chrome-'));
   const browser = await puppeteer.launch({
     executablePath,
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    userDataDir,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-crashpad',
+      '--disable-features=Crashpad',
+      '--no-first-run',
+      '--no-default-browser-check',
+    ],
   });
 
   try {
@@ -53,6 +63,11 @@ const findChromeExecutable = () => {
     });
   } finally {
     await browser.close();
+    try {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    } catch (error) {
+      console.warn('Failed to clean Chromium profile:', error.message);
+    }
   }
 })().catch((error) => {
   console.error(error);

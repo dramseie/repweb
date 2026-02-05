@@ -537,6 +537,11 @@ class SmartsheetPresentationController extends AbstractController
 
         $script = dirname(__DIR__, 3) . '/scripts/presentation_export_pdf.js';
         $process = new Process(['node', $script, $tmpHtml, $tmpPdf]);
+        $process->setEnv([
+            'HOME' => '/tmp',
+            'XDG_RUNTIME_DIR' => '/tmp',
+            'CHROME_BIN' => '/usr/bin/chromium',
+        ]);
         $process->setTimeout(300);
         $process->run();
 

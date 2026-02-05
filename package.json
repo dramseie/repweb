@@ -106,6 +106,7 @@
     "plotly.js": "^3.1.0",
     "plotly.js-basic-dist": "^3.1.0",
     "plotly.js-dist-min": "^2.35.3",
+    "puppeteer-core": "^24.37.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-grid-layout": "^1.5.2",
