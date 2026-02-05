@@ -333,6 +333,7 @@ const SmartsheetPivotPage = () => {
   const [presentationSaveError, setPresentationSaveError] = useState(null);
   const [issueDrafts, setIssueDrafts] = useState({});
   const [issueSaving, setIssueSaving] = useState({});
+  const [issueDeleting, setIssueDeleting] = useState({});
   const [issueEditTargets, setIssueEditTargets] = useState({});
   const [slideshowOpen, setSlideshowOpen] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState(0);
@@ -2179,6 +2180,43 @@ const SmartsheetPivotPage = () => {
     }
   };
 
+  const deleteIssue = async (country, id) => {
+    if (!id) return;
+    const confirmDelete = window.confirm('Delete this issue?');
+    if (!confirmDelete) return;
+    setIssueDeleting((prev) => ({ ...prev, [id]: true }));
+    try {
+      const response = await fetch(`/api/smartsheet/presentation/issues/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      if (getIssueEditTarget(country) === id) {
+        clearIssueEdit(country);
+        updateIssueDraft(country, {
+          storeId: '',
+          storeName: '',
+          description: '',
+          priority: '',
+          responsibleParty: '',
+          actionRequired: '',
+          resolveDate: '',
+        });
+      }
+      fetchPresentation();
+    } catch (error) {
+      setPresentationSaveError(error.message || 'Failed to delete issue.');
+    } finally {
+      setIssueDeleting((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  };
+
   const resetTaskTrackerDraft = () => {
     setTaskTrackerDraft({ date: formatYmd(new Date()), category: '', description: '', responsible: '', tasks: [] });
     setTaskTrackerEditId(null);
@@ -2700,13 +2738,23 @@ const SmartsheetPivotPage = () => {
                 {presentationEditMode && (
                   <td className="text-nowrap">
                     {entry.id ? (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-secondary"
-                        onClick={() => startIssueEdit(country, entry)}
-                      >
-                        Edit
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary me-1"
+                          onClick={() => startIssueEdit(country, entry)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => deleteIssue(country, entry.id)}
+                          disabled={!!issueDeleting[entry.id]}
+                        >
+                          {issueDeleting[entry.id] ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </>
                     ) : (
                       <span className="text-muted small">—</span>
                     )}
@@ -2740,18 +2788,16 @@ const SmartsheetPivotPage = () => {
         <div className="table-responsive">
           <table className="table table-sm table-bordered table-striped align-middle mb-0 w-100">
             <colgroup>
-              <col style={{ width: '35%' }} />
+              <col style={{ width: '45%' }} />
+              <col style={{ width: '15%' }} />
               <col style={{ width: '12%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '39%' }} />
-              <col style={{ width: '4%' }} />
+              <col style={{ width: '28%' }} />
             </colgroup>
             <thead className="table-light">
               <tr>
                 <th>Description</th>
                 <th>Country</th>
                 <th>Owner</th>
-                <th>Action</th>
                 <th>Priority (CHML)</th>
                 {presentationEditMode && <th>Show</th>}
               </tr>
@@ -2765,11 +2811,6 @@ const SmartsheetPivotPage = () => {
                     {formatDisplayValue(entry.country)}
                   </td>
                   <td>{formatDisplayValue(entry.owner)}</td>
-                  <td>
-                    {formatActionLines(entry.action).map((line, lineIndex) => (
-                      <div key={`${entry.country ?? 'country'}-${index}-action-${lineIndex}`}>{line}</div>
-                    ))}
-                  </td>
                   <td>{formatDisplayValue(entry.priority)}</td>
                   {presentationEditMode && (
                     <td className="text-center">
@@ -4390,9 +4431,7 @@ const SmartsheetPivotPage = () => {
                 ref={meta.key === '__exec_overview' ? execOverviewRef : undefined}
               >
                 <div className="card-header fw-semibold position-relative">
-                  {meta.key === '__exec_status'
-                    ? `Status of assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`
-                    : meta.title}
+                  {meta.title}
                   <span
                     className="text-muted small"
                     style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)' }}

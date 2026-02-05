@@ -1616,6 +1616,14 @@ class SmartsheetPresentationController extends AbstractController
 
         return $this->json(['ok' => true]);
     }
+    
+    #[Route('/issues/{id}', name: 'issue_log_delete', methods: ['DELETE'])]
+    public function deleteIssue(int $id): JsonResponse
+    {
+        $this->connection->delete('smartsheet_issue_log', ['id' => $id]);
+        
+        return $this->json(['ok' => true]);
+    }
 
     #[Route('/issues/{id}', name: 'issue_log_update', methods: ['PUT'])]
     public function updateIssue(int $id, \Symfony\Component\HttpFoundation\Request $request): JsonResponse
