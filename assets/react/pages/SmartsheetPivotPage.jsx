@@ -2847,7 +2847,7 @@ const SmartsheetPivotPage = () => {
   const execCardMeta = [
     { key: '__exec_highlights', title: 'Highlights', body: 'Key wins, risks, and milestones.' },
     { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
-    { key: '__exec_status', title: 'Status planned to start', body: 'Snapshot of planned assessments and installations status.' },
+    { key: '__exec_status', title: 'Status of assessments and installations to start/finish CW', body: 'Snapshot of planned assessments and installations status.' },
     { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
     { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
     { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
@@ -4359,7 +4359,9 @@ const SmartsheetPivotPage = () => {
                 <optgroup label="Exec Summary">
                   <option value="__exec_highlights">Highlights</option>
                   <option value="__exec_overview">Programme Overview Per Country</option>
-                  <option value="__exec_status">Status planned to start</option>
+                  <option value="__exec_status">
+                    {`Status of assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`}
+                  </option>
                   <option value="__exec_timeline">Timeline</option>
                 </optgroup>
                 <optgroup label="Country Trend">
@@ -4472,7 +4474,9 @@ const SmartsheetPivotPage = () => {
                 ref={meta.key === '__exec_overview' ? execOverviewRef : undefined}
               >
                 <div className="card-header fw-semibold position-relative">
-                  {meta.title}
+                  {meta.key === '__exec_status'
+                    ? `Status of assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`
+                    : meta.title}
                   <span
                     className="text-muted small"
                     style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)' }}
