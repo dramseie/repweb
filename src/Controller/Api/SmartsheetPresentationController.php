@@ -1762,18 +1762,18 @@ class SmartsheetPresentationController extends AbstractController
             $params['country'] = $country;
         }
         if (is_array($tasks) && $tasks !== []) {
-            $where[] = sprintf('`%s` IN (:tasks)', $taskNameColumn);
-            $params['tasks'] = array_values(array_filter(array_map('strval', $tasks)));
+            $where[] = sprintf('LOWER(TRIM(`%s`)) IN (:tasks)', $taskNameColumn);
+            $params['tasks'] = array_values(array_filter(array_map(
+                static fn ($value) => mb_strtolower(trim((string) $value)),
+                $tasks
+            )));
         }
-        if (is_array($sites) && $sites !== [] && ($siteNameColumn || $siteIdColumn)) {
-            if ($siteNameColumn && $siteIdColumn) {
-                $where[] = sprintf('(`%s` IN (:sites) OR `%s` IN (:sites))', $siteNameColumn, $siteIdColumn);
-            } elseif ($siteNameColumn) {
-                $where[] = sprintf('`%s` IN (:sites)', $siteNameColumn);
-            } else {
-                $where[] = sprintf('`%s` IN (:sites)', $siteIdColumn);
-            }
-            $params['sites'] = array_values(array_filter(array_map('strval', $sites)));
+        $siteFilter = [];
+        if (is_array($sites) && $sites !== []) {
+            $siteFilter = array_values(array_filter(array_map(
+                static fn ($value) => mb_strtolower(trim((string) $value)),
+                $sites
+            )));
         }
         $selectParts = [
             sprintf('`%s` AS task_name', $taskNameColumn),
@@ -1800,10 +1800,6 @@ class SmartsheetPresentationController extends AbstractController
         if (isset($params['tasks'])) {
             $types['tasks'] = ArrayParameterType::STRING;
         }
-        if (isset($params['sites'])) {
-            $types['sites'] = ArrayParameterType::STRING;
-        }
-
         $rows = $this->connection->executeQuery($sql, $params, $types)->fetchAllAssociative();
 
         $groups = [];
@@ -1817,6 +1813,12 @@ class SmartsheetPresentationController extends AbstractController
             $siteLabel = $siteName !== '' ? $siteName : $siteId;
             if ($siteLabel === '') {
                 $siteLabel = 'Unknown site';
+            }
+            if ($siteFilter !== []) {
+                $siteKey = mb_strtolower(trim((string) $siteLabel));
+                if (!in_array($siteKey, $siteFilter, true)) {
+                    continue;
+                }
             }
             $countryValue = trim((string) ($row['country'] ?? ''));
             $key = $countryValue . '|' . $siteLabel . '|' . $taskName;

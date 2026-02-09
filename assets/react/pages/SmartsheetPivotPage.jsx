@@ -508,13 +508,24 @@ const SmartsheetPivotPage = () => {
     });
 
     return {
-      chart: { type: 'line', height: 520 },
+      chart: { type: 'column', height: 520 },
       title: { text: null },
       credits: { enabled: false },
       xAxis: { type: 'datetime' },
-      yAxis: { title: { text: 'End date deviation (days)' } },
+      yAxis: {
+        title: { text: 'End date deviation (days)' },
+        plotLines: [{ color: '#7d7d7d', width: 1, value: 0, zIndex: 3 }],
+      },
       legend: { enabled: true },
       tooltip: { xDateFormat: '%Y-%m-%d' },
+      plotOptions: {
+        column: {
+          borderWidth: 0,
+          grouping: false,
+          pointPadding: 0.05,
+          groupPadding: 0.1,
+        },
+      },
       series,
     };
   }, [trendSeriesRows]);
