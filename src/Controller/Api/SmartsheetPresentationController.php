@@ -1839,6 +1839,10 @@ class SmartsheetPresentationController extends AbstractController
             if ($siteLabel === '') {
                 $siteLabel = 'Unknown site';
             }
+            $siteLabel = preg_replace('/^\s*IKEAStore\s*-\s*/i', '', $siteLabel);
+            $siteLabel = preg_replace('/^\s*IKEA\s*-\s*/i', '', $siteLabel);
+            $siteLabel = preg_replace('/^\s*Store\s*-\s*/i', '', $siteLabel);
+            $siteLabel = trim((string) $siteLabel);
             if ($siteFilter !== []) {
                 $siteKey = mb_strtolower(trim((string) $siteLabel));
                 if (!in_array($siteKey, $siteFilter, true)) {

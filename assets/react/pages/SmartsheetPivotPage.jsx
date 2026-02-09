@@ -5652,7 +5652,7 @@ const SmartsheetPivotPage = () => {
                     aria-selected={ganttSelectorTab === 'trend'}
                     onClick={() => setGanttSelectorTab('trend')}
                   >
-                    Trend
+                    History Tracking
                   </button>
                 </li>
               </ul>
@@ -5965,7 +5965,7 @@ const SmartsheetPivotPage = () => {
                 <div className="d-flex flex-column gap-3">
                   <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
                     <div>
-                      <h2 className="h6 mb-0">Trend Analysis</h2>
+                      <h2 className="h6 mb-0">History Tracking</h2>
                       <div className="text-muted small">Source: nifi.smartsheet_history_view</div>
                     </div>
                     <div className="d-flex align-items-center gap-2">
