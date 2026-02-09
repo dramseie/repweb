@@ -9,6 +9,7 @@ import DataTablesReport from '../../components/DataTablesReport.jsx';
 import TrumboField from '../components/common/TrumboField.jsx';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import Select from 'react-select';
 
 if (typeof Highcharts === 'object') {
   const initXRange = HighchartsXRange?.default || HighchartsXRange;
@@ -6066,33 +6067,29 @@ const SmartsheetPivotPage = () => {
                     </div>
                     <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Country</label>
-                      <select
-                        className="form-select"
-                        value={trendFilterCountry}
-                        onChange={(event) => {
-                          setTrendFilterCountry(event.target.value);
-                        }}
-                        disabled={trendFiltersLoading}
-                      >
-                        <option value="">All countries</option>
-                        {trendFilters.countries.map((country) => (
-                          <option key={`trend-country-${country}`} value={country}>{country}</option>
-                        ))}
-                      </select>
+                      <Select
+                        classNamePrefix="react-select"
+                        isClearable
+                        isLoading={trendFiltersLoading}
+                        options={trendFilters.countries.map((country) => ({ value: country, label: country }))}
+                        value={trendFilterCountry
+                          ? { value: trendFilterCountry, label: trendFilterCountry }
+                          : null}
+                        onChange={(option) => setTrendFilterCountry(option?.value || '')}
+                      />
                     </div>
                     <div className="col-12 col-md-6">
                       <label className="form-label fw-medium">Task</label>
-                      <select
-                        className="form-select"
-                        value={trendFilterTask}
-                        onChange={(event) => setTrendFilterTask(event.target.value)}
-                        disabled={trendFiltersLoading}
-                      >
-                        <option value="">All tasks</option>
-                        {trendFilters.tasks.map((task) => (
-                          <option key={`trend-task-${task}`} value={task}>{task}</option>
-                        ))}
-                      </select>
+                      <Select
+                        classNamePrefix="react-select"
+                        isClearable
+                        isLoading={trendFiltersLoading}
+                        options={trendFilters.tasks.map((task) => ({ value: task, label: task }))}
+                        value={trendFilterTask
+                          ? { value: trendFilterTask, label: trendFilterTask }
+                          : null}
+                        onChange={(option) => setTrendFilterTask(option?.value || '')}
+                      />
                       <div className="form-text text-muted">Select a task.</div>
                     </div>
                   </div>
