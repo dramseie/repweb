@@ -1767,13 +1767,25 @@ class SmartsheetPresentationController extends AbstractController
         );
         $whereSql = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
 
-        $historySql = sprintf(
-            'SELECT `%s` AS task_name, `%s` AS modified_at, %s AS end_date FROM %s',
+        $siteLabelExpr = null;
+        if ($siteNameColumn && $siteIdColumn) {
+            $siteLabelExpr = sprintf('COALESCE(NULLIF(`%s`, \'\'), NULLIF(`%s`, \'\'))', $siteNameColumn, $siteIdColumn);
+        } elseif ($siteNameColumn) {
+            $siteLabelExpr = sprintf('NULLIF(`%s`, \'\')', $siteNameColumn);
+        } elseif ($siteIdColumn) {
+            $siteLabelExpr = sprintf('NULLIF(`%s`, \'\')', $siteIdColumn);
+        }
+
+        $historySelect = sprintf('`%s` AS task_name, `%s` AS modified_at, %s AS end_date',
             $taskNameColumn,
             $modifiedAtColumn,
-            $endDateExpr,
-            self::HISTORY_VIEW
-        ) . $whereSql;
+            $endDateExpr
+        );
+        if ($siteLabelExpr) {
+            $historySelect .= sprintf(', %s AS site_label', $siteLabelExpr);
+        }
+
+        $historySql = sprintf('SELECT %s FROM %s', $historySelect, self::HISTORY_VIEW) . $whereSql;
 
         $baseSql = sprintf(
             'SELECT `%s` AS task_name, MIN(%s) AS base_end FROM %s',
@@ -1783,10 +1795,13 @@ class SmartsheetPresentationController extends AbstractController
         ) . $whereSql . sprintf(' GROUP BY `%s`', $taskNameColumn);
 
         $sql = 'SELECT h.modified_at AS modified_at, h.task_name AS task_name, '
+            . ($siteLabelExpr ? 'h.site_label AS site_label, ' : '')
             . 'AVG(DATEDIFF(h.end_date, b.base_end)) AS deviation_days '
             . 'FROM (' . $historySql . ') h '
             . 'INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name '
-            . 'GROUP BY h.modified_at, h.task_name ORDER BY h.modified_at ASC';
+            . 'GROUP BY h.modified_at, h.task_name'
+            . ($siteLabelExpr ? ', h.site_label' : '')
+            . ' ORDER BY h.modified_at ASC';
 
         $types = [];
         if (isset($params['tasks'])) {

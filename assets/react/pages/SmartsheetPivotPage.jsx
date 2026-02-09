@@ -489,14 +489,16 @@ const SmartsheetPivotPage = () => {
     const seriesMap = new Map();
     trendSeriesRows.forEach((row) => {
       const task = row?.task_name ? String(row.task_name) : 'Unknown';
+      const site = row?.site_label ? String(row.site_label) : '';
+      const seriesName = site ? `${site} - ${task}` : task;
       const dateValue = row?.day ?? row?.date ?? row?.modified_at ?? null;
       const date = parseDateValue(dateValue);
       if (!date) return;
       const total = Number(row?.deviation_days ?? row?.total ?? row?.count ?? 0);
-      if (!seriesMap.has(task)) {
-        seriesMap.set(task, []);
+      if (!seriesMap.has(seriesName)) {
+        seriesMap.set(seriesName, []);
       }
-      seriesMap.get(task).push([date.getTime(), Number.isFinite(total) ? total : 0]);
+      seriesMap.get(seriesName).push([date.getTime(), Number.isFinite(total) ? total : 0]);
     });
 
     const series = Array.from(seriesMap.entries()).map(([name, data]) => {
