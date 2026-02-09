@@ -490,6 +490,7 @@ const SmartsheetPivotPage = () => {
 
   const trendSeriesOptions = React.useMemo(() => {
     const seriesMap = new Map();
+    const hoverMap = new Map();
 
     trendSeriesRows.forEach((row) => {
       const task = row?.task_name ? String(row.task_name) : 'Unknown';
@@ -500,9 +501,6 @@ const SmartsheetPivotPage = () => {
       if (!date) return;
       const dateKey = formatYmd(date);
       const total = Number(row?.deviation_days ?? row?.total ?? row?.count ?? 0);
-      const startDate = row?.start_date ?? row?.startDate ?? null;
-      const endDate = row?.end_date ?? row?.endDate ?? null;
-      const percentComplete = row?.percent_complete ?? row?.percentComplete ?? null;
       if (!seriesMap.has(seriesName)) {
         seriesMap.set(seriesName, []);
       }
@@ -513,12 +511,17 @@ const SmartsheetPivotPage = () => {
           siteLabel: site,
           taskName: task,
           dateKey,
-          startDate,
-          endDate,
-          percentComplete,
         },
       };
       seriesMap.get(seriesName).push(point);
+
+      if (site) {
+        const hoverKey = `${site}||${dateKey}`;
+        if (!hoverMap.has(hoverKey)) {
+          hoverMap.set(hoverKey, new Map());
+        }
+        hoverMap.get(hoverKey).set(task, Number.isFinite(total) ? total : 0);
+      }
     });
 
     const series = Array.from(seriesMap.entries()).map(([name, data]) => {
@@ -543,30 +546,22 @@ const SmartsheetPivotPage = () => {
           const custom = point.custom || {};
           const dateKey = custom.dateKey || '';
           const siteLabel = custom.siteLabel || '';
-          const taskName = custom.taskName || '';
-          const lines = [];
           if (!dateKey || !siteLabel) {
             return `${this.x ? formatYmd(new Date(this.x)) : ''}: ${this.y ?? 0}`;
           }
-          if (custom.startDate) {
-            lines.push(`Start date: ${escapeHtml(String(custom.startDate))}`);
-          }
-          if (custom.endDate) {
-            lines.push(`End date: ${escapeHtml(String(custom.endDate))}`);
-          }
-          if (custom.percentComplete !== null && typeof custom.percentComplete !== 'undefined') {
-            const percentValue = Number(custom.percentComplete);
-            const percentLabel = Number.isFinite(percentValue)
-              ? `${percentValue % 1 === 0 ? percentValue.toFixed(0) : percentValue.toFixed(1)}%`
-              : escapeHtml(String(custom.percentComplete));
-            lines.push(`% completed: ${percentLabel}`);
+          const hoverKey = `${siteLabel}||${dateKey}`;
+          const tasks = hoverMap.get(hoverKey);
+          const lines = [];
+          if (tasks) {
+            Array.from(tasks.entries()).forEach(([taskName, deviation]) => {
+              lines.push(`!! ${escapeHtml(taskName)}: ${deviation} days`);
+            });
           }
           return `
             <div>
               <div><strong>${escapeHtml(siteLabel)}</strong></div>
-              ${taskName ? `<div>${escapeHtml(taskName)}</div>` : ''}
               <div>${escapeHtml(dateKey)}</div>
-              <div style="margin-top:4px;">${lines.length ? lines.join('<br/>') : 'No changes recorded.'}</div>
+              <div style="margin-top:4px;">${lines.join('<br/>')}</div>
             </div>
           `;
         },

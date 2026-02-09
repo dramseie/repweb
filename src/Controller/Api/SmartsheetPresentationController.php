@@ -1767,21 +1767,9 @@ class SmartsheetPresentationController extends AbstractController
             }
         }
 
-        $endField = 'end date';
-        $startField = 'start date';
-        $percentFields = [
-            '% complete',
-            '% completed',
-            'percent complete',
-            'percent completed',
-            'complete %',
-            'completed %',
-        ];
-        $fieldNames = array_merge([$endField, $startField], $percentFields);
-
-        $where = [sprintf('LOWER(TRIM(`%s`)) IN (:fields)', $fieldNameColumn)];
+        $where = [sprintf('`%s` = :endField', $fieldNameColumn)];
         $params = [
-            'fields' => $fieldNames,
+            'endField' => 'End Date',
         ];
 
         if ($country !== '' && $countryColumn) {
@@ -1831,9 +1819,6 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         $types = [];
-        if (isset($params['fields'])) {
-            $types['fields'] = ArrayParameterType::STRING;
-        }
         if (isset($params['tasks'])) {
             $types['tasks'] = ArrayParameterType::STRING;
         }
@@ -1877,40 +1862,14 @@ class SmartsheetPresentationController extends AbstractController
                 continue;
             }
 
-            $fieldName = mb_strtolower(trim((string) ($row['field_name'] ?? '')));
-            $fieldType = null;
-            if ($fieldName === $endField) {
-                $fieldType = 'end';
-            } elseif ($fieldName === $startField) {
-                $fieldType = 'start';
-            } elseif (in_array($fieldName, $percentFields, true)) {
-                $fieldType = 'percent';
-            }
-            if ($fieldType === null) {
-                continue;
-            }
-
             $valueRaw = trim((string) ($row['value'] ?? ''));
             if ($valueRaw === '') {
                 continue;
             }
-
-            if ($fieldType === 'percent') {
-                $percentRaw = trim(str_replace('%', '', $valueRaw));
-                if ($percentRaw === '' || !is_numeric($percentRaw)) {
-                    continue;
-                }
-                $value = (float) $percentRaw;
-                if ($value <= 1 && !str_contains($valueRaw, '%')) {
-                    $value *= 100;
-                }
-                $value = round($value, 2);
-            } else {
-                try {
-                    $value = new DateTimeImmutable($valueRaw);
-                } catch (\Throwable) {
-                    continue;
-                }
+            try {
+                $endDate = new DateTimeImmutable($valueRaw);
+            } catch (\Throwable) {
+                continue;
             }
 
             $groups[$key]['meta'] = [
@@ -1918,17 +1877,16 @@ class SmartsheetPresentationController extends AbstractController
                 'siteLabel' => $siteLabel,
                 'taskName' => $taskName,
             ];
-            $groups[$key]['changes'][$fieldType][] = [
+            $groups[$key]['rows'][] = [
                 'modifiedAt' => $modifiedAt,
-                'dateKey' => $modifiedAt->format('Y-m-d'),
-                'value' => $value,
+                'endDate' => $endDate,
             ];
         }
 
         if ($request->query->get('debug') === '1') {
             $groupKeys = [];
             foreach ($groups as $key => $group) {
-                $groupKeys[$key] = count($group['changes']['end'] ?? []);
+                $groupKeys[$key] = count($group['rows'] ?? []);
             }
 
             return $this->json([
@@ -1942,80 +1900,42 @@ class SmartsheetPresentationController extends AbstractController
 
         $items = [];
         foreach ($groups as $group) {
-            $endChanges = $group['changes']['end'] ?? [];
-            if ($endChanges === []) {
+            $groupRows = $group['rows'] ?? [];
+            if ($groupRows === []) {
                 continue;
             }
 
-            usort($endChanges, static fn (array $a, array $b): int => $a['modifiedAt'] <=> $b['modifiedAt']);
-            $startChanges = $group['changes']['start'] ?? [];
-            $percentChanges = $group['changes']['percent'] ?? [];
-            usort($startChanges, static fn (array $a, array $b): int => $a['modifiedAt'] <=> $b['modifiedAt']);
-            usort($percentChanges, static fn (array $a, array $b): int => $a['modifiedAt'] <=> $b['modifiedAt']);
+            usort($groupRows, static fn (array $a, array $b): int => $a['modifiedAt'] <=> $b['modifiedAt']);
 
             $baselineEndDate = null;
-            foreach ($endChanges as $entry) {
+            foreach ($groupRows as $entry) {
                 if ($entry['modifiedAt'] <= $baselineEnd) {
-                    $baselineEndDate = $entry['value'];
+                    $baselineEndDate = $entry['endDate'];
                 } else {
                     break;
                 }
             }
             if (!$baselineEndDate) {
-                foreach ($endChanges as $entry) {
+                foreach ($groupRows as $entry) {
                     if ($entry['modifiedAt'] >= $baselineStart) {
-                        $baselineEndDate = $entry['value'];
+                        $baselineEndDate = $entry['endDate'];
                         break;
                     }
                 }
             }
             if (!$baselineEndDate) {
                 continue;
-            }
-
-            $baselineStartDate = null;
-            foreach ($startChanges as $entry) {
-                if ($entry['modifiedAt'] <= $baselineEnd) {
-                    $baselineStartDate = $entry['value'];
-                } else {
-                    break;
-                }
-            }
-            if ($baselineStartDate === null) {
-                foreach ($startChanges as $entry) {
-                    if ($entry['modifiedAt'] >= $baselineStart) {
-                        $baselineStartDate = $entry['value'];
-                        break;
-                    }
-                }
-            }
-
-            $baselinePercent = null;
-            foreach ($percentChanges as $entry) {
-                if ($entry['modifiedAt'] <= $baselineEnd) {
-                    $baselinePercent = $entry['value'];
-                } else {
-                    break;
-                }
-            }
-            if ($baselinePercent === null) {
-                foreach ($percentChanges as $entry) {
-                    if ($entry['modifiedAt'] >= $baselineStart) {
-                        $baselinePercent = $entry['value'];
-                        break;
-                    }
-                }
             }
 
             $changes = [];
             $lastDeviation = 0;
             $changes[$baselineStart->format('Y-m-d')] = 0;
 
-            foreach ($endChanges as $entry) {
+            foreach ($groupRows as $entry) {
                 if ($entry['modifiedAt'] < $baselineStart) {
                     continue;
                 }
-                $diff = $baselineEndDate->diff($entry['value']);
+                $diff = $baselineEndDate->diff($entry['endDate']);
                 $days = (int) $diff->days;
                 if ($diff->invert) {
                     $days = -$days;
@@ -2028,26 +1948,8 @@ class SmartsheetPresentationController extends AbstractController
 
             $cursor = $baselineStart;
             $currentDeviation = $changes[$baselineStart->format('Y-m-d')] ?? 0;
-            $currentEnd = $baselineEndDate;
-            $currentStart = $baselineStartDate;
-            $currentPercent = $baselinePercent;
-            $endIndex = 0;
-            $startIndex = 0;
-            $percentIndex = 0;
             while ($cursor <= $today) {
                 $keyDate = $cursor->format('Y-m-d');
-                while ($endIndex < count($endChanges) && $endChanges[$endIndex]['dateKey'] <= $keyDate) {
-                    $currentEnd = $endChanges[$endIndex]['value'];
-                    $endIndex++;
-                }
-                while ($startIndex < count($startChanges) && $startChanges[$startIndex]['dateKey'] <= $keyDate) {
-                    $currentStart = $startChanges[$startIndex]['value'];
-                    $startIndex++;
-                }
-                while ($percentIndex < count($percentChanges) && $percentChanges[$percentIndex]['dateKey'] <= $keyDate) {
-                    $currentPercent = $percentChanges[$percentIndex]['value'];
-                    $percentIndex++;
-                }
                 if (array_key_exists($keyDate, $changes)) {
                     $currentDeviation = $changes[$keyDate];
                 }
@@ -2057,9 +1959,6 @@ class SmartsheetPresentationController extends AbstractController
                     'site_label' => $group['meta']['siteLabel'] ?? null,
                     'country' => $group['meta']['country'] ?? null,
                     'deviation_days' => $currentDeviation,
-                    'start_date' => $currentStart instanceof DateTimeInterface ? $currentStart->format('Y-m-d') : null,
-                    'end_date' => $currentEnd instanceof DateTimeInterface ? $currentEnd->format('Y-m-d') : null,
-                    'percent_complete' => $currentPercent,
                 ];
                 $cursor = $cursor->modify('+1 day');
             }
