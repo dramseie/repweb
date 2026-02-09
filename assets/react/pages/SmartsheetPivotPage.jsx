@@ -491,7 +491,7 @@ const SmartsheetPivotPage = () => {
       const dateValue = row?.day ?? row?.date ?? row?.modified_at ?? null;
       const date = parseDateValue(dateValue);
       if (!date) return;
-      const total = Number(row?.total ?? row?.count ?? 0);
+      const total = Number(row?.deviation_days ?? row?.total ?? row?.count ?? 0);
       if (!seriesMap.has(task)) {
         seriesMap.set(task, []);
       }
@@ -508,7 +508,7 @@ const SmartsheetPivotPage = () => {
       title: { text: null },
       credits: { enabled: false },
       xAxis: { type: 'datetime' },
-      yAxis: { title: { text: 'Changes' }, allowDecimals: false },
+      yAxis: { title: { text: 'End date deviation (days)' } },
       legend: { enabled: true },
       tooltip: { xDateFormat: '%Y-%m-%d' },
       series,

@@ -32,6 +32,7 @@ class SmartsheetPresentationController extends AbstractController
     private const MASTER_TABLE = 'nifi.smartsheet_master_data';
     private const COUNTRY_GANTT_VIEW = 'nifi.smartsheet_country_gantt_view';
     private const HISTORY_VIEW = 'nifi.smartsheet_history_view';
+    private const TASK_NAME_VIEW = 'nifi.smartsheet_task_name_view';
     private const PLANNED_WEEK_VIEW = 'nifi.smartsheet_planned_week_view';
     private const PROGRAMME_OVERVIEW_VIEW = 'nifi.smartsheet_programme_overview_view';
     private const DEFAULT_TASK_NAME = 'Assessment Execution';
@@ -82,6 +83,8 @@ class SmartsheetPresentationController extends AbstractController
     private const HISTORY_VIEW_SITE_NAME_CANDIDATES = ['site_name', 'Site_Name', 'Site Name', 'SiteName', 'Site'];
     private const HISTORY_VIEW_TASK_NAME_CANDIDATES = ['task_name', 'Task_Name', 'Task Name', 'task'];
     private const HISTORY_VIEW_MODIFIED_AT_CANDIDATES = ['modified_at', 'Modified_At', 'Modified At', 'modifiedAt', 'modified_date', 'modifiedDate', 'modified'];
+    private const HISTORY_VIEW_FIELD_NAME_CANDIDATES = ['field_name', 'Field_Name', 'Field Name', 'column_name', 'Column_Name', 'Column Name'];
+    private const HISTORY_VIEW_VALUE_CANDIDATES = ['value', 'Value', 'new_value', 'New_Value', 'newValue'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
@@ -1650,18 +1653,9 @@ class SmartsheetPresentationController extends AbstractController
             );
         }
 
-        $tasks = [];
-        if ($taskNameColumn) {
-            $tasks = $this->connection->fetchFirstColumn(
-                sprintf('SELECT DISTINCT `%s` FROM %s WHERE `%s` IS NOT NULL AND `%s` <> "" ORDER BY `%s`',
-                    $taskNameColumn,
-                    self::HISTORY_VIEW,
-                    $taskNameColumn,
-                    $taskNameColumn,
-                    $taskNameColumn
-                )
-            );
-        }
+        $tasks = $this->connection->fetchFirstColumn(
+            sprintf('SELECT task_name FROM %s ORDER BY task_name', self::TASK_NAME_VIEW)
+        );
 
         $sites = [];
         if ($siteIdColumn || $siteNameColumn) {
@@ -1710,8 +1704,10 @@ class SmartsheetPresentationController extends AbstractController
         $siteNameColumn = $columns['siteName'] ?? null;
         $taskNameColumn = $columns['taskName'] ?? null;
         $modifiedAtColumn = $columns['modifiedAt'] ?? null;
+        $fieldNameColumn = $columns['fieldName'] ?? null;
+        $valueColumn = $columns['value'] ?? null;
 
-        if (!$taskNameColumn || !$modifiedAtColumn) {
+        if (!$taskNameColumn || !$modifiedAtColumn || !$fieldNameColumn || !$valueColumn) {
             return $this->json([
                 'items' => [],
                 'error' => 'Required columns missing in smartsheet_history_view.',
@@ -1724,8 +1720,9 @@ class SmartsheetPresentationController extends AbstractController
         $from = trim((string) $request->query->get('from', ''));
         $to = trim((string) $request->query->get('to', ''));
 
-        $where = [];
+        $where = [sprintf('`%s` = :endField', $fieldNameColumn)];
         $params = [];
+        $params['endField'] = 'End Date';
 
         if ($country !== '' && $countryColumn) {
             $where[] = sprintf('`%s` = :country', $countryColumn);
@@ -1754,12 +1751,37 @@ class SmartsheetPresentationController extends AbstractController
             $params['toDate'] = $to;
         }
 
-        $sql = sprintf(
-            'SELECT DATE(`%s`) AS day, `%s` AS task_name, COUNT(*) AS total FROM %s',
-            $modifiedAtColumn,
+        $endDateExpr = sprintf(
+            "CASE WHEN `%s` LIKE '%%T%%' THEN STR_TO_DATE(`%s`, '%%Y-%%m-%%dT%%H:%%i:%%s') ELSE STR_TO_DATE(`%s`, '%%Y-%%m-%%d') END",
+            $valueColumn,
+            $valueColumn,
+            $valueColumn
+        );
+        $baseSql = sprintf(
+            'SELECT `%s` AS task_name, MIN(%s) AS base_end FROM %s',
             $taskNameColumn,
+            $endDateExpr,
             self::HISTORY_VIEW
         );
+        if ($where !== []) {
+            $baseSql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $baseSql .= sprintf(' GROUP BY `%s`', $taskNameColumn);
+
+        $sql = sprintf(
+            'SELECT DATE(h.`%s`) AS day, h.task_name AS task_name, AVG(DATEDIFF(h.end_date, b.base_end)) AS deviation_days '
+            . 'FROM (SELECT `%s` AS task_name, `%s` AS modified_at, %s AS end_date FROM %s',
+            $modifiedAtColumn,
+            $taskNameColumn,
+            $modifiedAtColumn,
+            $endDateExpr,
+            self::HISTORY_VIEW
+        );
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ') h INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name';
+        $sql .= sprintf(' GROUP BY DATE(h.`%s`), h.task_name ORDER BY day ASC', $modifiedAtColumn);
         if ($where !== []) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
@@ -2946,6 +2968,8 @@ class SmartsheetPresentationController extends AbstractController
             'siteName' => $this->findColumnName($columns, self::HISTORY_VIEW_SITE_NAME_CANDIDATES),
             'taskName' => $this->findColumnName($columns, self::HISTORY_VIEW_TASK_NAME_CANDIDATES),
             'modifiedAt' => $this->findColumnName($columns, self::HISTORY_VIEW_MODIFIED_AT_CANDIDATES),
+            'fieldName' => $this->findColumnName($columns, self::HISTORY_VIEW_FIELD_NAME_CANDIDATES),
+            'value' => $this->findColumnName($columns, self::HISTORY_VIEW_VALUE_CANDIDATES),
         ];
     }
 
