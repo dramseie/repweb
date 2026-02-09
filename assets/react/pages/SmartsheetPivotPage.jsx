@@ -424,6 +424,11 @@ const SmartsheetPivotPage = () => {
   const [ganttCountryTaskFilter, setGanttCountryTaskFilter] = useState('');
   const [ganttCountryTaskSelectOpen, setGanttCountryTaskSelectOpen] = useState(false);
   const ganttCountryTaskSelectRef = useRef(null);
+  const [trendHistoryItems, setTrendHistoryItems] = useState([]);
+  const [trendHistoryColumns, setTrendHistoryColumns] = useState([]);
+  const [trendHistoryLoading, setTrendHistoryLoading] = useState(false);
+  const [trendHistoryError, setTrendHistoryError] = useState(null);
+  const [trendHistoryLoaded, setTrendHistoryLoaded] = useState(false);
   const [wonderfulFrom, setWonderfulFrom] = useState('');
   const [wonderfulTo, setWonderfulTo] = useState('');
   const [wonderfulTimeframe, setWonderfulTimeframe] = useState('this-week');
@@ -900,6 +905,33 @@ const SmartsheetPivotPage = () => {
       setGanttCountryLoading(false);
     }
   }, [ganttCountryTasksForQuery]);
+
+  const fetchTrendHistory = useCallback(async () => {
+    setTrendHistoryLoading(true);
+    setTrendHistoryError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/trend-history');
+      if (!response.ok) {
+        throw new Error(`Failed to load trend history (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const columns = Array.isArray(payload?.columns) ? payload.columns : [];
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      if (columns.length === 0 && items.length > 0) {
+        setTrendHistoryColumns(Object.keys(items[0] || {}));
+      } else {
+        setTrendHistoryColumns(columns);
+      }
+      setTrendHistoryItems(items);
+      setTrendHistoryLoaded(true);
+    } catch (error) {
+      setTrendHistoryError(error.message || 'Unable to load trend history.');
+      setTrendHistoryItems([]);
+      setTrendHistoryColumns([]);
+    } finally {
+      setTrendHistoryLoading(false);
+    }
+  }, []);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -4080,6 +4112,12 @@ const SmartsheetPivotPage = () => {
     fetchGanttCountryData,
   ]);
 
+  useEffect(() => {
+    if (activeTab === 'gantt' && ganttSelectorTab === 'trend' && !trendHistoryLoaded && !trendHistoryLoading) {
+      fetchTrendHistory();
+    }
+  }, [activeTab, ganttSelectorTab, trendHistoryLoaded, trendHistoryLoading, fetchTrendHistory]);
+
   return (
     <div className="smartsheet-pivot">
       <ul className="nav nav-tabs mb-3" role="tablist">
@@ -5527,6 +5565,17 @@ const SmartsheetPivotPage = () => {
                     Accomplishments
                   </button>
                 </li>
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link ${ganttSelectorTab === 'trend' ? 'active' : ''}`}
+                    role="tab"
+                    aria-selected={ganttSelectorTab === 'trend'}
+                    onClick={() => setGanttSelectorTab('trend')}
+                  >
+                    Trend
+                  </button>
+                </li>
               </ul>
 
               {ganttSelectorTab === 'country' && (
@@ -5824,6 +5873,60 @@ const SmartsheetPivotPage = () => {
                               <td>{formatDateDisplay(row.startDate)}</td>
                               <td>{formatDateDisplay(row.endDate)}</td>
                               <td>{formatDisplayValue(row.status)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {ganttSelectorTab === 'trend' && (
+                <div className="d-flex flex-column gap-3">
+                  <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                    <div>
+                      <h2 className="h6 mb-0">Trend Analysis</h2>
+                      <div className="text-muted small">Source: nifi.smartsheet_history_view</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={fetchTrendHistory}
+                      disabled={trendHistoryLoading}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {trendHistoryError && (
+                    <div className="alert alert-warning" role="alert">
+                      {trendHistoryError}
+                    </div>
+                  )}
+
+                  {trendHistoryLoading && <div className="text-muted">Loading trend history…</div>}
+
+                  {!trendHistoryLoading && trendHistoryItems.length === 0 && !trendHistoryError && (
+                    <div className="text-muted">No trend history rows available.</div>
+                  )}
+
+                  {!trendHistoryLoading && trendHistoryItems.length > 0 && trendHistoryColumns.length > 0 && (
+                    <div className="table-responsive">
+                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            {trendHistoryColumns.map((column) => (
+                              <th key={`trend-col-${column}`}>{column}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {trendHistoryItems.map((row, rowIndex) => (
+                            <tr key={`trend-row-${rowIndex}`}>
+                              {trendHistoryColumns.map((column) => (
+                                <td key={`trend-${rowIndex}-${column}`}>{formatDisplayValue(row?.[column])}</td>
+                              ))}
                             </tr>
                           ))}
                         </tbody>

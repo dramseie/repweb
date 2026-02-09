@@ -31,6 +31,7 @@ class SmartsheetPresentationController extends AbstractController
 {
     private const MASTER_TABLE = 'nifi.smartsheet_master_data';
     private const COUNTRY_GANTT_VIEW = 'nifi.smartsheet_country_gantt_view';
+    private const HISTORY_VIEW = 'nifi.smartsheet_history_view';
     private const PLANNED_WEEK_VIEW = 'nifi.smartsheet_planned_week_view';
     private const PROGRAMME_OVERVIEW_VIEW = 'nifi.smartsheet_programme_overview_view';
     private const DEFAULT_TASK_NAME = 'Assessment Execution';
@@ -1594,6 +1595,32 @@ class SmartsheetPresentationController extends AbstractController
         }, $rows);
 
         return $this->json(['items' => $items]);
+    }
+
+    #[Route('/trend-history', name: 'presentation_trend_history', methods: ['GET'])]
+    public function trendHistory(Request $request): JsonResponse
+    {
+        $limit = (int) $request->query->get('limit', 2000);
+        if ($limit < 1) {
+            $limit = 1;
+        }
+        if ($limit > 10000) {
+            $limit = 10000;
+        }
+
+        $rows = $this->connection->fetchAllAssociative(
+            sprintf('SELECT * FROM %s LIMIT %d', self::HISTORY_VIEW, $limit)
+        );
+
+        $columns = [];
+        if ($rows !== []) {
+            $columns = array_keys($rows[0]);
+        }
+
+        return $this->json([
+            'columns' => $columns,
+            'items' => $rows,
+        ]);
     }
 
     #[Route('/wonderful-states', name: 'presentation_wonderful_states', methods: ['GET'])]
