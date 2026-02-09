@@ -1774,11 +1774,11 @@ class SmartsheetPresentationController extends AbstractController
             self::HISTORY_VIEW
         ) . $whereSql . sprintf(' GROUP BY `%s`', $taskNameColumn);
 
-        $sql = 'SELECT DATE(h.modified_at) AS day, h.task_name AS task_name, '
+        $sql = 'SELECT h.modified_at AS modified_at, h.task_name AS task_name, '
             . 'AVG(DATEDIFF(h.end_date, b.base_end)) AS deviation_days '
             . 'FROM (' . $historySql . ') h '
             . 'INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name '
-            . 'GROUP BY DATE(h.modified_at), h.task_name ORDER BY day ASC';
+            . 'GROUP BY h.modified_at, h.task_name ORDER BY h.modified_at ASC';
 
         $rows = $this->connection->fetchAllAssociative($sql, $params);
 
