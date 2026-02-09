@@ -1772,6 +1772,10 @@ class SmartsheetPresentationController extends AbstractController
             'endField' => 'End Date',
         ];
 
+        if ($country !== '' && $countryColumn) {
+            $where[] = sprintf('`%s` = :country', $countryColumn);
+            $params['country'] = $country;
+        }
         if (is_array($tasks) && $tasks !== []) {
             $where[] = sprintf('LOWER(TRIM(`%s`)) IN (:tasks)', $taskNameColumn);
             $params['tasks'] = array_values(array_filter(array_map(
@@ -1817,6 +1821,9 @@ class SmartsheetPresentationController extends AbstractController
         $types = [];
         if (isset($params['tasks'])) {
             $types['tasks'] = ArrayParameterType::STRING;
+        }
+        if (isset($params['country'])) {
+            $types['country'] = ParameterType::STRING;
         }
         $rows = $this->connection->executeQuery($sql, $params, $types)->fetchAllAssociative();
 
