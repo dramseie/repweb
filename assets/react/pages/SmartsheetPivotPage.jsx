@@ -429,11 +429,12 @@ const SmartsheetPivotPage = () => {
   const [trendFiltersError, setTrendFiltersError] = useState(null);
   const [trendFiltersLoaded, setTrendFiltersLoaded] = useState(false);
   const [trendFilterCountry, setTrendFilterCountry] = useState('');
-  const [trendFilterSite, setTrendFilterSite] = useState('');
-  const [trendFilterTask, setTrendFilterTask] = useState('');
+  const [trendFilterSites, setTrendFilterSites] = useState([]);
+  const [trendFilterTasks, setTrendFilterTasks] = useState([]);
   const [trendSeriesRows, setTrendSeriesRows] = useState([]);
   const [trendSeriesLoading, setTrendSeriesLoading] = useState(false);
   const [trendSeriesError, setTrendSeriesError] = useState(null);
+  const [trendSeriesRequested, setTrendSeriesRequested] = useState(false);
   const [wonderfulFrom, setWonderfulFrom] = useState('');
   const [wonderfulTo, setWonderfulTo] = useState('');
   const [wonderfulTimeframe, setWonderfulTimeframe] = useState('this-week');
@@ -971,8 +972,8 @@ const SmartsheetPivotPage = () => {
     try {
       const params = new URLSearchParams();
       if (trendFilterCountry) params.set('country', trendFilterCountry);
-      if (trendFilterSite) params.set('site', trendFilterSite);
-      if (trendFilterTask) params.set('task', trendFilterTask);
+      trendFilterSites.forEach((site) => params.append('sites', site));
+      trendFilterTasks.forEach((task) => params.append('tasks', task));
       const response = await fetch(`/api/smartsheet/presentation/trend-series?${params.toString()}`);
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -986,7 +987,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setTrendSeriesLoading(false);
     }
-  }, [trendFilterCountry, trendFilterSite, trendFilterTask]);
+  }, [trendFilterCountry, trendFilterSites, trendFilterTasks]);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -4174,18 +4175,10 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendFiltersLoading, fetchTrendFilters]);
 
   useEffect(() => {
-    if (activeTab === 'gantt' && ganttSelectorTab === 'trend' && trendFiltersLoaded) {
+    if (activeTab === 'gantt' && ganttSelectorTab === 'trend' && trendFiltersLoaded && trendSeriesRequested) {
       fetchTrendSeries();
     }
-  }, [
-    activeTab,
-    ganttSelectorTab,
-    trendFiltersLoaded,
-    trendFilterCountry,
-    trendFilterSite,
-    trendFilterTask,
-    fetchTrendSeries,
-  ]);
+  }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendSeriesRequested, fetchTrendSeries]);
 
   return (
     <div className="smartsheet-pivot">
@@ -5961,8 +5954,22 @@ const SmartsheetPivotPage = () => {
                     <div className="d-flex align-items-center gap-2">
                       <button
                         type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          setTrendSeriesRequested(true);
+                          fetchTrendSeries();
+                        }}
+                        disabled={trendSeriesLoading}
+                      >
+                        Show
+                      </button>
+                      <button
+                        type="button"
                         className="btn btn-outline-secondary btn-sm"
-                        onClick={fetchTrendSeries}
+                        onClick={() => {
+                          setTrendSeriesRequested(true);
+                          fetchTrendSeries();
+                        }}
                         disabled={trendSeriesLoading}
                       >
                         Refresh
@@ -5972,8 +5979,9 @@ const SmartsheetPivotPage = () => {
                         className="btn btn-outline-secondary btn-sm"
                         onClick={() => {
                           setTrendFilterCountry('');
-                          setTrendFilterSite('');
-                          setTrendFilterTask('');
+                          setTrendFilterSites([]);
+                          setTrendFilterTasks([]);
+                          setTrendSeriesRequested(false);
                         }}
                         disabled={trendSeriesLoading}
                       >
@@ -5988,7 +5996,10 @@ const SmartsheetPivotPage = () => {
                       <select
                         className="form-select"
                         value={trendFilterCountry}
-                        onChange={(event) => setTrendFilterCountry(event.target.value)}
+                        onChange={(event) => {
+                          setTrendFilterCountry(event.target.value);
+                          setTrendFilterSites([]);
+                        }}
                         disabled={trendFiltersLoading}
                       >
                         <option value="">All countries</option>
@@ -6001,29 +6012,39 @@ const SmartsheetPivotPage = () => {
                       <label className="form-label fw-medium">Site</label>
                       <select
                         className="form-select"
-                        value={trendFilterSite}
-                        onChange={(event) => setTrendFilterSite(event.target.value)}
+                        multiple
+                        value={trendFilterSites}
+                        onChange={(event) => {
+                          const selected = Array.from(event.target.selectedOptions).map((opt) => opt.value);
+                          setTrendFilterSites(selected);
+                        }}
                         disabled={trendFiltersLoading}
                       >
-                        <option value="">All sites</option>
-                        {trendFilters.sites.map((site) => (
+                        {trendFilters.sites
+                          .filter((site) => !trendFilterCountry || site.country === trendFilterCountry)
+                          .map((site) => (
                           <option key={`trend-site-${site.key}`} value={site.key}>{site.label}</option>
                         ))}
                       </select>
+                      <div className="form-text text-muted">Select one or more sites.</div>
                     </div>
                     <div className="col-12 col-md-4">
                       <label className="form-label fw-medium">Task</label>
                       <select
                         className="form-select"
-                        value={trendFilterTask}
-                        onChange={(event) => setTrendFilterTask(event.target.value)}
+                        multiple
+                        value={trendFilterTasks}
+                        onChange={(event) => {
+                          const selected = Array.from(event.target.selectedOptions).map((opt) => opt.value);
+                          setTrendFilterTasks(selected);
+                        }}
                         disabled={trendFiltersLoading}
                       >
-                        <option value="">All tasks</option>
                         {trendFilters.tasks.map((task) => (
                           <option key={`trend-task-${task}`} value={task}>{task}</option>
                         ))}
                       </select>
+                      <div className="form-text text-muted">Select one or more tasks.</div>
                     </div>
                   </div>
 
@@ -6043,7 +6064,7 @@ const SmartsheetPivotPage = () => {
                     <div className="text-muted">Loading trend data…</div>
                   )}
 
-                  {!trendSeriesLoading && trendSeriesRows.length === 0 && !trendSeriesError && (
+                  {!trendSeriesLoading && trendSeriesRows.length === 0 && !trendSeriesError && trendSeriesRequested && (
                     <div className="text-muted">No trend history rows available.</div>
                   )}
 

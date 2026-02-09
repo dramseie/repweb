@@ -1660,6 +1660,9 @@ class SmartsheetPresentationController extends AbstractController
         $sites = [];
         if ($siteIdColumn || $siteNameColumn) {
             $selectParts = [];
+            if ($countryColumn) {
+                $selectParts[] = sprintf('`%s` AS country', $countryColumn);
+            }
             if ($siteIdColumn) {
                 $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
             }
@@ -1670,6 +1673,7 @@ class SmartsheetPresentationController extends AbstractController
                 sprintf('SELECT DISTINCT %s FROM %s', implode(', ', $selectParts), self::HISTORY_VIEW)
             );
             foreach ($rows as $row) {
+                $country = trim((string) ($row['country'] ?? ''));
                 $siteId = trim((string) ($row['site_id'] ?? ''));
                 $siteName = trim((string) ($row['site_name'] ?? ''));
                 $key = $siteId !== '' ? $siteId : $siteName;
@@ -1680,6 +1684,7 @@ class SmartsheetPresentationController extends AbstractController
                 $sites[$key] = [
                     'key' => $key,
                     'label' => $label,
+                    'country' => $country !== '' ? $country : null,
                     'siteId' => $siteId !== '' ? $siteId : null,
                     'siteName' => $siteName !== '' ? $siteName : null,
                 ];
@@ -1715,8 +1720,8 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         $country = trim((string) $request->query->get('country', ''));
-        $site = trim((string) $request->query->get('site', ''));
-        $task = trim((string) $request->query->get('task', ''));
+        $sites = $request->query->all('sites');
+        $tasks = $request->query->all('tasks');
         $from = trim((string) $request->query->get('from', ''));
         $to = trim((string) $request->query->get('to', ''));
 
@@ -1728,19 +1733,19 @@ class SmartsheetPresentationController extends AbstractController
             $where[] = sprintf('`%s` = :country', $countryColumn);
             $params['country'] = $country;
         }
-        if ($task !== '') {
-            $where[] = sprintf('`%s` = :task', $taskNameColumn);
-            $params['task'] = $task;
+        if (is_array($tasks) && $tasks !== []) {
+            $where[] = sprintf('`%s` IN (:tasks)', $taskNameColumn);
+            $params['tasks'] = array_values(array_filter(array_map('strval', $tasks)));
         }
-        if ($site !== '' && ($siteNameColumn || $siteIdColumn)) {
+        if (is_array($sites) && $sites !== [] && ($siteNameColumn || $siteIdColumn)) {
             if ($siteNameColumn && $siteIdColumn) {
-                $where[] = sprintf('(`%s` = :site OR `%s` = :site)', $siteNameColumn, $siteIdColumn);
+                $where[] = sprintf('(`%s` IN (:sites) OR `%s` IN (:sites))', $siteNameColumn, $siteIdColumn);
             } elseif ($siteNameColumn) {
-                $where[] = sprintf('`%s` = :site', $siteNameColumn);
+                $where[] = sprintf('`%s` IN (:sites)', $siteNameColumn);
             } else {
-                $where[] = sprintf('`%s` = :site', $siteIdColumn);
+                $where[] = sprintf('`%s` IN (:sites)', $siteIdColumn);
             }
-            $params['site'] = $site;
+            $params['sites'] = array_values(array_filter(array_map('strval', $sites)));
         }
         if ($from !== '') {
             $where[] = sprintf('DATE(`%s`) >= :fromDate', $modifiedAtColumn);
@@ -1780,7 +1785,15 @@ class SmartsheetPresentationController extends AbstractController
             . 'INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name '
             . 'GROUP BY h.modified_at, h.task_name ORDER BY h.modified_at ASC';
 
-        $rows = $this->connection->fetchAllAssociative($sql, $params);
+        $types = [];
+        if (isset($params['tasks'])) {
+            $types['tasks'] = ArrayParameterType::STRING;
+        }
+        if (isset($params['sites'])) {
+            $types['sites'] = ArrayParameterType::STRING;
+        }
+
+        $rows = $this->connection->executeQuery($sql, $params, $types)->fetchAllAssociative();
 
         return $this->json(['items' => $rows]);
     }
