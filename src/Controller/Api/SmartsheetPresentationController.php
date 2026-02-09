@@ -1857,6 +1857,21 @@ class SmartsheetPresentationController extends AbstractController
             ];
         }
 
+        if ($request->query->get('debug') === '1') {
+            $groupKeys = [];
+            foreach ($groups as $key => $group) {
+                $groupKeys[$key] = count($group['rows'] ?? []);
+            }
+
+            return $this->json([
+                'sql' => $sql,
+                'params' => $params,
+                'siteFilter' => $siteFilter,
+                'rowCount' => count($rows),
+                'groupCounts' => $groupKeys,
+            ]);
+        }
+
         $items = [];
         foreach ($groups as $group) {
             $groupRows = $group['rows'] ?? [];
