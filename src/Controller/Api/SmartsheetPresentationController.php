@@ -1720,8 +1720,10 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         $country = trim((string) $request->query->get('country', ''));
-        $sites = $request->query->all('sites');
-        $tasks = $request->query->all('tasks');
+        $sitesParam = $request->query->all('sites');
+        $tasksParam = $request->query->all('tasks');
+        $sites = is_array($sitesParam) ? $sitesParam : (is_string($sitesParam) && $sitesParam !== '' ? [$sitesParam] : []);
+        $tasks = is_array($tasksParam) ? $tasksParam : (is_string($tasksParam) && $tasksParam !== '' ? [$tasksParam] : []);
         $from = trim((string) $request->query->get('from', ''));
         $to = trim((string) $request->query->get('to', ''));
 
