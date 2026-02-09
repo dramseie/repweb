@@ -6057,7 +6057,7 @@ const SmartsheetPivotPage = () => {
 
                   <div className="row g-3 align-items-end">
                     <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">Baseline date<br /></label>
+                      <label className="form-label fw-medium">Baseline date</label>
                       <DatePicker
                         selected={trendBaselineDate}
                         onChange={(date) => setTrendBaselineDate(date || new Date())}
