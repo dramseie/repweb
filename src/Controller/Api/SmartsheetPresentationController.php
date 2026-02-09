@@ -1757,10 +1757,6 @@ class SmartsheetPresentationController extends AbstractController
             'endField' => 'End Date',
         ];
 
-        if ($country !== '' && $countryColumn) {
-            $where[] = sprintf('`%s` = :country', $countryColumn);
-            $params['country'] = $country;
-        }
         if (is_array($tasks) && $tasks !== []) {
             $where[] = sprintf('LOWER(TRIM(`%s`)) IN (:tasks)', $taskNameColumn);
             $params['tasks'] = array_values(array_filter(array_map(
@@ -1795,6 +1791,13 @@ class SmartsheetPresentationController extends AbstractController
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
         $sql .= sprintf(' ORDER BY `%s` ASC', $modifiedAtColumn);
+
+        if ($request->query->get('debug') === '1') {
+            return $this->json([
+                'sql' => $sql,
+                'params' => $params,
+            ]);
+        }
 
         $types = [];
         if (isset($params['tasks'])) {
