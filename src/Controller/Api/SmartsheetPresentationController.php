@@ -1757,31 +1757,28 @@ class SmartsheetPresentationController extends AbstractController
             $valueColumn,
             $valueColumn
         );
+        $whereSql = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
+
+        $historySql = sprintf(
+            'SELECT `%s` AS task_name, `%s` AS modified_at, %s AS end_date FROM %s',
+            $taskNameColumn,
+            $modifiedAtColumn,
+            $endDateExpr,
+            self::HISTORY_VIEW
+        ) . $whereSql;
+
         $baseSql = sprintf(
             'SELECT `%s` AS task_name, MIN(%s) AS base_end FROM %s',
             $taskNameColumn,
             $endDateExpr,
             self::HISTORY_VIEW
-        );
-        if ($where !== []) {
-            $baseSql .= ' WHERE ' . implode(' AND ', $where);
-        }
-        $baseSql .= sprintf(' GROUP BY `%s`', $taskNameColumn);
+        ) . $whereSql . sprintf(' GROUP BY `%s`', $taskNameColumn);
 
-        $sql = sprintf(
-            'SELECT DATE(h.`%s`) AS day, h.task_name AS task_name, AVG(DATEDIFF(h.end_date, b.base_end)) AS deviation_days '
-            . 'FROM (SELECT `%s` AS task_name, `%s` AS modified_at, %s AS end_date FROM %s',
-            $modifiedAtColumn,
-            $taskNameColumn,
-            $modifiedAtColumn,
-            $endDateExpr,
-            self::HISTORY_VIEW
-        );
-        if ($where !== []) {
-            $sql .= ' WHERE ' . implode(' AND ', $where);
-        }
-        $sql .= ') h INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name';
-        $sql .= sprintf(' GROUP BY DATE(h.`%s`), h.task_name ORDER BY day ASC', $modifiedAtColumn);
+        $sql = 'SELECT DATE(h.modified_at) AS day, h.task_name AS task_name, '
+            . 'AVG(DATEDIFF(h.end_date, b.base_end)) AS deviation_days '
+            . 'FROM (' . $historySql . ') h '
+            . 'INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name '
+            . 'GROUP BY DATE(h.modified_at), h.task_name ORDER BY day ASC';
         if ($where !== []) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
