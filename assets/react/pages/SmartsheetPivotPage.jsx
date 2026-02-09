@@ -428,6 +428,7 @@ const SmartsheetPivotPage = () => {
   const [trendFiltersLoading, setTrendFiltersLoading] = useState(false);
   const [trendFiltersError, setTrendFiltersError] = useState(null);
   const [trendFiltersLoaded, setTrendFiltersLoaded] = useState(false);
+  const [trendBaselineDate, setTrendBaselineDate] = useState(formatYmd(new Date()));
   const [trendFilterCountry, setTrendFilterCountry] = useState('');
   const [trendFilterSites, setTrendFilterSites] = useState([]);
   const [trendFilterTasks, setTrendFilterTasks] = useState([]);
@@ -969,10 +970,15 @@ const SmartsheetPivotPage = () => {
   }, []);
 
   const fetchTrendSeries = useCallback(async () => {
+    if (!trendBaselineDate) {
+      setTrendSeriesError('Baseline date is required.');
+      return;
+    }
     setTrendSeriesLoading(true);
     setTrendSeriesError(null);
     try {
       const params = new URLSearchParams();
+      params.set('baseline', trendBaselineDate);
       if (trendFilterCountry) params.set('country', trendFilterCountry);
       trendFilterSites.forEach((site) => params.append('sites', site));
       trendFilterTasks.forEach((task) => params.append('tasks', task));
@@ -989,7 +995,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setTrendSeriesLoading(false);
     }
-  }, [trendFilterCountry, trendFilterSites, trendFilterTasks]);
+  }, [trendBaselineDate, trendFilterCountry, trendFilterSites, trendFilterTasks]);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -5993,7 +5999,16 @@ const SmartsheetPivotPage = () => {
                   </div>
 
                   <div className="row g-3 align-items-end">
-                    <div className="col-12 col-md-4">
+                    <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">Baseline date</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={trendBaselineDate}
+                        onChange={(event) => setTrendBaselineDate(event.target.value)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Country</label>
                       <select
                         className="form-select"
@@ -6010,7 +6025,7 @@ const SmartsheetPivotPage = () => {
                         ))}
                       </select>
                     </div>
-                    <div className="col-12 col-md-4">
+                    <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Site</label>
                       <select
                         className="form-select"
@@ -6030,7 +6045,7 @@ const SmartsheetPivotPage = () => {
                       </select>
                       <div className="form-text text-muted">Select one or more sites.</div>
                     </div>
-                    <div className="col-12 col-md-4">
+                    <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Task</label>
                       <select
                         className="form-select"

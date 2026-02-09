@@ -1719,18 +1719,43 @@ class SmartsheetPresentationController extends AbstractController
             ], 400);
         }
 
+        $baselineRaw = trim((string) $request->query->get('baseline', ''));
+        if ($baselineRaw === '') {
+            return $this->json([
+                'items' => [],
+                'error' => 'Baseline date is required.',
+            ], 400);
+        }
+
+        try {
+            $baselineDate = new DateTimeImmutable($baselineRaw);
+        } catch (\Throwable) {
+            return $this->json([
+                'items' => [],
+                'error' => 'Baseline date is invalid.',
+            ], 400);
+        }
+        $baselineStart = $baselineDate->setTime(0, 0, 0);
+        $baselineEnd = $baselineDate->setTime(23, 59, 59);
+        $today = new DateTimeImmutable('today');
+        if ($baselineStart > $today) {
+            return $this->json([
+                'items' => [],
+                'error' => 'Baseline date must be before today.',
+            ], 400);
+        }
+
         $country = trim((string) $request->query->get('country', ''));
         $queryParams = $request->query->all();
         $sitesParam = $queryParams['sites'] ?? null;
         $tasksParam = $queryParams['tasks'] ?? null;
         $sites = is_array($sitesParam) ? $sitesParam : (is_string($sitesParam) && $sitesParam !== '' ? [$sitesParam] : []);
         $tasks = is_array($tasksParam) ? $tasksParam : (is_string($tasksParam) && $tasksParam !== '' ? [$tasksParam] : []);
-        $from = trim((string) $request->query->get('from', ''));
-        $to = trim((string) $request->query->get('to', ''));
 
         $where = [sprintf('`%s` = :endField', $fieldNameColumn)];
-        $params = [];
-        $params['endField'] = 'End Date';
+        $params = [
+            'endField' => 'End Date',
+        ];
 
         if ($country !== '' && $countryColumn) {
             $where[] = sprintf('`%s` = :country', $countryColumn);
@@ -1750,58 +1775,26 @@ class SmartsheetPresentationController extends AbstractController
             }
             $params['sites'] = array_values(array_filter(array_map('strval', $sites)));
         }
-        if ($from !== '') {
-            $where[] = sprintf('DATE(`%s`) >= :fromDate', $modifiedAtColumn);
-            $params['fromDate'] = $from;
+        $selectParts = [
+            sprintf('`%s` AS task_name', $taskNameColumn),
+            sprintf('`%s` AS modified_at', $modifiedAtColumn),
+            sprintf('`%s` AS value', $valueColumn),
+        ];
+        if ($countryColumn) {
+            $selectParts[] = sprintf('`%s` AS country', $countryColumn);
         }
-        if ($to !== '') {
-            $where[] = sprintf('DATE(`%s`) <= :toDate', $modifiedAtColumn);
-            $params['toDate'] = $to;
+        if ($siteNameColumn) {
+            $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
         }
-
-        $endDateExpr = sprintf(
-            "CASE WHEN `%s` LIKE '%%T%%' THEN STR_TO_DATE(`%s`, '%%Y-%%m-%%dT%%H:%%i:%%s') ELSE STR_TO_DATE(`%s`, '%%Y-%%m-%%d') END",
-            $valueColumn,
-            $valueColumn,
-            $valueColumn
-        );
-        $whereSql = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
-
-        $siteLabelExpr = null;
-        if ($siteNameColumn && $siteIdColumn) {
-            $siteLabelExpr = sprintf('COALESCE(NULLIF(`%s`, \'\'), NULLIF(`%s`, \'\'))', $siteNameColumn, $siteIdColumn);
-        } elseif ($siteNameColumn) {
-            $siteLabelExpr = sprintf('NULLIF(`%s`, \'\')', $siteNameColumn);
-        } elseif ($siteIdColumn) {
-            $siteLabelExpr = sprintf('NULLIF(`%s`, \'\')', $siteIdColumn);
+        if ($siteIdColumn) {
+            $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
         }
 
-        $historySelect = sprintf('`%s` AS task_name, `%s` AS modified_at, %s AS end_date',
-            $taskNameColumn,
-            $modifiedAtColumn,
-            $endDateExpr
-        );
-        if ($siteLabelExpr) {
-            $historySelect .= sprintf(', %s AS site_label', $siteLabelExpr);
+        $sql = sprintf('SELECT %s FROM %s', implode(', ', $selectParts), self::HISTORY_VIEW);
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
         }
-
-        $historySql = sprintf('SELECT %s FROM %s', $historySelect, self::HISTORY_VIEW) . $whereSql;
-
-        $baseSql = sprintf(
-            'SELECT `%s` AS task_name, MIN(%s) AS base_end FROM %s',
-            $taskNameColumn,
-            $endDateExpr,
-            self::HISTORY_VIEW
-        ) . $whereSql . sprintf(' GROUP BY `%s`', $taskNameColumn);
-
-        $sql = 'SELECT h.modified_at AS modified_at, h.task_name AS task_name, '
-            . ($siteLabelExpr ? 'h.site_label AS site_label, ' : '')
-            . 'AVG(DATEDIFF(h.end_date, b.base_end)) AS deviation_days '
-            . 'FROM (' . $historySql . ') h '
-            . 'INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name '
-            . 'GROUP BY h.modified_at, h.task_name'
-            . ($siteLabelExpr ? ', h.site_label' : '')
-            . ' ORDER BY h.modified_at ASC';
+        $sql .= sprintf(' ORDER BY `%s` ASC', $modifiedAtColumn);
 
         $types = [];
         if (isset($params['tasks'])) {
@@ -1813,7 +1806,109 @@ class SmartsheetPresentationController extends AbstractController
 
         $rows = $this->connection->executeQuery($sql, $params, $types)->fetchAllAssociative();
 
-        return $this->json(['items' => $rows]);
+        $groups = [];
+        foreach ($rows as $row) {
+            $taskName = trim((string) ($row['task_name'] ?? ''));
+            if ($taskName === '') {
+                continue;
+            }
+            $siteName = trim((string) ($row['site_name'] ?? ''));
+            $siteId = trim((string) ($row['site_id'] ?? ''));
+            $siteLabel = $siteName !== '' ? $siteName : $siteId;
+            if ($siteLabel === '') {
+                $siteLabel = 'Unknown site';
+            }
+            $countryValue = trim((string) ($row['country'] ?? ''));
+            $key = $countryValue . '|' . $siteLabel . '|' . $taskName;
+
+            $modifiedAtRaw = $row['modified_at'] ?? null;
+            if (!$modifiedAtRaw) {
+                continue;
+            }
+            try {
+                $modifiedAt = new DateTimeImmutable((string) $modifiedAtRaw);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $valueRaw = trim((string) ($row['value'] ?? ''));
+            if ($valueRaw === '') {
+                continue;
+            }
+            try {
+                $endDate = new DateTimeImmutable($valueRaw);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $groups[$key]['meta'] = [
+                'country' => $countryValue !== '' ? $countryValue : null,
+                'siteLabel' => $siteLabel,
+                'taskName' => $taskName,
+            ];
+            $groups[$key]['rows'][] = [
+                'modifiedAt' => $modifiedAt,
+                'endDate' => $endDate,
+            ];
+        }
+
+        $items = [];
+        foreach ($groups as $group) {
+            $groupRows = $group['rows'] ?? [];
+            if ($groupRows === []) {
+                continue;
+            }
+
+            $baselineEndDate = null;
+            foreach ($groupRows as $entry) {
+                if ($entry['modifiedAt'] <= $baselineEnd) {
+                    $baselineEndDate = $entry['endDate'];
+                } else {
+                    break;
+                }
+            }
+            if (!$baselineEndDate) {
+                continue;
+            }
+
+            $changes = [];
+            $lastDeviation = 0;
+            $changes[$baselineStart->format('Y-m-d')] = 0;
+
+            foreach ($groupRows as $entry) {
+                if ($entry['modifiedAt'] < $baselineStart) {
+                    continue;
+                }
+                $diff = $baselineEndDate->diff($entry['endDate']);
+                $days = (int) $diff->days;
+                if ($diff->invert) {
+                    $days = -$days;
+                }
+                if ($days !== $lastDeviation) {
+                    $changes[$entry['modifiedAt']->format('Y-m-d')] = $days;
+                    $lastDeviation = $days;
+                }
+            }
+
+            $cursor = $baselineStart;
+            $currentDeviation = $changes[$baselineStart->format('Y-m-d')] ?? 0;
+            while ($cursor <= $today) {
+                $keyDate = $cursor->format('Y-m-d');
+                if (array_key_exists($keyDate, $changes)) {
+                    $currentDeviation = $changes[$keyDate];
+                }
+                $items[] = [
+                    'modified_at' => $keyDate,
+                    'task_name' => $group['meta']['taskName'] ?? null,
+                    'site_label' => $group['meta']['siteLabel'] ?? null,
+                    'country' => $group['meta']['country'] ?? null,
+                    'deviation_days' => $currentDeviation,
+                ];
+                $cursor = $cursor->modify('+1 day');
+            }
+        }
+
+        return $this->json(['items' => $items]);
     }
 
     #[Route('/wonderful-states', name: 'presentation_wonderful_states', methods: ['GET'])]
