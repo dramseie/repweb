@@ -1859,12 +1859,22 @@ class SmartsheetPresentationController extends AbstractController
                 continue;
             }
 
+            usort($groupRows, static fn (array $a, array $b): int => $a['modifiedAt'] <=> $b['modifiedAt']);
+
             $baselineEndDate = null;
             foreach ($groupRows as $entry) {
                 if ($entry['modifiedAt'] <= $baselineEnd) {
                     $baselineEndDate = $entry['endDate'];
                 } else {
                     break;
+                }
+            }
+            if (!$baselineEndDate) {
+                foreach ($groupRows as $entry) {
+                    if ($entry['modifiedAt'] >= $baselineStart) {
+                        $baselineEndDate = $entry['endDate'];
+                        break;
+                    }
                 }
             }
             if (!$baselineEndDate) {
