@@ -6062,7 +6062,6 @@ const SmartsheetPivotPage = () => {
                         selected={trendBaselineDate}
                         onChange={(date) => setTrendBaselineDate(date || new Date())}
                         dateFormat="yyyy-MM-dd"
-                        className="form-control"
                       />
                     </div>
                     <div className="col-12 col-md-3">
