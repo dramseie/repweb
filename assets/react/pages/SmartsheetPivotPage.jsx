@@ -6058,12 +6058,14 @@ const SmartsheetPivotPage = () => {
                   <div className="row g-3 align-items-end">
                     <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Baseline date</label>
-                      <DatePicker
-                        selected={trendBaselineDate}
-                        onChange={(date) => setTrendBaselineDate(date || new Date())}
-                        dateFormat="yyyy-MM-dd"
-                        className="form-control"
-                      />
+                      <div className="css-b62m3t-container">
+                        <DatePicker
+                          selected={trendBaselineDate}
+                          onChange={(date) => setTrendBaselineDate(date || new Date())}
+                          dateFormat="yyyy-MM-dd"
+                          className="form-control"
+                        />
+                      </div>
                     </div>
                     <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Country</label>
