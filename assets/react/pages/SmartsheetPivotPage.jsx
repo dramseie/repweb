@@ -430,7 +430,6 @@ const SmartsheetPivotPage = () => {
   const [trendFiltersLoaded, setTrendFiltersLoaded] = useState(false);
   const [trendBaselineDate, setTrendBaselineDate] = useState(formatYmd(new Date()));
   const [trendFilterCountry, setTrendFilterCountry] = useState('');
-  const [trendFilterSites, setTrendFilterSites] = useState([]);
   const [trendFilterTasks, setTrendFilterTasks] = useState([]);
   const [trendSeriesRows, setTrendSeriesRows] = useState([]);
   const [trendSeriesLoading, setTrendSeriesLoading] = useState(false);
@@ -991,7 +990,6 @@ const SmartsheetPivotPage = () => {
       const params = new URLSearchParams();
       params.set('baseline', trendBaselineDate);
       if (trendFilterCountry) params.set('country', trendFilterCountry);
-      trendFilterSites.forEach((site) => params.append('sites', site));
       trendFilterTasks.forEach((task) => params.append('tasks', task));
       const response = await fetch(`/api/smartsheet/presentation/trend-series?${params.toString()}`);
       if (!response.ok) {
@@ -1006,7 +1004,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setTrendSeriesLoading(false);
     }
-  }, [trendBaselineDate, trendFilterCountry, trendFilterSites, trendFilterTasks]);
+  }, [trendBaselineDate, trendFilterCountry, trendFilterTasks]);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -5998,7 +5996,6 @@ const SmartsheetPivotPage = () => {
                         className="btn btn-outline-secondary btn-sm"
                         onClick={() => {
                           setTrendFilterCountry('');
-                          setTrendFilterSites([]);
                           setTrendFilterTasks([]);
                           setTrendSeriesRequested(false);
                         }}
@@ -6026,7 +6023,6 @@ const SmartsheetPivotPage = () => {
                         value={trendFilterCountry}
                         onChange={(event) => {
                           setTrendFilterCountry(event.target.value);
-                          setTrendFilterSites([]);
                         }}
                         disabled={trendFiltersLoading}
                       >
@@ -6036,27 +6032,7 @@ const SmartsheetPivotPage = () => {
                         ))}
                       </select>
                     </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">Site</label>
-                      <select
-                        className="form-select"
-                        multiple
-                        value={trendFilterSites}
-                        onChange={(event) => {
-                          const selected = Array.from(event.target.selectedOptions).map((opt) => opt.value);
-                          setTrendFilterSites(selected);
-                        }}
-                        disabled={trendFiltersLoading}
-                      >
-                        {trendFilters.sites
-                          .filter((site) => !trendFilterCountry || site.country === trendFilterCountry)
-                          .map((site) => (
-                          <option key={`trend-site-${site.key}`} value={site.key}>{site.label}</option>
-                        ))}
-                      </select>
-                      <div className="form-text text-muted">Select one or more sites.</div>
-                    </div>
-                    <div className="col-12 col-md-3">
+                    <div className="col-12 col-md-6">
                       <label className="form-label fw-medium">Task</label>
                       <select
                         className="form-select"
