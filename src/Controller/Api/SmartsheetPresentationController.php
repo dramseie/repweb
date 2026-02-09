@@ -77,6 +77,11 @@ class SmartsheetPresentationController extends AbstractController
     private const HISTORY_NEW_END_CANDIDATES = ['new_end_date', 'New_End_Date', 'New End Date'];
     private const HISTORY_PREVIOUS_RUN_CANDIDATES = ['previous_run', 'Previous_Run', 'Previous Run', 'previous_run_at', 'previous_run_date'];
     private const HISTORY_CURRENT_RUN_CANDIDATES = ['current_run', 'Current_Run', 'Current Run', 'current_run_at', 'current_run_date'];
+    private const HISTORY_VIEW_COUNTRY_CANDIDATES = ['country', 'Country', 'Country_Name', 'Country Name', 'Region', 'Region_Name', 'Region Name'];
+    private const HISTORY_VIEW_SITE_ID_CANDIDATES = ['site_id', 'Site_ID', 'Site Id', 'SiteID', 'Site'];
+    private const HISTORY_VIEW_SITE_NAME_CANDIDATES = ['site_name', 'Site_Name', 'Site Name', 'SiteName', 'Site'];
+    private const HISTORY_VIEW_TASK_NAME_CANDIDATES = ['task_name', 'Task_Name', 'Task Name', 'task'];
+    private const HISTORY_VIEW_MODIFIED_AT_CANDIDATES = ['modified_at', 'Modified_At', 'Modified At', 'modifiedAt', 'modified_date', 'modifiedDate', 'modified'];
     private const START_DATE_CANDIDATES = ['Start_Date', 'Start Date', 'Start'];
     private const END_DATE_CANDIDATES = ['End_Date', 'End Date', 'End'];
     private const CONFIDENCE_CANDIDATES = ['Confidence', 'Confidence_Level', 'Confidence Level'];
@@ -1623,6 +1628,148 @@ class SmartsheetPresentationController extends AbstractController
         ]);
     }
 
+    #[Route('/trend-filters', name: 'presentation_trend_filters', methods: ['GET'])]
+    public function trendFilters(): JsonResponse
+    {
+        $columns = $this->resolveHistoryViewColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $taskNameColumn = $columns['taskName'] ?? null;
+
+        $countries = [];
+        if ($countryColumn) {
+            $countries = $this->connection->fetchFirstColumn(
+                sprintf('SELECT DISTINCT `%s` FROM %s WHERE `%s` IS NOT NULL AND `%s` <> "" ORDER BY `%s`',
+                    $countryColumn,
+                    self::HISTORY_VIEW,
+                    $countryColumn,
+                    $countryColumn,
+                    $countryColumn
+                )
+            );
+        }
+
+        $tasks = [];
+        if ($taskNameColumn) {
+            $tasks = $this->connection->fetchFirstColumn(
+                sprintf('SELECT DISTINCT `%s` FROM %s WHERE `%s` IS NOT NULL AND `%s` <> "" ORDER BY `%s`',
+                    $taskNameColumn,
+                    self::HISTORY_VIEW,
+                    $taskNameColumn,
+                    $taskNameColumn,
+                    $taskNameColumn
+                )
+            );
+        }
+
+        $sites = [];
+        if ($siteIdColumn || $siteNameColumn) {
+            $selectParts = [];
+            if ($siteIdColumn) {
+                $selectParts[] = sprintf('`%s` AS site_id', $siteIdColumn);
+            }
+            if ($siteNameColumn) {
+                $selectParts[] = sprintf('`%s` AS site_name', $siteNameColumn);
+            }
+            $rows = $this->connection->fetchAllAssociative(
+                sprintf('SELECT DISTINCT %s FROM %s', implode(', ', $selectParts), self::HISTORY_VIEW)
+            );
+            foreach ($rows as $row) {
+                $siteId = trim((string) ($row['site_id'] ?? ''));
+                $siteName = trim((string) ($row['site_name'] ?? ''));
+                $key = $siteId !== '' ? $siteId : $siteName;
+                $label = $siteName !== '' ? $siteName : $siteId;
+                if ($key === '' || $label === '') {
+                    continue;
+                }
+                $sites[$key] = [
+                    'key' => $key,
+                    'label' => $label,
+                    'siteId' => $siteId !== '' ? $siteId : null,
+                    'siteName' => $siteName !== '' ? $siteName : null,
+                ];
+            }
+            $sites = array_values($sites);
+            usort($sites, static fn (array $a, array $b): int => strcasecmp($a['label'], $b['label']));
+        }
+
+        return $this->json([
+            'countries' => array_values(array_filter(array_map('trim', $countries))),
+            'tasks' => array_values(array_filter(array_map('trim', $tasks))),
+            'sites' => $sites,
+        ]);
+    }
+
+    #[Route('/trend-series', name: 'presentation_trend_series', methods: ['GET'])]
+    public function trendSeries(Request $request): JsonResponse
+    {
+        $columns = $this->resolveHistoryViewColumns();
+        $countryColumn = $columns['country'] ?? null;
+        $siteIdColumn = $columns['siteId'] ?? null;
+        $siteNameColumn = $columns['siteName'] ?? null;
+        $taskNameColumn = $columns['taskName'] ?? null;
+        $modifiedAtColumn = $columns['modifiedAt'] ?? null;
+
+        if (!$taskNameColumn || !$modifiedAtColumn) {
+            return $this->json([
+                'items' => [],
+                'error' => 'Required columns missing in smartsheet_history_view.',
+            ], 400);
+        }
+
+        $country = trim((string) $request->query->get('country', ''));
+        $site = trim((string) $request->query->get('site', ''));
+        $task = trim((string) $request->query->get('task', ''));
+        $from = trim((string) $request->query->get('from', ''));
+        $to = trim((string) $request->query->get('to', ''));
+
+        $where = [];
+        $params = [];
+
+        if ($country !== '' && $countryColumn) {
+            $where[] = sprintf('`%s` = :country', $countryColumn);
+            $params['country'] = $country;
+        }
+        if ($task !== '') {
+            $where[] = sprintf('`%s` = :task', $taskNameColumn);
+            $params['task'] = $task;
+        }
+        if ($site !== '' && ($siteNameColumn || $siteIdColumn)) {
+            if ($siteNameColumn && $siteIdColumn) {
+                $where[] = sprintf('(`%s` = :site OR `%s` = :site)', $siteNameColumn, $siteIdColumn);
+            } elseif ($siteNameColumn) {
+                $where[] = sprintf('`%s` = :site', $siteNameColumn);
+            } else {
+                $where[] = sprintf('`%s` = :site', $siteIdColumn);
+            }
+            $params['site'] = $site;
+        }
+        if ($from !== '') {
+            $where[] = sprintf('DATE(`%s`) >= :fromDate', $modifiedAtColumn);
+            $params['fromDate'] = $from;
+        }
+        if ($to !== '') {
+            $where[] = sprintf('DATE(`%s`) <= :toDate', $modifiedAtColumn);
+            $params['toDate'] = $to;
+        }
+
+        $sql = sprintf(
+            'SELECT DATE(`%s`) AS day, `%s` AS task_name, COUNT(*) AS total FROM %s',
+            $modifiedAtColumn,
+            $taskNameColumn,
+            self::HISTORY_VIEW
+        );
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= sprintf(' GROUP BY DATE(`%s`), `%s` ORDER BY day ASC', $modifiedAtColumn, $taskNameColumn);
+
+        $rows = $this->connection->fetchAllAssociative($sql, $params);
+
+        return $this->json(['items' => $rows]);
+    }
+
     #[Route('/wonderful-states', name: 'presentation_wonderful_states', methods: ['GET'])]
     public function wonderfulStates(): JsonResponse
     {
@@ -2777,6 +2924,28 @@ class SmartsheetPresentationController extends AbstractController
             'newEnd' => $this->findColumnName($columns, self::HISTORY_NEW_END_CANDIDATES),
             'previousRun' => $this->findColumnName($columns, self::HISTORY_PREVIOUS_RUN_CANDIDATES),
             'currentRun' => $this->findColumnName($columns, self::HISTORY_CURRENT_RUN_CANDIDATES),
+        ];
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private function resolveHistoryViewColumns(): array
+    {
+        $columns = $this->connection->fetchFirstColumn(
+            'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table',
+            [
+                'schema' => 'nifi',
+                'table' => 'smartsheet_history_view',
+            ]
+        );
+
+        return [
+            'country' => $this->findColumnName($columns, self::HISTORY_VIEW_COUNTRY_CANDIDATES),
+            'siteId' => $this->findColumnName($columns, self::HISTORY_VIEW_SITE_ID_CANDIDATES),
+            'siteName' => $this->findColumnName($columns, self::HISTORY_VIEW_SITE_NAME_CANDIDATES),
+            'taskName' => $this->findColumnName($columns, self::HISTORY_VIEW_TASK_NAME_CANDIDATES),
+            'modifiedAt' => $this->findColumnName($columns, self::HISTORY_VIEW_MODIFIED_AT_CANDIDATES),
         ];
     }
 
