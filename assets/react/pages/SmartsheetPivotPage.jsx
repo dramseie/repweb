@@ -487,6 +487,8 @@ const SmartsheetPivotPage = () => {
 
   const trendSeriesOptions = React.useMemo(() => {
     const seriesMap = new Map();
+    const hoverMap = new Map();
+
     trendSeriesRows.forEach((row) => {
       const task = row?.task_name ? String(row.task_name) : 'Unknown';
       const site = row?.site_label ? String(row.site_label) : '';
@@ -494,15 +496,33 @@ const SmartsheetPivotPage = () => {
       const dateValue = row?.day ?? row?.date ?? row?.modified_at ?? null;
       const date = parseDateValue(dateValue);
       if (!date) return;
+      const dateKey = formatYmd(date);
       const total = Number(row?.deviation_days ?? row?.total ?? row?.count ?? 0);
       if (!seriesMap.has(seriesName)) {
         seriesMap.set(seriesName, []);
       }
-      seriesMap.get(seriesName).push([date.getTime(), Number.isFinite(total) ? total : 0]);
+      const point = {
+        x: date.getTime(),
+        y: Number.isFinite(total) ? total : 0,
+        custom: {
+          siteLabel: site,
+          taskName: task,
+          dateKey,
+        },
+      };
+      seriesMap.get(seriesName).push(point);
+
+      if (site) {
+        const hoverKey = `${site}||${dateKey}`;
+        if (!hoverMap.has(hoverKey)) {
+          hoverMap.set(hoverKey, new Map());
+        }
+        hoverMap.get(hoverKey).set(task, Number.isFinite(total) ? total : 0);
+      }
     });
 
     const series = Array.from(seriesMap.entries()).map(([name, data]) => {
-      const sorted = data.slice().sort((a, b) => a[0] - b[0]);
+      const sorted = data.slice().sort((a, b) => a.x - b.x);
       return { name, data: sorted };
     });
 
@@ -516,7 +536,33 @@ const SmartsheetPivotPage = () => {
         plotLines: [{ color: '#7d7d7d', width: 1, value: 0, zIndex: 3 }],
       },
       legend: { enabled: true },
-      tooltip: { xDateFormat: '%Y-%m-%d' },
+      tooltip: {
+        useHTML: true,
+        formatter() {
+          const point = this.point || {};
+          const custom = point.custom || {};
+          const dateKey = custom.dateKey || '';
+          const siteLabel = custom.siteLabel || '';
+          if (!dateKey || !siteLabel) {
+            return `${this.x ? formatYmd(new Date(this.x)) : ''}: ${this.y ?? 0}`;
+          }
+          const hoverKey = `${siteLabel}||${dateKey}`;
+          const tasks = hoverMap.get(hoverKey);
+          const lines = [];
+          if (tasks) {
+            Array.from(tasks.entries()).forEach(([taskName, deviation]) => {
+              lines.push(`!! ${escapeHtml(taskName)}: ${deviation} days`);
+            });
+          }
+          return `
+            <div>
+              <div><strong>${escapeHtml(siteLabel)}</strong></div>
+              <div>${escapeHtml(dateKey)}</div>
+              <div style="margin-top:4px;">${lines.join('<br/>')}</div>
+            </div>
+          `;
+        },
+      },
       plotOptions: {
         column: {
           borderWidth: 0,
@@ -5659,7 +5705,7 @@ const SmartsheetPivotPage = () => {
 
               {ganttSelectorTab === 'country' && (
                 <div className="d-flex flex-column gap-3">
-                  <div className="row g-3 align-items-end">
+                  <div className="row g-3 align-items-start">
                     <div className="col-12 col-lg-6">
                       <label className="form-label fw-medium">Task names</label>
                       <div className="task-tracker-multiselect" ref={ganttCountryTaskSelectRef}>
@@ -6014,6 +6060,8 @@ const SmartsheetPivotPage = () => {
                         className="form-control"
                         value={trendBaselineDate}
                         onChange={(event) => setTrendBaselineDate(event.target.value)}
+                        pattern="\d{4}-\d{2}-\d{2}"
+                        placeholder="YYYY-MM-DD"
                       />
                     </div>
                     <div className="col-12 col-md-3">
