@@ -1751,6 +1751,21 @@ class SmartsheetPresentationController extends AbstractController
         $tasksParam = $queryParams['tasks'] ?? null;
         $sites = is_array($sitesParam) ? $sitesParam : (is_string($sitesParam) && $sitesParam !== '' ? [$sitesParam] : []);
         $tasks = is_array($tasksParam) ? $tasksParam : (is_string($tasksParam) && $tasksParam !== '' ? [$tasksParam] : []);
+        $queryString = (string) ($request->getQueryString() ?? '');
+        if (!is_array($sitesParam) && $queryString !== '') {
+            $siteMatches = [];
+            preg_match_all('/(?:^|&)sites=([^&]*)/i', $queryString, $siteMatches);
+            if (!empty($siteMatches[1])) {
+                $sites = array_map('urldecode', $siteMatches[1]);
+            }
+        }
+        if (!is_array($tasksParam) && $queryString !== '') {
+            $taskMatches = [];
+            preg_match_all('/(?:^|&)tasks=([^&]*)/i', $queryString, $taskMatches);
+            if (!empty($taskMatches[1])) {
+                $tasks = array_map('urldecode', $taskMatches[1]);
+            }
+        }
 
         $where = [sprintf('`%s` = :endField', $fieldNameColumn)];
         $params = [
