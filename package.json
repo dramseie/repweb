@@ -108,6 +108,7 @@
     "plotly.js-dist-min": "^2.35.3",
     "puppeteer-core": "^24.37.1",
     "react": "^19.1.1",
+    "react-datepicker": "^7.6.0",
     "react-dom": "^19.1.1",
     "react-grid-layout": "^1.5.2",
     "react-leaflet": "^5.0.0",

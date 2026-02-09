@@ -7,6 +7,8 @@ import HighchartsGridAxis from 'highcharts/modules/grid-axis';
 import HighchartsGantt from 'highcharts/modules/gantt';
 import DataTablesReport from '../../components/DataTablesReport.jsx';
 import TrumboField from '../components/common/TrumboField.jsx';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 if (typeof Highcharts === 'object') {
   const initXRange = HighchartsXRange?.default || HighchartsXRange;
@@ -428,9 +430,9 @@ const SmartsheetPivotPage = () => {
   const [trendFiltersLoading, setTrendFiltersLoading] = useState(false);
   const [trendFiltersError, setTrendFiltersError] = useState(null);
   const [trendFiltersLoaded, setTrendFiltersLoaded] = useState(false);
-  const [trendBaselineDate, setTrendBaselineDate] = useState(formatYmd(new Date()));
+  const [trendBaselineDate, setTrendBaselineDate] = useState(new Date());
   const [trendFilterCountry, setTrendFilterCountry] = useState('');
-  const [trendFilterTasks, setTrendFilterTasks] = useState([]);
+  const [trendFilterTask, setTrendFilterTask] = useState('');
   const [trendSeriesRows, setTrendSeriesRows] = useState([]);
   const [trendSeriesLoading, setTrendSeriesLoading] = useState(false);
   const [trendSeriesError, setTrendSeriesError] = useState(null);
@@ -1034,9 +1036,9 @@ const SmartsheetPivotPage = () => {
     setTrendSeriesError(null);
     try {
       const params = new URLSearchParams();
-      params.set('baseline', trendBaselineDate);
+      params.set('baseline', formatYmd(trendBaselineDate));
       if (trendFilterCountry) params.set('country', trendFilterCountry);
-      trendFilterTasks.forEach((task) => params.append('tasks', task));
+      if (trendFilterTask) params.set('tasks', trendFilterTask);
       const response = await fetch(`/api/smartsheet/presentation/trend-series?${params.toString()}`);
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -1050,7 +1052,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setTrendSeriesLoading(false);
     }
-  }, [trendBaselineDate, trendFilterCountry, trendFilterTasks]);
+  }, [trendBaselineDate, trendFilterCountry, trendFilterTask]);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -6042,7 +6044,7 @@ const SmartsheetPivotPage = () => {
                         className="btn btn-outline-secondary btn-sm"
                         onClick={() => {
                           setTrendFilterCountry('');
-                          setTrendFilterTasks([]);
+                          setTrendFilterTask('');
                           setTrendSeriesRequested(false);
                         }}
                         disabled={trendSeriesLoading}
@@ -6055,14 +6057,11 @@ const SmartsheetPivotPage = () => {
                   <div className="row g-3 align-items-end">
                     <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Baseline date</label>
-                      <input
-                        type="text"
+                      <DatePicker
+                        selected={trendBaselineDate}
+                        onChange={(date) => setTrendBaselineDate(date || new Date())}
+                        dateFormat="yyyy-MM-dd"
                         className="form-control"
-                        value={trendBaselineDate}
-                        onChange={(event) => setTrendBaselineDate(event.target.value)}
-                        inputMode="numeric"
-                        pattern="\d{4}-\d{2}-\d{2}"
-                        placeholder="YYYY-MM-DD"
                       />
                     </div>
                     <div className="col-12 col-md-3">
@@ -6085,19 +6084,16 @@ const SmartsheetPivotPage = () => {
                       <label className="form-label fw-medium">Task</label>
                       <select
                         className="form-select"
-                        multiple
-                        value={trendFilterTasks}
-                        onChange={(event) => {
-                          const selected = Array.from(event.target.selectedOptions).map((opt) => opt.value);
-                          setTrendFilterTasks(selected);
-                        }}
+                        value={trendFilterTask}
+                        onChange={(event) => setTrendFilterTask(event.target.value)}
                         disabled={trendFiltersLoading}
                       >
+                        <option value="">All tasks</option>
                         {trendFilters.tasks.map((task) => (
                           <option key={`trend-task-${task}`} value={task}>{task}</option>
                         ))}
                       </select>
-                      <div className="form-text text-muted">Select one or more tasks.</div>
+                      <div className="form-text text-muted">Select a task.</div>
                     </div>
                   </div>
 
