@@ -4174,10 +4174,18 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendFiltersLoading, fetchTrendFilters]);
 
   useEffect(() => {
-    if (activeTab === 'gantt' && ganttSelectorTab === 'trend' && trendFiltersLoaded && !trendSeriesLoading) {
+    if (activeTab === 'gantt' && ganttSelectorTab === 'trend' && trendFiltersLoaded) {
       fetchTrendSeries();
     }
-  }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendSeriesLoading, fetchTrendSeries]);
+  }, [
+    activeTab,
+    ganttSelectorTab,
+    trendFiltersLoaded,
+    trendFilterCountry,
+    trendFilterSite,
+    trendFilterTask,
+    fetchTrendSeries,
+  ]);
 
   return (
     <div className="smartsheet-pivot">
