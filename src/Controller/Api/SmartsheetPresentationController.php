@@ -1779,10 +1779,6 @@ class SmartsheetPresentationController extends AbstractController
             . 'FROM (' . $historySql . ') h '
             . 'INNER JOIN (' . $baseSql . ') b ON b.task_name = h.task_name '
             . 'GROUP BY DATE(h.modified_at), h.task_name ORDER BY day ASC';
-        if ($where !== []) {
-            $sql .= ' WHERE ' . implode(' AND ', $where);
-        }
-        $sql .= sprintf(' GROUP BY DATE(`%s`), `%s` ORDER BY day ASC', $modifiedAtColumn, $taskNameColumn);
 
         $rows = $this->connection->fetchAllAssociative($sql, $params);
 
