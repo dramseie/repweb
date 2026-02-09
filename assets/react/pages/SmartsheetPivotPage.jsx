@@ -6056,10 +6056,11 @@ const SmartsheetPivotPage = () => {
                     <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Baseline date</label>
                       <input
-                        type="date"
+                        type="text"
                         className="form-control"
                         value={trendBaselineDate}
                         onChange={(event) => setTrendBaselineDate(event.target.value)}
+                        inputMode="numeric"
                         pattern="\d{4}-\d{2}-\d{2}"
                         placeholder="YYYY-MM-DD"
                       />
