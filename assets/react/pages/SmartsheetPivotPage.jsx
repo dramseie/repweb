@@ -594,48 +594,65 @@ const SmartsheetPivotPage = () => {
     });
   }, [historyDetailsRows]);
 
-  const formatHistoryDetailTooltip = (value) => {
-    if (!value) return '';
+  const getHistoryDetailBadgeData = (value) => {
+    if (!value) return { count: null, tooltip: '' };
     let payload = value;
     if (typeof value === 'string') {
       try {
         payload = JSON.parse(value);
       } catch (error) {
-        return String(value);
+        return { count: null, tooltip: String(value) };
       }
     }
     if (!payload || typeof payload !== 'object') {
-      return String(value);
+      return { count: null, tooltip: String(value) };
     }
     const dataItems = Array.isArray(payload.data) ? payload.data : [];
+    const totalCountRaw = Number(payload.totalCount ?? dataItems.length);
+    const count = Number.isFinite(totalCountRaw) ? totalCountRaw : null;
     if (dataItems.length === 0) {
-      return JSON.stringify(payload, null, 2);
+      return {
+        count,
+        tooltip: JSON.stringify(payload, null, 2),
+      };
     }
+    const formatTooltipDate = (raw) => {
+      if (!raw) return '';
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        return String(raw);
+      }
+      return formatYmd(parsed);
+    };
+    const formatLine = (label, rawValue) => {
+      const valueText = rawValue ? String(rawValue) : '—';
+      return `${label.padEnd(12)} ${valueText}`;
+    };
     const lines = [];
     dataItems.forEach((entry, index) => {
       lines.push(`#${index + 1}`);
       if (entry?.value) {
-        lines.push(`Value: ${entry.value}`);
-      }
-      if (entry?.modifiedAt) {
-        lines.push(`Modified: ${entry.modifiedAt}`);
+        lines.push(formatLine('Value', formatTooltipDate(entry.value)));
       }
       if (entry?.modifiedBy?.name || entry?.modifiedBy?.email) {
         const name = entry.modifiedBy?.name || '';
         const email = entry.modifiedBy?.email ? ` (${entry.modifiedBy.email})` : '';
-        lines.push(`By: ${name}${email}`.trim());
+        lines.push(formatLine('By', `${name}${email}`.trim()));
+      }
+      if (entry?.modifiedAt) {
+        lines.push(formatLine('Modified', formatTooltipDate(entry.modifiedAt)));
       }
       if (entry?.formula) {
-        lines.push(`Formula: ${entry.formula}`);
-      }
-      if (entry?.columnId) {
-        lines.push(`Column ID: ${entry.columnId}`);
+        lines.push(formatLine('Formula', entry.formula));
       }
       if (index < dataItems.length - 1) {
         lines.push('');
       }
     });
-    return lines.join('\n');
+    return {
+      count,
+      tooltip: lines.join('\n'),
+    };
   };
 
   const workspacesAbortRef = useRef(null);
@@ -6337,27 +6354,30 @@ const SmartsheetPivotPage = () => {
                               <td>{formatDateDisplay(row.start_date)}</td>
                               <td>
                                 {(() => {
-                                  const tooltip = formatHistoryDetailTooltip(row.start_date_data);
-                                  return tooltip
-                                    ? <span className="history-detail-badge" data-tooltip={tooltip}>View</span>
+                                  const badge = getHistoryDetailBadgeData(row.start_date_data);
+                                  const label = Number.isFinite(badge.count) ? badge.count : '—';
+                                  return badge.tooltip
+                                    ? <span className="history-detail-badge" data-tooltip={badge.tooltip}>{label}</span>
                                     : <span className="text-muted">—</span>;
                                 })()}
                               </td>
                               <td>{formatDateDisplay(row.end_date)}</td>
                               <td>
                                 {(() => {
-                                  const tooltip = formatHistoryDetailTooltip(row.end_date_data);
-                                  return tooltip
-                                    ? <span className="history-detail-badge" data-tooltip={tooltip}>View</span>
+                                  const badge = getHistoryDetailBadgeData(row.end_date_data);
+                                  const label = Number.isFinite(badge.count) ? badge.count : '—';
+                                  return badge.tooltip
+                                    ? <span className="history-detail-badge" data-tooltip={badge.tooltip}>{label}</span>
                                     : <span className="text-muted">—</span>;
                                 })()}
                               </td>
                               <td>{formatDisplayValue(row['%_complete'])}</td>
                               <td>
                                 {(() => {
-                                  const tooltip = formatHistoryDetailTooltip(row.percent_complete_data);
-                                  return tooltip
-                                    ? <span className="history-detail-badge" data-tooltip={tooltip}>View</span>
+                                  const badge = getHistoryDetailBadgeData(row.percent_complete_data);
+                                  const label = Number.isFinite(badge.count) ? badge.count : '—';
+                                  return badge.tooltip
+                                    ? <span className="history-detail-badge" data-tooltip={badge.tooltip}>{label}</span>
                                     : <span className="text-muted">—</span>;
                                 })()}
                               </td>
