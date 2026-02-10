@@ -445,6 +445,7 @@ const SmartsheetPivotPage = () => {
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [uploadLoaded, setUploadLoaded] = useState(false);
   const [wonderfulFrom, setWonderfulFrom] = useState('');
   const [wonderfulTo, setWonderfulTo] = useState('');
   const [wonderfulTimeframe, setWonderfulTimeframe] = useState('this-week');
@@ -1179,6 +1180,7 @@ const SmartsheetPivotPage = () => {
       setUploadFiles([]);
     } finally {
       setUploadLoading(false);
+      setUploadLoaded(true);
     }
   }, []);
 
@@ -4398,10 +4400,10 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, fetchTaskTracker, taskTrackerLoaded, taskTrackerLoading]);
 
   useEffect(() => {
-    if (activeTab === 'upload' && !uploadLoading) {
+    if (activeTab === 'upload' && !uploadLoading && !uploadLoaded) {
       fetchUploadFiles();
     }
-  }, [activeTab, uploadLoading, fetchUploadFiles]);
+  }, [activeTab, uploadLoading, uploadLoaded, fetchUploadFiles]);
 
   useEffect(() => {
     if (activeTab === 'gantt' && !ganttCountriesLoading && ganttCountries.length === 0) {
