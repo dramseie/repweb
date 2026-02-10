@@ -1121,7 +1121,6 @@ const SmartsheetPivotPage = () => {
     try {
       const params = new URLSearchParams();
       if (trendFilterCountry) params.set('country', trendFilterCountry);
-      if (trendFilterTask) params.set('task', trendFilterTask);
       const response = await fetch(`/api/smartsheet/presentation/history-details?${params.toString()}`);
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -1135,7 +1134,7 @@ const SmartsheetPivotPage = () => {
     } finally {
       setHistoryDetailsLoading(false);
     }
-  }, [trendFilterCountry, trendFilterTask]);
+  }, [trendFilterCountry]);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -6265,7 +6264,6 @@ const SmartsheetPivotPage = () => {
                         className="btn btn-outline-secondary btn-sm"
                         onClick={() => {
                           setTrendFilterCountry('');
-                          setTrendFilterTask('');
                           setHistoryDetailsRequested(false);
                           setHistoryDetailsRows([]);
                         }}
@@ -6288,19 +6286,6 @@ const SmartsheetPivotPage = () => {
                           ? { value: trendFilterCountry, label: trendFilterCountry }
                           : null}
                         onChange={(option) => setTrendFilterCountry(option?.value || '')}
-                      />
-                    </div>
-                    <div className="col-12 col-md-6">
-                      <label className="form-label fw-medium">Task</label>
-                      <Select
-                        classNamePrefix="react-select"
-                        isClearable
-                        isLoading={trendFiltersLoading}
-                        options={trendFilters.tasks.map((task) => ({ value: task, label: task }))}
-                        value={trendFilterTask
-                          ? { value: trendFilterTask, label: trendFilterTask }
-                          : null}
-                        onChange={(option) => setTrendFilterTask(option?.value || '')}
                       />
                     </div>
                   </div>
