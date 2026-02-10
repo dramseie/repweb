@@ -276,8 +276,8 @@
   white-space: pre-line;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   z-index: 2147483647;
-  max-width: 560px;
-  min-width: 320px;
+  max-width: 800px;
+  min-width: 800px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
   border: 1px solid #e5e7eb;
 }
