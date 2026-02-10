@@ -32,6 +32,7 @@ class SmartsheetPresentationController extends AbstractController
     private const MASTER_TABLE = 'nifi.smartsheet_master_data';
     private const COUNTRY_GANTT_VIEW = 'nifi.smartsheet_country_gantt_view';
     private const HISTORY_VIEW = 'nifi.smartsheet_history_view';
+    private const HISTORY_DETAIL_VIEW = 'nifi.smartsheet_master_data_history_detailview';
     private const TASK_NAME_VIEW = 'nifi.smartsheet_task_name_view';
     private const PLANNED_WEEK_VIEW = 'nifi.smartsheet_planned_week_view';
     private const PROGRAMME_OVERVIEW_VIEW = 'nifi.smartsheet_programme_overview_view';
@@ -1629,6 +1630,47 @@ class SmartsheetPresentationController extends AbstractController
             'columns' => $columns,
             'items' => $rows,
         ]);
+    }
+
+    #[Route('/history-details', name: 'presentation_history_details', methods: ['GET'])]
+    public function historyDetails(Request $request): JsonResponse
+    {
+        $limit = (int) $request->query->get('limit', 2000);
+        if ($limit < 1) {
+            $limit = 1;
+        }
+        if ($limit > 10000) {
+            $limit = 10000;
+        }
+
+        $country = trim((string) $request->query->get('country', ''));
+        $task = trim((string) $request->query->get('task', ''));
+
+        $where = [];
+        $params = [];
+        if ($country !== '') {
+            $where[] = 'country = :country';
+            $params['country'] = $country;
+        }
+        if ($task !== '') {
+            $where[] = 'task_name = :taskName';
+            $params['taskName'] = $task;
+        }
+
+        $sql = sprintf(
+            'SELECT country, site_name, site_id, task_name, start_date, start_date_data, end_date, end_date_data, `%s` AS `%%_complete`, percent_complete_data FROM %s',
+            '%_complete',
+            self::HISTORY_DETAIL_VIEW
+        );
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY task_name, site_name, start_date DESC';
+        $sql .= sprintf(' LIMIT %d', $limit);
+
+        $rows = $this->connection->fetchAllAssociative($sql, $params);
+
+        return $this->json(['items' => $rows]);
     }
 
     #[Route('/trend-filters', name: 'presentation_trend_filters', methods: ['GET'])]

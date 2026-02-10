@@ -438,6 +438,10 @@ const SmartsheetPivotPage = () => {
   const [trendSeriesLoading, setTrendSeriesLoading] = useState(false);
   const [trendSeriesError, setTrendSeriesError] = useState(null);
   const [trendSeriesRequested, setTrendSeriesRequested] = useState(false);
+  const [historyDetailsRows, setHistoryDetailsRows] = useState([]);
+  const [historyDetailsLoading, setHistoryDetailsLoading] = useState(false);
+  const [historyDetailsError, setHistoryDetailsError] = useState(null);
+  const [historyDetailsRequested, setHistoryDetailsRequested] = useState(false);
   const [wonderfulFrom, setWonderfulFrom] = useState('');
   const [wonderfulTo, setWonderfulTo] = useState('');
   const [wonderfulTimeframe, setWonderfulTimeframe] = useState('this-week');
@@ -579,16 +583,60 @@ const SmartsheetPivotPage = () => {
   }, [trendSeriesRows]);
 
   const historyDetailRows = React.useMemo(() => {
-    const rows = Array.isArray(trendSeriesRows) ? trendSeriesRows.slice() : [];
+    const rows = Array.isArray(historyDetailsRows) ? historyDetailsRows.slice() : [];
     return rows.sort((left, right) => {
-      const leftDate = parseDateValue(left?.modified_at ?? left?.date ?? left?.day ?? null);
-      const rightDate = parseDateValue(right?.modified_at ?? right?.date ?? right?.day ?? null);
+      const leftDate = parseDateValue(left?.start_date ?? left?.modified_at ?? left?.date ?? left?.day ?? null);
+      const rightDate = parseDateValue(right?.start_date ?? right?.modified_at ?? right?.date ?? right?.day ?? null);
       if (!leftDate && !rightDate) return 0;
       if (!leftDate) return 1;
       if (!rightDate) return -1;
       return leftDate.getTime() - rightDate.getTime();
     });
-  }, [trendSeriesRows]);
+  }, [historyDetailsRows]);
+
+  const formatHistoryDetailTooltip = (value) => {
+    if (!value) return '';
+    let payload = value;
+    if (typeof value === 'string') {
+      try {
+        payload = JSON.parse(value);
+      } catch (error) {
+        return String(value);
+      }
+    }
+    if (!payload || typeof payload !== 'object') {
+      return String(value);
+    }
+    const dataItems = Array.isArray(payload.data) ? payload.data : [];
+    if (dataItems.length === 0) {
+      return JSON.stringify(payload, null, 2);
+    }
+    const lines = [];
+    dataItems.forEach((entry, index) => {
+      lines.push(`#${index + 1}`);
+      if (entry?.value) {
+        lines.push(`Value: ${entry.value}`);
+      }
+      if (entry?.modifiedAt) {
+        lines.push(`Modified: ${entry.modifiedAt}`);
+      }
+      if (entry?.modifiedBy?.name || entry?.modifiedBy?.email) {
+        const name = entry.modifiedBy?.name || '';
+        const email = entry.modifiedBy?.email ? ` (${entry.modifiedBy.email})` : '';
+        lines.push(`By: ${name}${email}`.trim());
+      }
+      if (entry?.formula) {
+        lines.push(`Formula: ${entry.formula}`);
+      }
+      if (entry?.columnId) {
+        lines.push(`Column ID: ${entry.columnId}`);
+      }
+      if (index < dataItems.length - 1) {
+        lines.push('');
+      }
+    });
+    return lines.join('\n');
+  };
 
   const workspacesAbortRef = useRef(null);
   const sheetsAbortRef = useRef(null);
@@ -1066,6 +1114,28 @@ const SmartsheetPivotPage = () => {
       setTrendSeriesLoading(false);
     }
   }, [trendBaselineDate, trendFilterCountry, trendFilterTask]);
+
+  const fetchHistoryDetails = useCallback(async () => {
+    setHistoryDetailsLoading(true);
+    setHistoryDetailsError(null);
+    try {
+      const params = new URLSearchParams();
+      if (trendFilterCountry) params.set('country', trendFilterCountry);
+      if (trendFilterTask) params.set('task', trendFilterTask);
+      const response = await fetch(`/api/smartsheet/presentation/history-details?${params.toString()}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || `Failed to load history details (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setHistoryDetailsRows(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setHistoryDetailsError(error.message || 'Unable to load history details.');
+      setHistoryDetailsRows([]);
+    } finally {
+      setHistoryDetailsLoading(false);
+    }
+  }, [trendFilterCountry, trendFilterTask]);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -4268,6 +4338,12 @@ const SmartsheetPivotPage = () => {
     }
   }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendSeriesRequested, fetchTrendSeries]);
 
+  useEffect(() => {
+    if (activeTab === 'gantt' && ganttSelectorTab === 'history-details' && historyDetailsRequested) {
+      fetchHistoryDetails();
+    }
+  }, [activeTab, ganttSelectorTab, historyDetailsRequested, fetchHistoryDetails]);
+
   return (
     <div className="smartsheet-pivot">
       <ul className="nav nav-tabs mb-3" role="tablist">
@@ -6159,17 +6235,17 @@ const SmartsheetPivotPage = () => {
                   <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
                     <div>
                       <h2 className="h6 mb-0">History Details</h2>
-                      <div className="text-muted small">Source: nifi.smartsheet_history_view</div>
+                      <div className="text-muted small">Source: nifi.smartsheet_master_data_history_detailview</div>
                     </div>
                     <div className="d-flex align-items-center gap-2">
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
                         onClick={() => {
-                          setTrendSeriesRequested(true);
-                          fetchTrendSeries();
+                          setHistoryDetailsRequested(true);
+                          fetchHistoryDetails();
                         }}
-                        disabled={trendSeriesLoading}
+                        disabled={historyDetailsLoading}
                       >
                         Show
                       </button>
@@ -6177,10 +6253,10 @@ const SmartsheetPivotPage = () => {
                         type="button"
                         className="btn btn-outline-secondary btn-sm"
                         onClick={() => {
-                          setTrendSeriesRequested(true);
-                          fetchTrendSeries();
+                          setHistoryDetailsRequested(true);
+                          fetchHistoryDetails();
                         }}
-                        disabled={trendSeriesLoading}
+                        disabled={historyDetailsLoading}
                       >
                         Refresh
                       </button>
@@ -6190,9 +6266,10 @@ const SmartsheetPivotPage = () => {
                         onClick={() => {
                           setTrendFilterCountry('');
                           setTrendFilterTask('');
-                          setTrendSeriesRequested(false);
+                          setHistoryDetailsRequested(false);
+                          setHistoryDetailsRows([]);
                         }}
-                        disabled={trendSeriesLoading}
+                        disabled={historyDetailsLoading}
                       >
                         Clear
                       </button>
@@ -6200,17 +6277,6 @@ const SmartsheetPivotPage = () => {
                   </div>
 
                   <div className="row g-3 align-items-end">
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">Baseline date</label>
-                      <div className="css-b62m3t-container">
-                        <DatePicker
-                          selected={trendBaselineDate}
-                          onChange={(date) => setTrendBaselineDate(date || new Date())}
-                          dateFormat="yyyy-MM-dd"
-                          className="form-control"
-                        />
-                      </div>
-                    </div>
                     <div className="col-12 col-md-3">
                       <label className="form-label fw-medium">Country</label>
                       <Select
@@ -6245,44 +6311,71 @@ const SmartsheetPivotPage = () => {
                     </div>
                   )}
 
-                  {trendSeriesError && (
+                  {historyDetailsError && (
                     <div className="alert alert-warning" role="alert">
-                      {trendSeriesError}
+                      {historyDetailsError}
                     </div>
                   )}
 
-                  {(trendFiltersLoading || trendSeriesLoading) && (
+                  {(trendFiltersLoading || historyDetailsLoading) && (
                     <div className="text-muted">Loading history details…</div>
                   )}
 
-                  {!trendSeriesLoading && historyDetailRows.length === 0 && !trendSeriesError && trendSeriesRequested && (
+                  {!historyDetailsLoading && historyDetailRows.length === 0 && !historyDetailsError && historyDetailsRequested && (
                     <div className="text-muted">No history details available.</div>
                   )}
 
-                  {!trendSeriesLoading && historyDetailRows.length > 0 && (
+                  {!historyDetailsLoading && historyDetailRows.length > 0 && (
                     <div className="table-responsive">
                       <table className="table table-sm table-bordered table-striped align-middle mb-0">
                         <thead className="table-light">
                           <tr>
-                            <th>Date</th>
-                            <th>Site</th>
+                            <th>Country</th>
+                            <th>Site Name</th>
+                            <th>Site ID</th>
                             <th>Task</th>
-                            <th>Start</th>
-                            <th>End</th>
-                            <th>% Completed</th>
-                            <th>Deviation (days)</th>
+                            <th>Start date</th>
+                            <th>Start date data</th>
+                            <th>End date</th>
+                            <th>End date data</th>
+                            <th>% Complete</th>
+                            <th>% Complete data</th>
                           </tr>
                         </thead>
                         <tbody>
                           {historyDetailRows.map((row, index) => (
-                            <tr key={`${row.site_label ?? 'site'}-${row.task_name ?? 'task'}-${row.modified_at ?? index}-${index}`}>
-                              <td>{formatDateDisplay(row.modified_at ?? row.date ?? row.day)}</td>
-                              <td>{formatDisplayValue(row.site_label)}</td>
+                            <tr key={`${row.site_id ?? row.site_name ?? 'site'}-${row.task_name ?? 'task'}-${index}`}>
+                              <td>{formatDisplayValue(row.country)}</td>
+                              <td>{formatDisplayValue(row.site_name)}</td>
+                              <td>{formatDisplayValue(row.site_id)}</td>
                               <td>{formatDisplayValue(row.task_name)}</td>
-                              <td>{formatDateDisplay(row.start_date ?? row.startDate)}</td>
-                              <td>{formatDateDisplay(row.end_date ?? row.endDate)}</td>
-                              <td>{formatDisplayValue(row.percent_complete ?? row.percentComplete)}</td>
-                              <td>{formatDisplayValue(row.deviation_days ?? row.total ?? row.count)}</td>
+                              <td>{formatDateDisplay(row.start_date)}</td>
+                              <td>
+                                {(() => {
+                                  const tooltip = formatHistoryDetailTooltip(row.start_date_data);
+                                  return tooltip
+                                    ? <span className="history-detail-badge" data-tooltip={tooltip}>View</span>
+                                    : <span className="text-muted">—</span>;
+                                })()}
+                              </td>
+                              <td>{formatDateDisplay(row.end_date)}</td>
+                              <td>
+                                {(() => {
+                                  const tooltip = formatHistoryDetailTooltip(row.end_date_data);
+                                  return tooltip
+                                    ? <span className="history-detail-badge" data-tooltip={tooltip}>View</span>
+                                    : <span className="text-muted">—</span>;
+                                })()}
+                              </td>
+                              <td>{formatDisplayValue(row['%_complete'])}</td>
+                              <td>
+                                {(() => {
+                                  const tooltip = formatHistoryDetailTooltip(row.percent_complete_data);
+                                  return tooltip
+                                    ? <span className="history-detail-badge" data-tooltip={tooltip}>View</span>
+                                    : <span className="text-muted">—</span>;
+                                })()}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
