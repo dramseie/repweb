@@ -33,6 +33,7 @@ class SmartsheetPresentationController extends AbstractController
     private const COUNTRY_GANTT_VIEW = 'nifi.smartsheet_country_gantt_view';
     private const HISTORY_VIEW = 'nifi.smartsheet_history_view';
     private const HISTORY_DETAIL_VIEW = 'nifi.smartsheet_master_data_history_detailview';
+    private const UPLOAD_DIR = '/mnt/repweb/ikea';
     private const TASK_NAME_VIEW = 'nifi.smartsheet_task_name_view';
     private const PLANNED_WEEK_VIEW = 'nifi.smartsheet_planned_week_view';
     private const PROGRAMME_OVERVIEW_VIEW = 'nifi.smartsheet_programme_overview_view';
@@ -1673,6 +1674,148 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json(['items' => $rows]);
     }
 
+    #[Route('/upload-files', name: 'presentation_upload_files_index', methods: ['GET'])]
+    public function uploadFilesIndex(): JsonResponse
+    {
+        $this->ensureUploadDirectory();
+        if (!is_dir(self::UPLOAD_DIR)) {
+            return $this->json(['items' => []]);
+        }
+
+        $items = [];
+        foreach (new \DirectoryIterator(self::UPLOAD_DIR) as $file) {
+            if ($file->isDot() || !$file->isFile()) {
+                continue;
+            }
+            $items[] = [
+                'name' => $file->getFilename(),
+                'size' => $file->getSize(),
+                'modifiedAt' => date('c', $file->getMTime()),
+            ];
+        }
+
+        usort($items, static fn (array $a, array $b): int => strcasecmp($a['name'], $b['name']));
+
+        return $this->json(['items' => $items]);
+    }
+
+    #[Route('/upload-files', name: 'presentation_upload_files_store', methods: ['POST'])]
+    public function uploadFilesStore(Request $request): JsonResponse
+    {
+        $this->ensureUploadDirectory();
+        $files = $request->files->all();
+        $uploads = [];
+
+        if (isset($files['files']) && is_array($files['files'])) {
+            $uploads = array_merge($uploads, $files['files']);
+        }
+        if (isset($files['file'])) {
+            $uploads[] = $files['file'];
+        }
+
+        if (!$uploads) {
+            return $this->json(['message' => 'No files uploaded.'], 400);
+        }
+
+        $saved = [];
+        foreach ($uploads as $upload) {
+            if (!$upload || !$upload->isValid()) {
+                continue;
+            }
+            $safeName = $this->sanitizeUploadName($upload->getClientOriginalName());
+            $upload->move(self::UPLOAD_DIR, $safeName);
+            $path = $this->resolveUploadPath($safeName);
+            $saved[] = [
+                'name' => $safeName,
+                'size' => file_exists($path) ? filesize($path) : null,
+                'modifiedAt' => file_exists($path) ? date('c', filemtime($path)) : null,
+            ];
+        }
+
+        return $this->json(['items' => $saved]);
+    }
+
+    #[Route('/upload-rename', name: 'presentation_upload_rename', methods: ['POST'])]
+    public function uploadRename(Request $request): JsonResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true);
+        $from = trim((string) ($payload['from'] ?? ''));
+        $to = trim((string) ($payload['to'] ?? ''));
+        if ($from === '' || $to === '') {
+            return $this->json(['message' => 'from and to are required.'], 400);
+        }
+
+        try {
+            $fromPath = $this->resolveUploadPath($from);
+            $toPath = $this->resolveUploadPath($to);
+        } catch (\Throwable $error) {
+            return $this->json(['message' => $error->getMessage()], 400);
+        }
+
+        if (!file_exists($fromPath)) {
+            return $this->json(['message' => 'File not found.'], 404);
+        }
+        if (file_exists($toPath)) {
+            return $this->json(['message' => 'Target file already exists.'], 409);
+        }
+        if (!@rename($fromPath, $toPath)) {
+            return $this->json(['message' => 'Unable to rename file.'], 500);
+        }
+
+        return $this->json(['ok' => true]);
+    }
+
+    #[Route('/upload-delete', name: 'presentation_upload_delete', methods: ['DELETE'])]
+    public function uploadDelete(Request $request): JsonResponse
+    {
+        $name = trim((string) $request->query->get('name', ''));
+        if ($name === '') {
+            return $this->json(['message' => 'name is required.'], 400);
+        }
+
+        try {
+            $path = $this->resolveUploadPath($name);
+        } catch (\Throwable $error) {
+            return $this->json(['message' => $error->getMessage()], 400);
+        }
+
+        if (!file_exists($path)) {
+            return $this->json(['message' => 'File not found.'], 404);
+        }
+        if (!@unlink($path)) {
+            return $this->json(['message' => 'Unable to delete file.'], 500);
+        }
+
+        return $this->json(['ok' => true]);
+    }
+
+    #[Route('/upload-download', name: 'presentation_upload_download', methods: ['GET'])]
+    public function uploadDownload(Request $request): Response
+    {
+        $name = trim((string) $request->query->get('name', ''));
+        if ($name === '') {
+            return new Response('Not found', 404);
+        }
+
+        try {
+            $path = $this->resolveUploadPath($name);
+        } catch (\Throwable) {
+            return new Response('Not found', 404);
+        }
+
+        if (!file_exists($path)) {
+            return new Response('Not found', 404);
+        }
+
+        $response = new BinaryFileResponse($path);
+        $response->setContentDisposition(
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+            basename($path)
+        );
+
+        return $response;
+    }
+
     #[Route('/trend-filters', name: 'presentation_trend_filters', methods: ['GET'])]
     public function trendFilters(): JsonResponse
     {
@@ -3188,6 +3331,29 @@ class SmartsheetPresentationController extends AbstractController
             'fieldName' => $this->findColumnName($columns, self::HISTORY_VIEW_FIELD_NAME_CANDIDATES),
             'value' => $this->findColumnName($columns, self::HISTORY_VIEW_VALUE_CANDIDATES),
         ];
+    }
+
+    private function ensureUploadDirectory(): void
+    {
+        if (!is_dir(self::UPLOAD_DIR)) {
+            @mkdir(self::UPLOAD_DIR, 0775, true);
+        }
+    }
+
+    private function sanitizeUploadName(string $name): string
+    {
+        $name = trim(str_replace("\0", '', $name));
+        if ($name === '' || str_contains($name, '..') || str_contains($name, '/') || str_contains($name, '\\')) {
+            throw new \InvalidArgumentException('Invalid file name.');
+        }
+
+        return $name;
+    }
+
+    private function resolveUploadPath(string $name): string
+    {
+        $safeName = $this->sanitizeUploadName($name);
+        return rtrim(self::UPLOAD_DIR, '/') . '/' . $safeName;
     }
 
     private function pickWorstRag(?string $current, ?string $incoming): ?string

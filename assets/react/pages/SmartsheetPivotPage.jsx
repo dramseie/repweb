@@ -442,6 +442,9 @@ const SmartsheetPivotPage = () => {
   const [historyDetailsLoading, setHistoryDetailsLoading] = useState(false);
   const [historyDetailsError, setHistoryDetailsError] = useState(null);
   const [historyDetailsRequested, setHistoryDetailsRequested] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState([]);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const [wonderfulFrom, setWonderfulFrom] = useState('');
   const [wonderfulTo, setWonderfulTo] = useState('');
   const [wonderfulTimeframe, setWonderfulTimeframe] = useState('this-week');
@@ -653,6 +656,14 @@ const SmartsheetPivotPage = () => {
       count,
       tooltip: lines.join('\n'),
     };
+  };
+
+  const formatUploadSize = (value) => {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes)) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const workspacesAbortRef = useRef(null);
@@ -1152,6 +1163,94 @@ const SmartsheetPivotPage = () => {
       setHistoryDetailsLoading(false);
     }
   }, [trendFilterCountry]);
+
+  const fetchUploadFiles = useCallback(async () => {
+    setUploadLoading(true);
+    setUploadError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/upload-files');
+      if (!response.ok) {
+        throw new Error(`Failed to load upload files (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setUploadFiles(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setUploadError(error.message || 'Unable to load upload files.');
+      setUploadFiles([]);
+    } finally {
+      setUploadLoading(false);
+    }
+  }, []);
+
+  const uploadFilesToServer = useCallback(async (files) => {
+    if (!files || files.length === 0) return;
+    setUploadLoading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach((file) => {
+        formData.append('files[]', file);
+      });
+      const response = await fetch('/api/smartsheet/presentation/upload-files', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `Upload failed (HTTP ${response.status}).`);
+      }
+      await fetchUploadFiles();
+    } catch (error) {
+      setUploadError(error.message || 'Unable to upload files.');
+    } finally {
+      setUploadLoading(false);
+    }
+  }, [fetchUploadFiles]);
+
+  const renameUploadFile = useCallback(async (currentName) => {
+    const nextName = window.prompt('Rename file to:', currentName || '');
+    if (!nextName || nextName.trim() === '' || nextName === currentName) {
+      return;
+    }
+    setUploadLoading(true);
+    setUploadError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/upload-rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: currentName, to: nextName.trim() }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `Rename failed (HTTP ${response.status}).`);
+      }
+      await fetchUploadFiles();
+    } catch (error) {
+      setUploadError(error.message || 'Unable to rename file.');
+    } finally {
+      setUploadLoading(false);
+    }
+  }, [fetchUploadFiles]);
+
+  const deleteUploadFile = useCallback(async (name) => {
+    if (!window.confirm(`Delete ${name}?`)) return;
+    setUploadLoading(true);
+    setUploadError(null);
+    try {
+      const response = await fetch(`/api/smartsheet/presentation/upload-delete?name=${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `Delete failed (HTTP ${response.status}).`);
+      }
+      await fetchUploadFiles();
+    } catch (error) {
+      setUploadError(error.message || 'Unable to delete file.');
+    } finally {
+      setUploadLoading(false);
+    }
+  }, [fetchUploadFiles]);
 
   const fetchWonderfulStates = useCallback(async () => {
     setWonderfulStatesLoading(true);
@@ -4299,6 +4398,12 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, fetchTaskTracker, taskTrackerLoaded, taskTrackerLoading]);
 
   useEffect(() => {
+    if (activeTab === 'upload' && !uploadLoading) {
+      fetchUploadFiles();
+    }
+  }, [activeTab, uploadLoading, fetchUploadFiles]);
+
+  useEffect(() => {
     if (activeTab === 'gantt' && !ganttCountriesLoading && ganttCountries.length === 0) {
       fetchGanttCountries();
     }
@@ -4438,6 +4543,17 @@ const SmartsheetPivotPage = () => {
             onClick={() => setActiveTab('gantt')}
           >
             Graph
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'upload' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'upload'}
+            onClick={() => setActiveTab('upload')}
+          >
+            Upload
           </button>
         </li>
       </ul>
@@ -6387,6 +6503,113 @@ const SmartsheetPivotPage = () => {
                       </table>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'upload' && (
+        <div className="d-flex flex-column gap-3">
+          <div className="card shadow-sm">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                  <h2 className="h5 mb-0">Upload</h2>
+                  <div className="text-muted small">Directory: /mnt/repweb/ikea</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={fetchUploadFiles}
+                  disabled={uploadLoading}
+                >
+                  Refresh
+                </button>
+              </div>
+              <div
+                className="task-tracker-dropzone"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  uploadFilesToServer(event.dataTransfer.files);
+                }}
+                onClick={() => {
+                  const input = document.getElementById('smartsheet-upload-input');
+                  if (input) input.click();
+                }}
+              >
+                <div className="task-tracker-dropzone__label">
+                  Drag & drop files or click to upload
+                </div>
+                <input
+                  id="smartsheet-upload-input"
+                  type="file"
+                  multiple
+                  className="task-tracker-dropzone__input"
+                  onChange={(event) => uploadFilesToServer(event.target.files)}
+                />
+              </div>
+              {uploadError && (
+                <div className="alert alert-warning py-2 mb-0 mt-3" role="alert">
+                  {uploadError}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card shadow-sm">
+            <div className="card-body">
+              {uploadLoading && <div className="text-muted">Loading files…</div>}
+              {!uploadLoading && uploadFiles.length === 0 && (
+                <div className="text-muted">No files found.</div>
+              )}
+              {!uploadLoading && uploadFiles.length > 0 && (
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Filename</th>
+                        <th>Size</th>
+                        <th>Modified</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uploadFiles.map((file) => (
+                        <tr key={file.name}>
+                          <td>{formatDisplayValue(file.name)}</td>
+                          <td>{formatUploadSize(file.size)}</td>
+                          <td>{formatDateTimeDisplay(file.modifiedAt)}</td>
+                          <td className="text-nowrap">
+                            <a
+                              className="btn btn-sm btn-outline-primary me-1"
+                              href={`/api/smartsheet/presentation/upload-download?name=${encodeURIComponent(file.name)}`}
+                            >
+                              Download
+                            </a>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary me-1"
+                              onClick={() => renameUploadFile(file.name)}
+                              disabled={uploadLoading}
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => deleteUploadFile(file.name)}
+                              disabled={uploadLoading}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
