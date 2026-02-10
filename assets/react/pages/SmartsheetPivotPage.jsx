@@ -442,6 +442,11 @@ const SmartsheetPivotPage = () => {
   const [historyDetailsLoading, setHistoryDetailsLoading] = useState(false);
   const [historyDetailsError, setHistoryDetailsError] = useState(null);
   const [historyDetailsRequested, setHistoryDetailsRequested] = useState(false);
+  const [durationRows, setDurationRows] = useState([]);
+  const [durationColumns, setDurationColumns] = useState([]);
+  const [durationLoading, setDurationLoading] = useState(false);
+  const [durationError, setDurationError] = useState(null);
+  const [durationRequested, setDurationRequested] = useState(false);
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -1164,6 +1169,30 @@ const SmartsheetPivotPage = () => {
       setHistoryDetailsLoading(false);
     }
   }, [trendFilterCountry]);
+
+  const fetchDurationAnalysis = useCallback(async () => {
+    setDurationLoading(true);
+    setDurationError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/duration-analysis');
+      if (!response.ok) {
+        throw new Error(`Failed to load duration analysis (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const cols = Array.isArray(payload?.columns) && payload.columns.length > 0
+        ? payload.columns
+        : (items[0] ? Object.keys(items[0]) : []);
+      setDurationRows(items);
+      setDurationColumns(cols);
+    } catch (error) {
+      setDurationError(error.message || 'Unable to load duration analysis.');
+      setDurationRows([]);
+      setDurationColumns([]);
+    } finally {
+      setDurationLoading(false);
+    }
+  }, []);
 
   const fetchUploadFiles = useCallback(async () => {
     setUploadLoading(true);
@@ -4467,6 +4496,12 @@ const SmartsheetPivotPage = () => {
     }
   }, [activeTab, ganttSelectorTab, historyDetailsRequested, fetchHistoryDetails]);
 
+  useEffect(() => {
+    if (activeTab === 'gantt' && ganttSelectorTab === 'duration' && durationRequested) {
+      fetchDurationAnalysis();
+    }
+  }, [activeTab, ganttSelectorTab, durationRequested, fetchDurationAnalysis]);
+
   return (
     <div className="smartsheet-pivot">
       <ul className="nav nav-tabs mb-3" role="tablist">
@@ -5947,6 +5982,17 @@ const SmartsheetPivotPage = () => {
                     History Details
                   </button>
                 </li>
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link ${ganttSelectorTab === 'duration' ? 'active' : ''}`}
+                    role="tab"
+                    aria-selected={ganttSelectorTab === 'duration'}
+                    onClick={() => setGanttSelectorTab('duration')}
+                  >
+                    Duration Analysis
+                  </button>
+                </li>
               </ul>
 
               {ganttSelectorTab === 'country' && (
@@ -6499,6 +6545,92 @@ const SmartsheetPivotPage = () => {
                                     : <span className="text-muted">—</span>;
                                 })()}
                               </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {ganttSelectorTab === 'duration' && (
+                <div className="d-flex flex-column gap-3">
+                  <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                    <div>
+                      <h2 className="h6 mb-0">Duration Analysis</h2>
+                      <div className="text-muted small">Source: sp_smartsheet_site_task_duration_pivot</div>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          setDurationRequested(true);
+                          fetchDurationAnalysis();
+                        }}
+                        disabled={durationLoading}
+                      >
+                        Show
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => {
+                          setDurationRequested(true);
+                          fetchDurationAnalysis();
+                        }}
+                        disabled={durationLoading}
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => {
+                          setDurationRequested(false);
+                          setDurationRows([]);
+                          setDurationColumns([]);
+                        }}
+                        disabled={durationLoading}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  {durationError && (
+                    <div className="alert alert-warning" role="alert">
+                      {durationError}
+                    </div>
+                  )}
+
+                  {durationLoading && (
+                    <div className="text-muted">Loading duration analysis…</div>
+                  )}
+
+                  {!durationLoading && durationRows.length === 0 && durationRequested && !durationError && (
+                    <div className="text-muted">No duration analysis rows available.</div>
+                  )}
+
+                  {!durationLoading && durationRows.length > 0 && durationColumns.length > 0 && (
+                    <div className="table-responsive">
+                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            {durationColumns.map((column) => (
+                              <th key={column} className="rotate-header">
+                                <span>{column}</span>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {durationRows.map((row, index) => (
+                            <tr key={`duration-${index}`}>
+                              {durationColumns.map((column) => (
+                                <td key={`${column}-${index}`}>{formatDisplayValue(row[column])}</td>
+                              ))}
                             </tr>
                           ))}
                         </tbody>

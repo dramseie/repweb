@@ -1674,6 +1674,24 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json(['items' => $rows]);
     }
 
+    #[Route('/duration-analysis', name: 'presentation_duration_analysis', methods: ['GET'])]
+    public function durationAnalysis(): JsonResponse
+    {
+        $stmt = $this->connection->executeQuery('CALL sp_smartsheet_site_task_duration_pivot()');
+        $rows = $stmt->fetchAllAssociative();
+        $stmt->free();
+
+        $columns = [];
+        if ($rows !== []) {
+            $columns = array_keys($rows[0]);
+        }
+
+        return $this->json([
+            'columns' => $columns,
+            'items' => $rows,
+        ]);
+    }
+
     #[Route('/upload-files', name: 'presentation_upload_files_index', methods: ['GET'])]
     public function uploadFilesIndex(): JsonResponse
     {

@@ -292,6 +292,18 @@
   border-bottom-color: #ffffff;
 }
 
+.rotate-header {
+  height: 160px;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.rotate-header > span {
+  display: inline-block;
+  transform: rotate(-45deg);
+  transform-origin: left bottom;
+}
+
 .gantt-col-changed {
   color: #7a5b00;
   background: #fff3cd;
