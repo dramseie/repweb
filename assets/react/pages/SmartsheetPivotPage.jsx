@@ -578,6 +578,18 @@ const SmartsheetPivotPage = () => {
     };
   }, [trendSeriesRows]);
 
+  const historyDetailRows = React.useMemo(() => {
+    const rows = Array.isArray(trendSeriesRows) ? trendSeriesRows.slice() : [];
+    return rows.sort((left, right) => {
+      const leftDate = parseDateValue(left?.modified_at ?? left?.date ?? left?.day ?? null);
+      const rightDate = parseDateValue(right?.modified_at ?? right?.date ?? right?.day ?? null);
+      if (!leftDate && !rightDate) return 0;
+      if (!leftDate) return 1;
+      if (!rightDate) return -1;
+      return leftDate.getTime() - rightDate.getTime();
+    });
+  }, [trendSeriesRows]);
+
   const workspacesAbortRef = useRef(null);
   const sheetsAbortRef = useRef(null);
   const pivotAbortRef = useRef(null);
@@ -4235,13 +4247,23 @@ const SmartsheetPivotPage = () => {
   ]);
 
   useEffect(() => {
-    if (activeTab === 'gantt' && ganttSelectorTab === 'trend' && !trendFiltersLoaded && !trendFiltersLoading) {
+    if (
+      activeTab === 'gantt'
+      && (ganttSelectorTab === 'trend' || ganttSelectorTab === 'history-details')
+      && !trendFiltersLoaded
+      && !trendFiltersLoading
+    ) {
       fetchTrendFilters();
     }
   }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendFiltersLoading, fetchTrendFilters]);
 
   useEffect(() => {
-    if (activeTab === 'gantt' && ganttSelectorTab === 'trend' && trendFiltersLoaded && trendSeriesRequested) {
+    if (
+      activeTab === 'gantt'
+      && (ganttSelectorTab === 'trend' || ganttSelectorTab === 'history-details')
+      && trendFiltersLoaded
+      && trendSeriesRequested
+    ) {
       fetchTrendSeries();
     }
   }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendSeriesRequested, fetchTrendSeries]);
@@ -5704,6 +5726,17 @@ const SmartsheetPivotPage = () => {
                     History Tracking
                   </button>
                 </li>
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link ${ganttSelectorTab === 'history-details' ? 'active' : ''}`}
+                    role="tab"
+                    aria-selected={ganttSelectorTab === 'history-details'}
+                    onClick={() => setGanttSelectorTab('history-details')}
+                  >
+                    History Details
+                  </button>
+                </li>
               </ul>
 
               {ganttSelectorTab === 'country' && (
@@ -6117,6 +6150,144 @@ const SmartsheetPivotPage = () => {
 
                   {!trendSeriesLoading && trendSeriesRows.length > 0 && (
                     <HighchartsReact highcharts={Highcharts} options={trendSeriesOptions} />
+                  )}
+                </div>
+              )}
+
+              {ganttSelectorTab === 'history-details' && (
+                <div className="d-flex flex-column gap-3">
+                  <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                    <div>
+                      <h2 className="h6 mb-0">History Details</h2>
+                      <div className="text-muted small">Source: nifi.smartsheet_history_view</div>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          setTrendSeriesRequested(true);
+                          fetchTrendSeries();
+                        }}
+                        disabled={trendSeriesLoading}
+                      >
+                        Show
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => {
+                          setTrendSeriesRequested(true);
+                          fetchTrendSeries();
+                        }}
+                        disabled={trendSeriesLoading}
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => {
+                          setTrendFilterCountry('');
+                          setTrendFilterTask('');
+                          setTrendSeriesRequested(false);
+                        }}
+                        disabled={trendSeriesLoading}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="row g-3 align-items-end">
+                    <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">Baseline date</label>
+                      <div className="css-b62m3t-container">
+                        <DatePicker
+                          selected={trendBaselineDate}
+                          onChange={(date) => setTrendBaselineDate(date || new Date())}
+                          dateFormat="yyyy-MM-dd"
+                          className="form-control"
+                        />
+                      </div>
+                    </div>
+                    <div className="col-12 col-md-3">
+                      <label className="form-label fw-medium">Country</label>
+                      <Select
+                        classNamePrefix="react-select"
+                        isClearable
+                        isLoading={trendFiltersLoading}
+                        options={trendFilters.countries.map((country) => ({ value: country, label: country }))}
+                        value={trendFilterCountry
+                          ? { value: trendFilterCountry, label: trendFilterCountry }
+                          : null}
+                        onChange={(option) => setTrendFilterCountry(option?.value || '')}
+                      />
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label fw-medium">Task</label>
+                      <Select
+                        classNamePrefix="react-select"
+                        isClearable
+                        isLoading={trendFiltersLoading}
+                        options={trendFilters.tasks.map((task) => ({ value: task, label: task }))}
+                        value={trendFilterTask
+                          ? { value: trendFilterTask, label: trendFilterTask }
+                          : null}
+                        onChange={(option) => setTrendFilterTask(option?.value || '')}
+                      />
+                    </div>
+                  </div>
+
+                  {trendFiltersError && (
+                    <div className="alert alert-warning" role="alert">
+                      {trendFiltersError}
+                    </div>
+                  )}
+
+                  {trendSeriesError && (
+                    <div className="alert alert-warning" role="alert">
+                      {trendSeriesError}
+                    </div>
+                  )}
+
+                  {(trendFiltersLoading || trendSeriesLoading) && (
+                    <div className="text-muted">Loading history details…</div>
+                  )}
+
+                  {!trendSeriesLoading && historyDetailRows.length === 0 && !trendSeriesError && trendSeriesRequested && (
+                    <div className="text-muted">No history details available.</div>
+                  )}
+
+                  {!trendSeriesLoading && historyDetailRows.length > 0 && (
+                    <div className="table-responsive">
+                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Date</th>
+                            <th>Site</th>
+                            <th>Task</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>% Completed</th>
+                            <th>Deviation (days)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyDetailRows.map((row, index) => (
+                            <tr key={`${row.site_label ?? 'site'}-${row.task_name ?? 'task'}-${row.modified_at ?? index}-${index}`}>
+                              <td>{formatDateDisplay(row.modified_at ?? row.date ?? row.day)}</td>
+                              <td>{formatDisplayValue(row.site_label)}</td>
+                              <td>{formatDisplayValue(row.task_name)}</td>
+                              <td>{formatDateDisplay(row.start_date ?? row.startDate)}</td>
+                              <td>{formatDateDisplay(row.end_date ?? row.endDate)}</td>
+                              <td>{formatDisplayValue(row.percent_complete ?? row.percentComplete)}</td>
+                              <td>{formatDisplayValue(row.deviation_days ?? row.total ?? row.count)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               )}
