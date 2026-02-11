@@ -152,9 +152,16 @@ class SmartsheetTaskManagerController extends AbstractController
 
         $sql = sprintf(
             "INSERT INTO %s (id, task_name, parent_id, sort_order, created_at, updated_at)
-            SELECT DISTINCT id, task_name, parent_id, 0, NOW(), NOW()
+            SELECT
+                task_id,
+                task_name,
+                parent_id,
+                MIN(COALESCE(row_num, 0)) AS sort_order,
+                NOW(),
+                NOW()
             FROM %s
-            WHERE task_name IS NOT NULL AND task_name <> ''",
+            WHERE task_name IS NOT NULL AND task_name <> ''
+            GROUP BY task_id, task_name, parent_id",
             self::TASK_TABLE,
             self::MASTER_TABLE
         );
