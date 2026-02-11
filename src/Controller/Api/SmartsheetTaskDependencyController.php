@@ -118,7 +118,7 @@ class SmartsheetTaskDependencyController extends AbstractController
         }
 
         $nodes = $this->connection->fetchAllAssociative(
-            sprintf('SELECT id, task_name, pos_x, pos_y, duration FROM %s WHERE workspace_id = ? ORDER BY id', self::NODE_TABLE),
+            sprintf('SELECT id, task_name, pos_x, pos_y, duration, duration_mode FROM %s WHERE workspace_id = ? ORDER BY id', self::NODE_TABLE),
             [$workspaceId]
         );
         $edges = $this->connection->fetchAllAssociative(
@@ -131,6 +131,7 @@ class SmartsheetTaskDependencyController extends AbstractController
                 'id' => (int) $row['id'],
                 'task_name' => $row['task_name'],
                 'duration' => $row['duration'] !== null ? (int) $row['duration'] : null,
+                'duration_mode' => $row['duration_mode'] ?? 'ignore',
                 'position' => [
                     'x' => (float) $row['pos_x'],
                     'y' => (float) $row['pos_y'],
@@ -160,6 +161,7 @@ class SmartsheetTaskDependencyController extends AbstractController
         $position = $payload['position'] ?? null;
         $durationRaw = $payload['duration'] ?? null;
         $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
+        $durationMode = isset($payload['durationMode']) ? trim((string) $payload['durationMode']) : 'ignore';
 
         if ($workspaceId <= 0 || $taskName === '') {
             return $this->json(['error' => 'workspaceId and taskName are required.'], 400);
@@ -181,6 +183,7 @@ class SmartsheetTaskDependencyController extends AbstractController
                     'pos_x' => $posX,
                     'pos_y' => $posY,
                     'duration' => $duration,
+                    'duration_mode' => $durationMode,
                 ],
                 ['id' => $id]
             );
@@ -191,6 +194,7 @@ class SmartsheetTaskDependencyController extends AbstractController
                 'pos_x' => $posX,
                 'pos_y' => $posY,
                 'duration' => $duration,
+                'duration_mode' => $durationMode,
             ]);
             $id = (int) $this->connection->lastInsertId();
         }
@@ -199,6 +203,7 @@ class SmartsheetTaskDependencyController extends AbstractController
             'id' => $id,
             'task_name' => $taskName,
             'duration' => $duration,
+            'duration_mode' => $durationMode,
             'position' => ['x' => $posX, 'y' => $posY],
         ]);
     }
@@ -210,6 +215,7 @@ class SmartsheetTaskDependencyController extends AbstractController
         $position = $payload['position'] ?? null;
         $durationRaw = $payload['duration'] ?? null;
         $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
+        $durationMode = isset($payload['durationMode']) ? trim((string) $payload['durationMode']) : null;
 
         $fields = [];
         if (is_array($position)) {
@@ -218,6 +224,9 @@ class SmartsheetTaskDependencyController extends AbstractController
         }
         if (array_key_exists('duration', $payload)) {
             $fields['duration'] = $duration;
+        }
+        if (array_key_exists('durationMode', $payload)) {
+            $fields['duration_mode'] = $durationMode !== '' ? $durationMode : 'ignore';
         }
 
         if ($fields) {
@@ -334,6 +343,7 @@ class SmartsheetTaskDependencyController extends AbstractController
                 $pos = $node['position'] ?? null;
                 $durationRaw = $node['duration'] ?? null;
                 $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
+                $durationMode = isset($node['durationMode']) ? (string) $node['durationMode'] : null;
                 if ($id <= 0 || !is_array($pos)) {
                     continue;
                 }
@@ -343,6 +353,7 @@ class SmartsheetTaskDependencyController extends AbstractController
                         'pos_x' => (float) ($pos['x'] ?? 0),
                         'pos_y' => (float) ($pos['y'] ?? 0),
                         'duration' => $duration,
+                        'duration_mode' => $durationMode !== '' && $durationMode !== null ? $durationMode : 'ignore',
                     ],
                     [
                         'id' => $id,

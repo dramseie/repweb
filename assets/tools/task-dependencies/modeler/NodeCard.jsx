@@ -17,6 +17,17 @@ export default function NodeCard({ data }) {
           value={data?.duration ?? ''}
           onChange={(event) => data?.onDurationChange?.(event.target.value)}
         />
+        <label className="form-label mt-2 mb-1">Mode</label>
+        <select
+          className="form-select form-select-sm"
+          value={data?.durationMode ?? 'ignore'}
+          onChange={(event) => data?.onDurationModeChange?.(event.target.value)}
+        >
+          <option value="ignore">Ignore</option>
+          <option value="enforce">Enforce</option>
+          <option value="min">Min</option>
+          <option value="max">Max</option>
+        </select>
       </div>
     </div>
   );

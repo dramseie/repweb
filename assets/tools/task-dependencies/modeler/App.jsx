@@ -8,13 +8,15 @@ import NodeCard from './NodeCard.jsx';
 
 const nodeTypes = { taskCard: NodeCard };
 
-const toNode = (n, onDurationChange) => ({
+const toNode = (n, onDurationChange, onDurationModeChange) => ({
   id: String(n.id),
   type: 'taskCard',
   data: {
     label: n.task_name,
     duration: n.duration ?? '',
+    durationMode: n.duration_mode ?? 'ignore',
     onDurationChange,
+    onDurationModeChange,
   },
   position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
 });
@@ -64,10 +66,23 @@ export default function App() {
     await api.updateNode(id, { duration: value });
   }, [setNodes]);
 
+  const updateNodeDurationMode = useCallback(async (id, value) => {
+    setNodes((prev) => prev.map((node) => (
+      node.id === id
+        ? { ...node, data: { ...node.data, durationMode: value } }
+        : node
+    )));
+    await api.updateNode(id, { durationMode: value });
+  }, [setNodes]);
+
   const buildNode = useCallback((row) => {
     const id = String(row.id);
-    return toNode(row, (value) => updateNodeDuration(id, value));
-  }, [updateNodeDuration]);
+    return toNode(
+      row,
+      (value) => updateNodeDuration(id, value),
+      (value) => updateNodeDurationMode(id, value)
+    );
+  }, [updateNodeDuration, updateNodeDurationMode]);
 
   const filteredTasks = useMemo(() => {
     if (!taskFilter) return tasks;
@@ -161,7 +176,15 @@ export default function App() {
       if (existing) {
         return prev.map((n) => (
           n.id === nextNode.id
-            ? { ...n, position: nextNode.position, data: { ...n.data, onDurationChange: nextNode.data.onDurationChange } }
+            ? {
+                ...n,
+                position: nextNode.position,
+                data: {
+                  ...n.data,
+                  onDurationChange: nextNode.data.onDurationChange,
+                  onDurationModeChange: nextNode.data.onDurationModeChange,
+                },
+              }
             : n
         ));
       }
@@ -230,6 +253,7 @@ export default function App() {
       id: node.id,
       position: node.position,
       duration: node.data?.duration ?? null,
+      durationMode: node.data?.durationMode ?? 'ignore',
     }));
     await api.saveLayout(workspaceId, payload);
   }, [workspaceId, nodes]);

@@ -75,7 +75,7 @@ class SmartsheetTaskCalculatorController extends AbstractController
         }
 
         $nodes = $this->connection->fetchAllAssociative(
-            sprintf('SELECT id, task_name, duration FROM %s WHERE workspace_id = ?', self::NODE_TABLE),
+            sprintf('SELECT id, task_name, duration, duration_mode FROM %s WHERE workspace_id = ?', self::NODE_TABLE),
             [$workspaceId]
         );
         if ($nodes === []) {
@@ -87,7 +87,10 @@ class SmartsheetTaskCalculatorController extends AbstractController
         $taskNames = [];
         foreach ($nodes as $node) {
             $nodeById[(int) $node['id']] = $node['task_name'];
-            $durationByTask[$node['task_name']] = $node['duration'] !== null ? (int) $node['duration'] : 0;
+            $durationByTask[$node['task_name']] = [
+                'duration' => $node['duration'] !== null ? (int) $node['duration'] : null,
+                'mode' => $node['duration_mode'] ?? 'ignore',
+            ];
             $taskNames[] = $node['task_name'];
         }
         $taskNames = array_values(array_unique($taskNames));
@@ -174,7 +177,11 @@ class SmartsheetTaskCalculatorController extends AbstractController
                     $currStart = $current[$taskName]['start'] ?? null;
                     $currEnd = $current[$taskName]['end'] ?? null;
                     $startDate = $currStart ? new DateTimeImmutable($currStart) : ($currEnd ? new DateTimeImmutable($currEnd) : $today);
-                    $duration = $durationByTask[$taskName] ?? 0;
+                    $duration = $this->resolveDuration(
+                        $durationByTask[$taskName]['duration'] ?? null,
+                        $durationByTask[$taskName]['mode'] ?? 'ignore',
+                        $this->calculateCurrentDuration($current[$taskName]['start'] ?? null, $current[$taskName]['end'] ?? null)
+                    );
                     $proposedStart[$taskName] = $startDate;
                     $proposedEnd[$taskName] = $this->addWorkdays($startDate, $duration);
                 }
@@ -191,7 +198,12 @@ class SmartsheetTaskCalculatorController extends AbstractController
                             : $this->addWorkdays($proposedEnd[$sourceTask], 1);
                         if ($candidate > $proposedStart[$targetTask]) {
                             $proposedStart[$targetTask] = $candidate;
-                            $proposedEnd[$targetTask] = $this->addWorkdays($candidate, $durationByTask[$targetTask] ?? 0);
+                            $targetDuration = $this->resolveDuration(
+                                $durationByTask[$targetTask]['duration'] ?? null,
+                                $durationByTask[$targetTask]['mode'] ?? 'ignore',
+                                $this->calculateCurrentDuration($current[$targetTask]['start'] ?? null, $current[$targetTask]['end'] ?? null)
+                            );
+                            $proposedEnd[$targetTask] = $this->addWorkdays($candidate, $targetDuration);
                             $changed = true;
                         }
                     }
@@ -258,5 +270,39 @@ class SmartsheetTaskCalculatorController extends AbstractController
             $remaining--;
         }
         return $date;
+    }
+
+    private function calculateCurrentDuration(?string $start, ?string $end): int
+    {
+        if (!$start || !$end) {
+            return 0;
+        }
+        $startDate = new DateTimeImmutable($start);
+        $endDate = new DateTimeImmutable($end);
+        if ($endDate < $startDate) {
+            return 0;
+        }
+        $duration = 0;
+        $cursor = $startDate;
+        while ($cursor < $endDate) {
+            $cursor = $cursor->add(new DateInterval('P1D'));
+            $weekday = (int) $cursor->format('N');
+            if ($weekday >= 6) {
+                continue;
+            }
+            $duration++;
+        }
+        return $duration;
+    }
+
+    private function resolveDuration(?int $duration, string $mode, int $currentDuration): int
+    {
+        return match ($mode) {
+            'ignore' => 0,
+            'enforce' => $duration ?? $currentDuration,
+            'min' => $duration === null ? $currentDuration : max($duration, $currentDuration),
+            'max' => $duration === null ? $currentDuration : min($duration, $currentDuration),
+            default => $duration ?? $currentDuration,
+        };
     }
 }
