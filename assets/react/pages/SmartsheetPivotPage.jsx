@@ -506,6 +506,17 @@ const SmartsheetPivotPage = () => {
   const [reportMetaLoading, setReportMetaLoading] = useState(false);
   const [reportMetaError, setReportMetaError] = useState(null);
   const [toolsTab, setToolsTab] = useState('task-dependencies');
+  const [calcFilters, setCalcFilters] = useState({ countries: [], sitesByCountry: {} });
+  const [calcFiltersLoading, setCalcFiltersLoading] = useState(false);
+  const [calcFiltersError, setCalcFiltersError] = useState(null);
+  const [calcWorkspaceId, setCalcWorkspaceId] = useState('');
+  const [calcWorkspaces, setCalcWorkspaces] = useState([]);
+  const [calcCountry, setCalcCountry] = useState('');
+  const [calcSiteName, setCalcSiteName] = useState('');
+  const [calcDependencyType, setCalcDependencyType] = useState('finish-to-start');
+  const [calcResults, setCalcResults] = useState([]);
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcError, setCalcError] = useState(null);
 
   const presentationDateLabel = formatLongDate(new Date());
 
@@ -2581,6 +2592,82 @@ const SmartsheetPivotPage = () => {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [ganttCountryTaskSelectOpen]);
+
+  const fetchCalcFilters = useCallback(async () => {
+    setCalcFiltersLoading(true);
+    setCalcFiltersError(null);
+    try {
+      const response = await fetch('/api/smartsheet/task-calculator/filters');
+      if (!response.ok) {
+        throw new Error(`Failed to load filters (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setCalcFilters({
+        countries: Array.isArray(payload?.countries) ? payload.countries : [],
+        sitesByCountry: payload?.sitesByCountry || {},
+      });
+    } catch (error) {
+      setCalcFiltersError(error.message || 'Unable to load filters.');
+      setCalcFilters({ countries: [], sitesByCountry: {} });
+    } finally {
+      setCalcFiltersLoading(false);
+    }
+  }, []);
+
+  const fetchCalcWorkspaces = useCallback(async () => {
+    try {
+      const response = await fetch('/api/smartsheet/task-dependencies/workspaces');
+      if (!response.ok) {
+        throw new Error(`Failed to load workspaces (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload) ? payload : [];
+      setCalcWorkspaces(items);
+      if (!calcWorkspaceId && items.length > 0) {
+        setCalcWorkspaceId(String(items[0].id));
+      }
+    } catch (error) {
+      setCalcWorkspaces([]);
+    }
+  }, [calcWorkspaceId]);
+
+  const runTaskCalculator = useCallback(async () => {
+    if (!calcWorkspaceId) {
+      setCalcError('Workspace is required.');
+      return;
+    }
+    setCalcLoading(true);
+    setCalcError(null);
+    try {
+      const response = await fetch('/api/smartsheet/task-calculator/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: calcWorkspaceId,
+          country: calcCountry,
+          siteName: calcSiteName,
+          dependencyType: calcDependencyType,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to run calculator (HTTP ${response.status}).`);
+      }
+      setCalcResults(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setCalcError(error.message || 'Unable to run calculator.');
+      setCalcResults([]);
+    } finally {
+      setCalcLoading(false);
+    }
+  }, [calcWorkspaceId, calcCountry, calcSiteName, calcDependencyType]);
+
+  useEffect(() => {
+    if (activeTab === 'tools' && toolsTab === 'task-calculator') {
+      fetchCalcFilters();
+      fetchCalcWorkspaces();
+    }
+  }, [activeTab, toolsTab, fetchCalcFilters, fetchCalcWorkspaces]);
 
   useEffect(() => {
     if (activeTab !== 'reports' || reportSelectorTab !== 'accomplishments') return;
@@ -7235,11 +7322,147 @@ const SmartsheetPivotPage = () => {
                 Task Dependencies
               </button>
             </li>
+            <li className="nav-item" role="presentation">
+              <button
+                type="button"
+                className={`nav-link ${toolsTab === 'task-calculator' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={toolsTab === 'task-calculator'}
+                onClick={() => setToolsTab('task-calculator')}
+              >
+                Task Calculator
+              </button>
+            </li>
           </ul>
 
           {toolsTab === 'task-dependencies' && (
             <div className="border rounded overflow-hidden" style={{ minHeight: '70vh' }}>
               <TaskDependenciesApp />
+            </div>
+          )}
+
+          {toolsTab === 'task-calculator' && (
+            <div className="d-flex flex-column gap-3">
+              <div className="card shadow-sm">
+                <div className="card-body">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12 col-lg-3">
+                      <label className="form-label fw-medium">Workspace</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={calcWorkspaceId}
+                        onChange={(event) => setCalcWorkspaceId(event.target.value)}
+                      >
+                        <option value="">Select workspace…</option>
+                        {calcWorkspaces.map((ws) => (
+                          <option key={ws.id} value={ws.id}>{ws.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-lg-3">
+                      <label className="form-label fw-medium">Country</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={calcCountry}
+                        onChange={(event) => {
+                          setCalcCountry(event.target.value);
+                          setCalcSiteName('');
+                        }}
+                      >
+                        <option value="">All countries</option>
+                        {calcFilters.countries.map((country) => (
+                          <option key={country} value={country}>{country}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-lg-3">
+                      <label className="form-label fw-medium">Site</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={calcSiteName}
+                        onChange={(event) => setCalcSiteName(event.target.value)}
+                        disabled={!calcCountry}
+                      >
+                        <option value="">All sites</option>
+                        {(calcFilters.sitesByCountry[calcCountry] || []).map((site) => (
+                          <option key={site} value={site}>{site}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-lg-2">
+                      <label className="form-label fw-medium">Dependency</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={calcDependencyType}
+                        onChange={(event) => setCalcDependencyType(event.target.value)}
+                      >
+                        <option value="finish-to-start">Finish to start</option>
+                        <option value="start-to-start">Start to start</option>
+                      </select>
+                    </div>
+                    <div className="col-12 col-lg-1 d-grid">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={runTaskCalculator}
+                        disabled={calcLoading}
+                      >
+                        Run
+                      </button>
+                    </div>
+                  </div>
+
+                  {calcFiltersError && (
+                    <div className="alert alert-warning mt-2" role="alert">
+                      {calcFiltersError}
+                    </div>
+                  )}
+                  {calcError && (
+                    <div className="alert alert-warning mt-2" role="alert">
+                      {calcError}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="card shadow-sm">
+                <div className="card-body">
+                  {calcLoading && <div className="text-muted">Running calculation…</div>}
+                  {!calcLoading && calcResults.length === 0 && (
+                    <div className="text-muted">No results yet. Select filters and run.</div>
+                  )}
+                  {!calcLoading && calcResults.length > 0 && (
+                    <div className="table-responsive">
+                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Country</th>
+                            <th>Site</th>
+                            <th>Task</th>
+                            <th>Current start</th>
+                            <th>Current end</th>
+                            <th>Proposed start</th>
+                            <th>Proposed end</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {calcResults.map((row, index) => (
+                            <tr key={`${row.task_name}-${row.site_name}-${index}`}>
+                              <td>{formatDisplayValue(row.country)}</td>
+                              <td>{formatDisplayValue(row.site_name)}</td>
+                              <td>{formatDisplayValue(row.task_name)}</td>
+                              <td>{formatDateDisplay(row.current_start)}</td>
+                              <td>{formatDateDisplay(row.current_end)}</td>
+                              <td>{formatDateDisplay(row.proposed_start)}</td>
+                              <td>{formatDateDisplay(row.proposed_end)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
