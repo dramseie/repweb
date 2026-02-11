@@ -6,9 +6,12 @@
 .taskdep-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .taskdep-item { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; border: 1px solid #e2e2e2; border-radius: 6px; padding: 0.4rem 0.5rem; background: #faf9f6; cursor: grab; }
 .taskdep-item:active { cursor: grabbing; }
-.taskdep-node { border: 1px solid #c9c9c9; border-radius: 8px; padding: 8px 10px; background: #fff; font-size: 12px; min-width: 140px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+.taskdep-node { border: 1px solid #c9c9c9; border-radius: 8px; padding: 8px 10px; background: #fff; font-size: 12px; min-width: 210px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 .taskdep-node__title { font-weight: 600; margin-bottom: 4px; }
 .taskdep-node__subtitle { color: #666; font-size: 11px; }
+.taskdep-node__controls { display: flex; gap: 6px; align-items: flex-end; }
+.taskdep-node__control { flex: 1 1 0; min-width: 0; }
+.taskdep-node__control .form-label { font-size: 10px; margin-bottom: 2px; }
 .taskdep-input-no-spin::-webkit-outer-spin-button,
 .taskdep-input-no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .taskdep-input-no-spin { -moz-appearance: textfield; }
