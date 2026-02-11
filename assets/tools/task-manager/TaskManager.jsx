@@ -62,6 +62,7 @@ const TaskManager = () => {
   const [editingName, setEditingName] = useState('');
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
+  const [dragOverPos, setDragOverPos] = useState(null);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -240,15 +241,86 @@ const TaskManager = () => {
     await moveTask(dragId, null);
     setDragId(null);
     setDragOverId(null);
+    setDragOverPos(null);
   };
 
-  const handleDropOnItem = async (event, itemId) => {
+  const handleDropOnItem = async (event, itemId, position) => {
     event.preventDefault();
     if (!dragId) return;
-    await moveTask(dragId, itemId);
+    await moveTaskWithPosition(dragId, itemId, position);
     setDragId(null);
     setDragOverId(null);
+    setDragOverPos(null);
   };
+
+  const moveTaskWithPosition = useCallback(async (movedId, targetId, position) => {
+    if (!movedId || !targetId) return;
+    if (movedId === targetId) return;
+
+    const itemMap = new Map(items.map((item) => [item.id, item]));
+    const moved = itemMap.get(movedId);
+    const target = itemMap.get(targetId);
+    if (!moved || !target) return;
+
+    const oldParentId = moved.parent_id ?? null;
+    const newParentId = position === 'inside' ? target.id : (target.parent_id ?? null);
+
+    if (newParentId === moved.id) return;
+    const descendants = descendantsMap.get(moved.id);
+    if (descendants && newParentId && descendants.has(newParentId)) return;
+
+    const getSortedSiblings = (parentId) => (siblingsByParent.get(parentId ?? null) || [])
+      .filter((item) => item.id !== moved.id);
+
+    let targetSiblings = getSortedSiblings(newParentId);
+    let oldSiblings = oldParentId === newParentId ? targetSiblings : getSortedSiblings(oldParentId);
+
+    let insertIndex = targetSiblings.length;
+    if (position === 'before' || position === 'after') {
+      const targetIndex = targetSiblings.findIndex((item) => item.id === target.id);
+      insertIndex = targetIndex === -1 ? targetSiblings.length : targetIndex + (position === 'after' ? 1 : 0);
+    }
+
+    if (oldParentId === newParentId) {
+      const next = targetSiblings.slice();
+      next.splice(insertIndex, 0, moved);
+      targetSiblings = next;
+      oldSiblings = next;
+    } else {
+      const nextTarget = targetSiblings.slice();
+      nextTarget.splice(insertIndex, 0, moved);
+      targetSiblings = nextTarget;
+    }
+
+    const updates = [];
+    const queueUpdates = (list, parentId) => {
+      list.forEach((item, index) => {
+        const payload = {};
+        if ((item.sort_order ?? 0) !== index) {
+          payload.sortOrder = index;
+        }
+        if (item.id === moved.id && (item.parent_id ?? null) !== parentId) {
+          payload.parentId = parentId;
+        }
+        if (Object.keys(payload).length > 0) {
+          updates.push(updateTask(item.id, payload));
+        }
+      });
+    };
+
+    queueUpdates(targetSiblings, newParentId);
+    if (oldParentId !== newParentId) {
+      queueUpdates(oldSiblings, oldParentId);
+    }
+
+    if (updates.length === 0) return;
+    try {
+      await Promise.all(updates);
+      fetchItems();
+    } catch (err) {
+      setError(err?.message || 'Unable to move task.');
+    }
+  }, [items, siblingsByParent, descendantsMap, updateTask, fetchItems]);
 
   return (
     <div className="taskmgr">
@@ -290,26 +362,55 @@ const TaskManager = () => {
               key={item.id}
               className={`taskmgr__row ${dragOverId === item.id ? 'is-drag-over' : ''}`}
               style={{ paddingLeft: `${item.level * 18 + 8}px` }}
-              draggable
-              onDragStart={() => setDragId(item.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDragEnter={() => setDragOverId(item.id)}
-              onDragLeave={() => setDragOverId(null)}
-              onDrop={(event) => handleDropOnItem(event, item.id)}
             >
-              <div className="taskmgr__title">
-                {editingId === item.id ? (
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    value={editingName}
-                    onChange={(event) => setEditingName(event.target.value)}
-                  />
-                ) : (
-                  <span>{item.task_name}</span>
-                )}
-              </div>
-              <div className="taskmgr__actions">
+              <div
+                className={`taskmgr__drop taskmgr__drop--before ${dragOverId === item.id && dragOverPos === 'before' ? 'is-active' : ''}`}
+                onDragOver={(event) => event.preventDefault()}
+                onDragEnter={() => {
+                  setDragOverId(item.id);
+                  setDragOverPos('before');
+                }}
+                onDragLeave={() => {
+                  setDragOverId(null);
+                  setDragOverPos(null);
+                }}
+                onDrop={(event) => handleDropOnItem(event, item.id, 'before')}
+              />
+              <div
+                className="taskmgr__row-main"
+                onDragOver={(event) => event.preventDefault()}
+                onDragEnter={() => {
+                  setDragOverId(item.id);
+                  setDragOverPos('inside');
+                }}
+                onDragLeave={() => {
+                  setDragOverId(null);
+                  setDragOverPos(null);
+                }}
+                onDrop={(event) => handleDropOnItem(event, item.id, 'inside')}
+              >
+                <button
+                  type="button"
+                  className="taskmgr__drag"
+                  draggable
+                  onDragStart={() => setDragId(item.id)}
+                  aria-label="Drag task"
+                >
+                  ||
+                </button>
+                <div className="taskmgr__title">
+                  {editingId === item.id ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={editingName}
+                      onChange={(event) => setEditingName(event.target.value)}
+                    />
+                  ) : (
+                    <span>{item.task_name}</span>
+                  )}
+                </div>
+                <div className="taskmgr__actions">
                 {editingId === item.id ? (
                   <>
                     <button type="button" className="btn btn-sm btn-success" onClick={() => saveEdit(item)}>
@@ -339,6 +440,20 @@ const TaskManager = () => {
                   </>
                 )}
               </div>
+              </div>
+              <div
+                className={`taskmgr__drop taskmgr__drop--after ${dragOverId === item.id && dragOverPos === 'after' ? 'is-active' : ''}`}
+                onDragOver={(event) => event.preventDefault()}
+                onDragEnter={() => {
+                  setDragOverId(item.id);
+                  setDragOverPos('after');
+                }}
+                onDragLeave={() => {
+                  setDragOverId(null);
+                  setDragOverPos(null);
+                }}
+                onDrop={(event) => handleDropOnItem(event, item.id, 'after')}
+              />
             </div>
           ))}
         </div>

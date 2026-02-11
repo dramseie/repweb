@@ -26,7 +26,13 @@ class SmartsheetTaskManagerController extends AbstractController
         $this->seedFromMaster();
 
         $rows = $this->connection->fetchAllAssociative(
-            sprintf('SELECT id, task_name, parent_id, sort_order FROM %s ORDER BY parent_id IS NOT NULL, parent_id, sort_order, id', self::TASK_TABLE)
+            sprintf(
+                "SELECT id, task_name, parent_id, sort_order
+                FROM %s
+                WHERE IFNULL(phase, '') NOT IN ('Store', 'Country')
+                ORDER BY parent_id IS NOT NULL, parent_id, sort_order, id",
+                self::TASK_TABLE
+            )
         );
 
         return $this->json(['items' => $rows]);
@@ -150,22 +156,64 @@ class SmartsheetTaskManagerController extends AbstractController
             return;
         }
 
-        $sql = sprintf(
-            "INSERT INTO %s (id, task_name, parent_id, sort_order, created_at, updated_at)
-            SELECT
-                task_id,
-                task_name,
-                parent_id,
-                MIN(COALESCE(row_num, 0)) AS sort_order,
-                NOW(),
-                NOW()
-            FROM %s
-            WHERE task_name IS NOT NULL AND task_name <> ''
-            GROUP BY task_id, task_name, parent_id",
-            self::TASK_TABLE,
-            self::MASTER_TABLE
-        );
-        $this->connection->executeStatement($sql);
+        $this->connection->beginTransaction();
+        try {
+            $insertSql = sprintf(
+                "INSERT INTO %s (id, task_name, phase, parent_id, sort_order, created_at, updated_at)
+                SELECT
+                    task_id,
+                    task_name,
+                    MAX(phase) AS phase,
+                    NULL AS parent_id,
+                    MIN(COALESCE(row_num, 0)) AS sort_order,
+                    NOW(),
+                    NOW()
+                FROM %s
+                WHERE task_name IS NOT NULL AND task_name <> ''
+                  AND IFNULL(phase, '') NOT IN ('Store', 'Country')
+                GROUP BY task_id, task_name",
+                self::TASK_TABLE,
+                self::MASTER_TABLE
+            );
+            $this->connection->executeStatement($insertSql);
+
+            $updateSql = sprintf(
+                "UPDATE %s t
+                JOIN (
+                    SELECT task_id, parent_id
+                    FROM %s
+                    WHERE parent_id IS NOT NULL
+                      AND IFNULL(phase, '') NOT IN ('Store', 'Country')
+                    GROUP BY task_id, parent_id
+                ) src ON src.task_id = t.id
+                SET t.parent_id = src.parent_id
+                WHERE src.parent_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM %s p WHERE p.id = src.parent_id)",
+                self::TASK_TABLE,
+                self::MASTER_TABLE,
+                self::TASK_TABLE
+            );
+            $this->connection->executeStatement($updateSql);
+
+            $phaseSql = sprintf(
+                "UPDATE %s t
+                JOIN (
+                    SELECT task_id, MAX(phase) AS phase
+                    FROM %s
+                    WHERE task_name IS NOT NULL AND task_name <> ''
+                    GROUP BY task_id
+                ) src ON src.task_id = t.id
+                SET t.phase = src.phase",
+                self::TASK_TABLE,
+                self::MASTER_TABLE
+            );
+            $this->connection->executeStatement($phaseSql);
+
+            $this->connection->commit();
+        } catch (\Throwable $e) {
+            $this->connection->rollBack();
+            throw $e;
+        }
     }
 
     private function taskExists(int $id): bool
