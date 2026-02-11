@@ -8,8 +8,21 @@
 .taskmgr__list.is-drag-over { background: #f7fbff; }
 .taskmgr__row-main { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 6px; }
 .taskmgr__title { flex: 1; min-width: 180px; }
-.taskmgr__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.taskmgr__actions { display: flex; flex-wrap: wrap; gap: 6px; opacity: 0; transition: opacity 0.15s ease; }
 .taskmgr__actions .btn { white-space: nowrap; }
+.taskmgr__row:hover .taskmgr__actions { opacity: 1; }
+.taskmgr__toggle {
+	width: 22px;
+	height: 22px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: #444;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+.taskmgr__toggle.is-active { border-color: #d5dbe3; border-radius: 4px; background: #f3f5f7; }
 .taskmgr__drag {
 	width: 28px;
 	height: 28px;

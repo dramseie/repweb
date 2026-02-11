@@ -27,11 +27,12 @@ const buildTree = (items) => {
   return roots;
 };
 
-const flattenTree = (nodes, level = 0, output = []) => {
+const flattenTree = (nodes, expandedMap, level = 0, output = []) => {
   nodes.forEach((node) => {
     output.push({ ...node, level });
-    if (node.children.length > 0) {
-      flattenTree(node.children, level + 1, output);
+    const isExpanded = expandedMap[node.id] ?? true;
+    if (node.children.length > 0 && isExpanded) {
+      flattenTree(node.children, expandedMap, level + 1, output);
     }
   });
   return output;
@@ -63,6 +64,7 @@ const TaskManager = () => {
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [dragOverPos, setDragOverPos] = useState(null);
+  const [expandedMap, setExpandedMap] = useState({});
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -87,8 +89,21 @@ const TaskManager = () => {
   }, [fetchItems]);
 
   const tree = useMemo(() => buildTree(items), [items]);
-  const flatItems = useMemo(() => flattenTree(tree), [tree]);
+  const flatItems = useMemo(() => flattenTree(tree, expandedMap), [tree, expandedMap]);
   const descendantsMap = useMemo(() => buildDescendants(tree), [tree]);
+  const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+
+  useEffect(() => {
+    setExpandedMap((prev) => {
+      const next = { ...prev };
+      items.forEach((item) => {
+        if (next[item.id] === undefined) {
+          next[item.id] = true;
+        }
+      });
+      return next;
+    });
+  }, [items]);
 
   const siblingsByParent = useMemo(() => {
     const map = new Map();
@@ -322,6 +337,26 @@ const TaskManager = () => {
     }
   }, [items, siblingsByParent, descendantsMap, updateTask, fetchItems]);
 
+  const toggleExpand = (id) => {
+    setExpandedMap((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const indentTask = async (item) => {
+    const parentKey = item.parent_id ?? null;
+    const siblings = siblingsByParent.get(parentKey) || [];
+    const index = siblings.findIndex((sibling) => sibling.id === item.id);
+    if (index <= 0) return;
+    const newParent = siblings[index - 1];
+    await moveTaskWithPosition(item.id, newParent.id, 'inside');
+  };
+
+  const outdentTask = async (item) => {
+    if (!item.parent_id) return;
+    const parent = itemMap.get(item.parent_id);
+    if (!parent) return;
+    await moveTaskWithPosition(item.id, parent.id, 'after');
+  };
+
   return (
     <div className="taskmgr">
       <div className="taskmgr__toolbar">
@@ -391,6 +426,14 @@ const TaskManager = () => {
               >
                 <button
                   type="button"
+                  className={`taskmgr__toggle ${item.children.length > 0 ? 'is-active' : ''}`}
+                  onClick={() => toggleExpand(item.id)}
+                  aria-label="Toggle"
+                >
+                  {item.children.length > 0 && (expandedMap[item.id] ? '▼' : '▶')}
+                </button>
+                <button
+                  type="button"
                   className="taskmgr__drag"
                   draggable
                   onDragStart={() => setDragId(item.id)}
@@ -425,15 +468,15 @@ const TaskManager = () => {
                     <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => handleAddChild(item.id)}>
                       Add child
                     </button>
-                    <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => startEdit(item)}>
+                      <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => startEdit(item)}>
                       Rename
                     </button>
-                    <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => moveSibling(item, 'up')}>
-                      Up
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => moveSibling(item, 'down')}>
-                      Down
-                    </button>
+                      <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => indentTask(item)}>
+                        Indent
+                      </button>
+                      <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => outdentTask(item)}>
+                        Outdent
+                      </button>
                     <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => handleDelete(item)}>
                       Delete
                     </button>
