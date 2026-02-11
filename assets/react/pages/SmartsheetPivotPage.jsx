@@ -7453,8 +7453,12 @@ const SmartsheetPivotPage = () => {
                               <td>{formatDisplayValue(row.task_name)}</td>
                               <td>{formatDateDisplay(row.current_start)}</td>
                               <td>{formatDateDisplay(row.current_end)}</td>
-                              <td>{formatDateDisplay(row.proposed_start)}</td>
-                              <td>{formatDateDisplay(row.proposed_end)}</td>
+                              <td style={row.current_start !== row.proposed_start ? { background: '#e6f7e6' } : undefined}>
+                                {formatDateDisplay(row.proposed_start)}
+                              </td>
+                              <td style={row.current_end !== row.proposed_end ? { background: '#e6f7e6' } : undefined}>
+                                {formatDateDisplay(row.proposed_end)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

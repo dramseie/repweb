@@ -6,6 +6,7 @@ namespace App\Controller\Api;
 
 use DateInterval;
 use DateTimeImmutable;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -105,9 +106,9 @@ class SmartsheetTaskCalculatorController extends AbstractController
             $dependencies[] = [$sourceTask, $targetTask];
         }
 
-        $params = $taskNames;
+        $params = [$taskNames];
         $where = "IFNULL(phase, '') NOT IN ('Store','Country') AND task_name IN (?)";
-        $types = [ParameterType::STRING_ARRAY];
+        $types = [ArrayParameterType::STRING];
         if ($country !== '') {
             $where .= ' AND country = ?';
             $params[] = $country;
@@ -162,6 +163,7 @@ class SmartsheetTaskCalculatorController extends AbstractController
                     $current[$row['task_name']] = [
                         'start' => $row['start_date'],
                         'end' => $row['end_date'],
+                        'row_num' => $row['row_num'] ?? null,
                     ];
                 }
 
@@ -204,7 +206,7 @@ class SmartsheetTaskCalculatorController extends AbstractController
                     $propStart = $proposedStart[$taskName] ?? null;
                     $propEnd = $proposedEnd[$taskName] ?? null;
 
-                    $resultRow = [
+                    $insertRow = [
                         'run_id' => $runId,
                         'workspace_id' => $workspaceId,
                         'country' => $siteCountry,
@@ -215,8 +217,9 @@ class SmartsheetTaskCalculatorController extends AbstractController
                         'proposed_start' => $propStart ? $propStart->format('Y-m-d') : null,
                         'proposed_end' => $propEnd ? $propEnd->format('Y-m-d') : null,
                     ];
+                    $resultRow = $insertRow + ['row_num' => $current[$taskName]['row_num'] ?? null];
 
-                    $this->connection->insert(self::RESULT_TABLE, $resultRow);
+                    $this->connection->insert(self::RESULT_TABLE, $insertRow);
                     $results[] = $resultRow;
                 }
             }
@@ -226,6 +229,15 @@ class SmartsheetTaskCalculatorController extends AbstractController
             $this->connection->rollBack();
             return $this->json(['error' => $e->getMessage()], 500);
         }
+
+        usort($results, static function (array $left, array $right): int {
+            $leftRow = $left['row_num'] ?? PHP_INT_MAX;
+            $rightRow = $right['row_num'] ?? PHP_INT_MAX;
+            if ($leftRow === $rightRow) {
+                return strcmp((string) ($left['task_name'] ?? ''), (string) ($right['task_name'] ?? ''));
+            }
+            return $leftRow <=> $rightRow;
+        });
 
         return $this->json(['runId' => $runId, 'items' => $results]);
     }
