@@ -7112,13 +7112,12 @@ const SmartsheetPivotPage = () => {
           </ul>
 
           {toolsTab === 'task-dependencies' && (
-            <div className="d-flex flex-column gap-2">
-              <a className="btn btn-outline-primary btn-sm" style={{ width: 'fit-content' }} href="/tools/task-dependencies" target="_blank" rel="noreferrer">
-                Open Task Dependencies
-              </a>
-              <a className="btn btn-outline-secondary btn-sm" style={{ width: 'fit-content' }} href="/tools/cmdb-modeler" target="_blank" rel="noreferrer">
-                Open CMDB Modeler
-              </a>
+            <div className="border rounded overflow-hidden" style={{ minHeight: '70vh' }}>
+              <iframe
+                title="Task Dependencies"
+                src="/tools/task-dependencies"
+                style={{ width: '100%', height: '70vh', border: 0 }}
+              />
             </div>
           )}
         </div>
