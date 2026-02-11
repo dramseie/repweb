@@ -11,6 +11,7 @@ Encore
   .addEntry('app', './assets/app.js')
   .addEntry('plotly', './assets/plotly.js')
   .addEntry('cmdb-modeler', './assets/tools/cmdb-modeler/index.jsx')
+  .addEntry('task-dependencies', './assets/tools/task-dependencies/index.jsx')
 
   // 👇 NEW entry for SQL Composer
   .addEntry('sql-composer', './assets/react/sql-composer.jsx')

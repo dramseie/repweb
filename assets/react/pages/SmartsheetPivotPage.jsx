@@ -694,6 +694,8 @@ const SmartsheetPivotPage = () => {
   const durationTableRef = useRef(null);
   const historyDetailsDatatableRef = useRef(null);
   const historyDetailsTableRef = useRef(null);
+  const wonderfulDatatableRef = useRef(null);
+  const wonderfulTableRef = useRef(null);
   const execOverviewRef = useRef(null);
 
   const scrollToPresentationCard = useCallback((key) => {
@@ -1400,6 +1402,19 @@ const SmartsheetPivotPage = () => {
     }
   }, []);
 
+  const destroyWonderfulTable = useCallback(() => {
+    if (wonderfulDatatableRef.current) {
+      wonderfulDatatableRef.current.destroy();
+      wonderfulDatatableRef.current = null;
+    }
+    if (wonderfulTableRef.current) {
+      const tbody = wonderfulTableRef.current.querySelector('tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+      }
+    }
+  }, []);
+
   const hydrateTable = useCallback((cols, dataRows) => {
     if (!tableRef.current) {
       return;
@@ -1584,6 +1599,55 @@ const SmartsheetPivotPage = () => {
     });
   }, [destroyHistoryDetailsTable]);
 
+  const hydrateWonderfulTable = useCallback((dataRows) => {
+    if (!wonderfulTableRef.current) {
+      return;
+    }
+
+    destroyWonderfulTable();
+
+    if (!dataRows.length) {
+      return;
+    }
+
+    const dataset = dataRows.map((row) => [
+      escapeHtml(formatDisplayValue(row?.country)),
+      escapeHtml(formatSiteLabel({ siteName: row?.siteName, siteId: row?.siteId })),
+      escapeHtml(formatDisplayValue(row?.taskName)),
+      escapeHtml(formatDateDisplay(row?.startDate)),
+      escapeHtml(formatDateDisplay(row?.endDate)),
+      escapeHtml(formatDisplayValue(row?.status)),
+    ]);
+
+    wonderfulDatatableRef.current = $(wonderfulTableRef.current).DataTable({
+      dom:
+        "<'row g-2 align-items-center'<'col-md-7 dt-toolbar-left d-flex align-items-center'B><'col-md-5 dt-toolbar-right'f>>" +
+        "<'row'<'col-12'tr>>" +
+        "<'row'<'col-md-5'i><'col-md-7'p>>",
+      data: dataset,
+      buttons: [
+        { extend: 'colvis', text: '<i class="fas fa-columns me-1"></i> Columns', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'copyHtml5', text: '<i class="fas fa-copy me-1"></i> Copy', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'excelHtml5', text: '<i class="fas fa-file-excel me-1"></i> XLSX', className: 'btn btn-sm btn-success' },
+        { extend: 'csvHtml5', text: '<i class="fas fa-file-csv me-1"></i> CSV', className: 'btn btn-sm btn-outline-primary' },
+        { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf me-1"></i> PDF', className: 'btn btn-sm btn-outline-danger' },
+        { extend: 'print', text: '<i class="fas fa-print me-1"></i> Print', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      pageLength: 50,
+      lengthMenu: [25, 50, 100, 250],
+      fixedHeader: true,
+      colReorder: true,
+      responsive: false,
+      scrollY: '60vh',
+      scrollX: true,
+      scrollCollapse: true,
+      deferRender: true,
+      scroller: true,
+      stateSave: true,
+      order: [],
+    });
+  }, [destroyWonderfulTable]);
+
   const fetchWorkspaces = useCallback(async () => {
     workspacesAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1725,8 +1789,16 @@ const SmartsheetPivotPage = () => {
       destroyAnalyseTable();
       destroyDurationTable();
       destroyHistoryDetailsTable();
+      destroyWonderfulTable();
     };
-  }, [destroyAnalyseTable, destroyDurationTable, destroyHistoryDetailsTable, destroyTable, fetchWorkspaces]);
+  }, [
+    destroyAnalyseTable,
+    destroyDurationTable,
+    destroyHistoryDetailsTable,
+    destroyTable,
+    destroyWonderfulTable,
+    fetchWorkspaces,
+  ]);
 
   useEffect(() => {
     fetchSheets(selectedWorkspace);
@@ -1792,6 +1864,26 @@ const SmartsheetPivotPage = () => {
     historyDetailRows,
     destroyHistoryDetailsTable,
     hydrateHistoryDetailsTable,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== 'reports' || reportSelectorTab !== 'accomplishments') {
+      destroyWonderfulTable();
+      return;
+    }
+
+    if (!wonderfulItems.length) {
+      destroyWonderfulTable();
+      return;
+    }
+
+    hydrateWonderfulTable(wonderfulItems);
+  }, [
+    activeTab,
+    reportSelectorTab,
+    wonderfulItems,
+    destroyWonderfulTable,
+    hydrateWonderfulTable,
   ]);
 
   const onWorkspaceChange = (event) => {
@@ -6980,7 +7072,10 @@ const SmartsheetPivotPage = () => {
 
               {!wonderfulLoading && wonderfulItems.length > 0 && (
                 <div className="table-responsive">
-                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                  <table
+                    ref={wonderfulTableRef}
+                    className="table table-sm table-bordered table-striped align-middle nowrap w-100"
+                  >
                     <thead className="table-light">
                       <tr>
                         <th>Country</th>
@@ -6991,18 +7086,7 @@ const SmartsheetPivotPage = () => {
                         <th>State</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {wonderfulItems.map((row, index) => (
-                        <tr key={`${row.country ?? 'country'}-${row.siteId ?? row.siteName ?? 'site'}-${row.taskName ?? 'task'}-${index}`}>
-                          <td>{formatDisplayValue(row.country)}</td>
-                          <td>{formatSiteLabel({ siteName: row.siteName, siteId: row.siteId })}</td>
-                          <td>{formatDisplayValue(row.taskName)}</td>
-                          <td>{formatDateDisplay(row.startDate)}</td>
-                          <td>{formatDateDisplay(row.endDate)}</td>
-                          <td>{formatDisplayValue(row.status)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
+                    <tbody />
                   </table>
                 </div>
               )}
@@ -7028,7 +7112,14 @@ const SmartsheetPivotPage = () => {
           </ul>
 
           {toolsTab === 'task-dependencies' && (
-            <div className="text-muted">Coming soon.</div>
+            <div className="d-flex flex-column gap-2">
+              <a className="btn btn-outline-primary btn-sm" style={{ width: 'fit-content' }} href="/tools/task-dependencies" target="_blank" rel="noreferrer">
+                Open Task Dependencies
+              </a>
+              <a className="btn btn-outline-secondary btn-sm" style={{ width: 'fit-content' }} href="/tools/cmdb-modeler" target="_blank" rel="noreferrer">
+                Open CMDB Modeler
+              </a>
+            </div>
           )}
         </div>
       )}
