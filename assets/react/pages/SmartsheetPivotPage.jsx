@@ -1775,6 +1775,7 @@ const SmartsheetPivotPage = () => {
 
   useEffect(() => {
     if (activeTab !== 'reports' || reportSelectorTab !== 'history-details') {
+      destroyHistoryDetailsTable();
       return;
     }
 
