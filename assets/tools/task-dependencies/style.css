@@ -9,3 +9,27 @@
 .taskdep-node { border: 1px solid #c9c9c9; border-radius: 8px; padding: 8px 10px; background: #fff; font-size: 12px; min-width: 140px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 .taskdep-node__title { font-weight: 600; margin-bottom: 4px; }
 .taskdep-node__subtitle { color: #666; font-size: 11px; }
+.taskdep-input-no-spin::-webkit-outer-spin-button,
+.taskdep-input-no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.taskdep-input-no-spin { -moz-appearance: textfield; }
+
+.taskdep-dialog-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.35);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 2000;
+}
+
+.taskdep-dialog {
+	width: 360px;
+	background: #fff;
+	border-radius: 10px;
+	padding: 16px;
+	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+}
+
+.taskdep-dialog__title { font-weight: 600; margin-bottom: 8px; }
+.taskdep-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }

@@ -51,6 +51,7 @@ export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selection, setSelection] = useState({ nodes: [], edges: [] });
+  const [edgeDialog, setEdgeDialog] = useState(null);
 
   const updateNodeDuration = useCallback((id, value) => {
     setNodes((prev) => prev.map((node) => (
@@ -153,19 +154,24 @@ export default function App() {
     }));
   }, [workspaceId, setEdges]);
 
-  const onEditEdge = useCallback(async (edge) => {
+  const onEditEdge = useCallback((edge) => {
     if (!edge) return;
-    const currentName = edge.data?.name ?? '';
-    const currentDuration = edge.data?.duration ?? '';
-    const name = window.prompt('Dependency name:', currentName);
-    if (name === null) return;
-    const durationInput = window.prompt('Duration (number):', currentDuration === null ? '' : String(currentDuration));
-    if (durationInput === null) return;
+    setEdgeDialog({
+      id: edge.id,
+      name: edge.data?.name ?? '',
+      duration: edge.data?.duration ?? '',
+    });
+  }, []);
+
+  const saveEdgeDialog = useCallback(async () => {
+    if (!edgeDialog) return;
+    const name = edgeDialog.name ?? '';
+    const durationInput = edgeDialog.duration;
     const duration = durationInput === '' ? null : Number(durationInput);
     const nextDuration = Number.isFinite(duration) ? duration : null;
-    await api.updateEdge(edge.id, { name, duration: nextDuration });
+    await api.updateEdge(edgeDialog.id, { name, duration: nextDuration });
     setEdges((prev) => prev.map((item) => (
-      item.id === edge.id
+      item.id === edgeDialog.id
         ? {
             ...item,
             data: { name, duration: nextDuration },
@@ -173,7 +179,8 @@ export default function App() {
           }
         : item
     )));
-  }, [setEdges]);
+    setEdgeDialog(null);
+  }, [edgeDialog, setEdges]);
 
   const onNodeDragStop = useCallback(async (_event, node) => {
     if (!node?.id) return;
@@ -212,6 +219,7 @@ export default function App() {
           workspaceId={workspaceId}
           onWorkspaceChange={setWorkspaceId}
           onCreateWorkspace={onCreateWorkspace}
+          onRefreshWorkspaces={loadWorkspaces}
           onSave={onSaveLayout}
           onReload={() => loadGraph(workspaceId)}
           onDeleteSelected={onDeleteSelected}
@@ -234,6 +242,41 @@ export default function App() {
           />
         )}
       </div>
+      {edgeDialog && (
+        <div className="taskdep-dialog-backdrop" onClick={() => setEdgeDialog(null)}>
+          <div className="taskdep-dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="taskdep-dialog__title">Edit dependency</div>
+            <div className="mb-2">
+              <label className="form-label">Name</label>
+              <input
+                type="text"
+                className="form-control"
+                value={edgeDialog.name}
+                onChange={(event) => setEdgeDialog((prev) => ({ ...prev, name: event.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="form-label">Duration</label>
+              <input
+                type="number"
+                className="form-control taskdep-input-no-spin"
+                min="0"
+                step="1"
+                value={edgeDialog.duration}
+                onChange={(event) => setEdgeDialog((prev) => ({ ...prev, duration: event.target.value }))}
+              />
+            </div>
+            <div className="taskdep-dialog__actions">
+              <button type="button" className="btn btn-outline-secondary" onClick={() => setEdgeDialog(null)}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-primary" onClick={saveEdgeDialog}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

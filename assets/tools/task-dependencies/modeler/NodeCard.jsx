@@ -11,7 +11,7 @@ export default function NodeCard({ data }) {
         <label className="form-label mb-1">Duration</label>
         <input
           type="number"
-          className="form-control form-control-sm"
+          className="form-control form-control-sm taskdep-input-no-spin"
           min="0"
           step="1"
           value={data?.duration ?? ''}

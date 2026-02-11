@@ -5,6 +5,7 @@ export default function Toolbar({
   workspaceId,
   onWorkspaceChange,
   onCreateWorkspace,
+  onRefreshWorkspaces,
   onSave,
   onReload,
   onDeleteSelected,
@@ -17,6 +18,7 @@ export default function Toolbar({
         className="form-select form-select-sm w-auto"
         value={workspaceId}
         onChange={(event) => onWorkspaceChange(event.target.value)}
+        onFocus={onRefreshWorkspaces}
       >
         {workspaces.map((ws) => (
           <option key={ws.id} value={ws.id}>{ws.name}</option>
