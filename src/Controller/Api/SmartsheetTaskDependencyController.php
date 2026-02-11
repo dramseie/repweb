@@ -79,6 +79,36 @@ class SmartsheetTaskDependencyController extends AbstractController
         return $this->json($row ?: ['id' => $id, 'name' => $name]);
     }
 
+    #[Route('/workspaces/{id}', name: 'workspaces_update', methods: ['PATCH'])]
+    public function updateWorkspace(int $id, Request $request): JsonResponse
+    {
+        $payload = json_decode($request->getContent(), true) ?? [];
+        $name = array_key_exists('name', $payload) ? trim((string) $payload['name']) : null;
+        $notes = $payload['notes'] ?? null;
+
+        $fields = [];
+        if (array_key_exists('name', $payload)) {
+            if ($name === '') {
+                return $this->json(['error' => 'Workspace name is required.'], 400);
+            }
+            $fields['name'] = $name;
+        }
+        if (array_key_exists('notes', $payload)) {
+            $fields['notes'] = $notes;
+        }
+
+        if ($fields) {
+            $this->connection->update(self::WORKSPACE_TABLE, $fields, ['id' => $id]);
+        }
+
+        $row = $this->connection->fetchAssociative(
+            sprintf('SELECT id, name, notes, created_by, created_at, updated_at FROM %s WHERE id = ?', self::WORKSPACE_TABLE),
+            [$id]
+        );
+
+        return $this->json($row ?: ['id' => $id]);
+    }
+
     #[Route('/graph', name: 'graph', methods: ['GET'])]
     public function graph(Request $request): JsonResponse
     {

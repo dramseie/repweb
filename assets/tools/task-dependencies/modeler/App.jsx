@@ -46,6 +46,8 @@ export default function App() {
   const [taskFilter, setTaskFilter] = useState('');
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [workspaceSaveStatus, setWorkspaceSaveStatus] = useState('idle');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -113,6 +115,11 @@ export default function App() {
       .finally(() => setLoading(false));
   }, [workspaceId, loadGraph]);
 
+  useEffect(() => {
+    const selected = workspaces.find((ws) => String(ws.id) === String(workspaceId));
+    setWorkspaceName(selected?.name || '');
+  }, [workspaceId, workspaces]);
+
   const onCreateWorkspace = useCallback(async (name) => {
     const created = await api.createWorkspace({ name });
     if (created) {
@@ -120,6 +127,26 @@ export default function App() {
       setWorkspaceId(String(created.id));
     }
   }, []);
+
+  const onSaveWorkspace = useCallback(async () => {
+    if (!workspaceId) return;
+    const trimmed = workspaceName.trim();
+    if (!trimmed) return;
+    setWorkspaceSaveStatus('saving');
+    try {
+      const updated = await api.updateWorkspace(workspaceId, { name: trimmed });
+      setWorkspaces((prev) => prev.map((ws) => (
+        String(ws.id) === String(workspaceId)
+          ? { ...ws, name: updated?.name ?? trimmed }
+          : ws
+      )));
+      setWorkspaceSaveStatus('saved');
+      setTimeout(() => setWorkspaceSaveStatus('idle'), 1500);
+    } catch (err) {
+      setWorkspaceSaveStatus('idle');
+      setError(err?.message || 'Unable to save workspace.');
+    }
+  }, [workspaceId, workspaceName]);
 
   const onCreateNode = useCallback(async (taskName, position = null) => {
     if (!workspaceId || !taskName) return;
@@ -220,6 +247,10 @@ export default function App() {
           onWorkspaceChange={setWorkspaceId}
           onCreateWorkspace={onCreateWorkspace}
           onRefreshWorkspaces={loadWorkspaces}
+          workspaceName={workspaceName}
+          onWorkspaceNameChange={setWorkspaceName}
+          onSaveWorkspace={onSaveWorkspace}
+          saveStatus={workspaceSaveStatus}
           onSave={onSaveLayout}
           onReload={() => loadGraph(workspaceId)}
           onDeleteSelected={onDeleteSelected}

@@ -6,11 +6,19 @@ export default function Toolbar({
   onWorkspaceChange,
   onCreateWorkspace,
   onRefreshWorkspaces,
+  workspaceName,
+  onWorkspaceNameChange,
+  onSaveWorkspace,
+  saveStatus,
   onSave,
   onReload,
   onDeleteSelected,
 }) {
-  const [name, setName] = useState('');
+  const [newName, setNewName] = useState('');
+
+  const saveClass = saveStatus === 'saved'
+    ? 'btn btn-sm btn-success'
+    : 'btn btn-sm btn-primary';
 
   return (
     <div className="taskdep-toolbar">
@@ -26,28 +34,41 @@ export default function Toolbar({
       </select>
       <input
         className="form-control form-control-sm w-auto"
+        placeholder="Workspace name"
+        value={workspaceName}
+        onChange={(event) => onWorkspaceNameChange(event.target.value)}
+      />
+      <button
+        type="button"
+        className={saveClass}
+        onClick={onSaveWorkspace}
+      >
+        Save
+      </button>
+      <input
+        className="form-control form-control-sm w-auto"
         placeholder="New workspace"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
+        value={newName}
+        onChange={(event) => setNewName(event.target.value)}
       />
       <button
         type="button"
         className="btn btn-sm btn-outline-primary"
         onClick={() => {
-          const trimmed = name.trim();
+          const trimmed = newName.trim();
           if (!trimmed) return;
           onCreateWorkspace(trimmed);
-          setName('');
+          setNewName('');
         }}
       >
         Add workspace
       </button>
       <button
         type="button"
-        className="btn btn-sm btn-primary"
+        className="btn btn-sm btn-outline-secondary"
         onClick={onSave}
       >
-        Save
+        Save layout
       </button>
       <button
         type="button"

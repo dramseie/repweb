@@ -9,6 +9,9 @@ export const getWorkspaces = () => axios.get(`${API}/workspaces`).then((r) => r.
 export const createWorkspace = (payload = {}) =>
   axios.post(`${API}/workspaces`, payload).then((r) => r.data);
 
+export const updateWorkspace = (id, payload = {}) =>
+  axios.patch(`${API}/workspaces/${id}`, payload).then((r) => r.data);
+
 export const getGraph = (workspaceId) =>
   axios.get(`${API}/graph`, { params: { workspaceId } }).then((r) => r.data);
 
