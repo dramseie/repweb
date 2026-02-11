@@ -613,7 +613,10 @@ export default function DataTablesReport({
     try {
       try { dtRef.current?.destroy(true); dtRef.current = null; } catch {}
 
-      const res = await fetch(colsUrl, { credentials: 'same-origin' });
+      const res = await fetch(colsUrl, {
+        credentials: 'same-origin',
+        headers: apiKey ? { 'X-Api-Key': apiKey } : {},
+      });
       if (!res.ok) throw new Error(`Columns HTTP ${res.status}`);
       const { columns: cols = [] } = await res.json();
       if (!Array.isArray(cols) || cols.length === 0) throw new Error('No columns returned');
@@ -640,6 +643,7 @@ export default function DataTablesReport({
           url: dataUrl,
           type: 'GET',
           dataSrc: 'data',
+          headers: apiKey ? { 'X-Api-Key': apiKey } : {},
           data: function (d) {
             try {
               const api = new $.fn.dataTable.Api(this);
