@@ -7,12 +7,14 @@ import HighchartsGridAxis from 'highcharts/modules/grid-axis';
 import HighchartsGantt from 'highcharts/modules/gantt';
 import DataTablesReport from '../../components/DataTablesReport.jsx';
 import TaskDependenciesApp from '../../tools/task-dependencies/modeler/App.jsx';
+import TaskManagerApp from '../../tools/task-manager/TaskManager.jsx';
 import TrumboField from '../components/common/TrumboField.jsx';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import Select from 'react-select';
 import 'reactflow/dist/style.css';
 import '../../tools/task-dependencies/style.css';
+import '../../tools/task-manager/style.css';
 
 if (typeof Highcharts === 'object') {
   const initXRange = HighchartsXRange?.default || HighchartsXRange;
@@ -505,7 +507,7 @@ const SmartsheetPivotPage = () => {
   const [reportMeta, setReportMeta] = useState(null);
   const [reportMetaLoading, setReportMetaLoading] = useState(false);
   const [reportMetaError, setReportMetaError] = useState(null);
-  const [toolsTab, setToolsTab] = useState('task-dependencies');
+  const [toolsTab, setToolsTab] = useState('task-manager');
   const [calcFilters, setCalcFilters] = useState({ countries: [], sitesByCountry: {} });
   const [calcFiltersLoading, setCalcFiltersLoading] = useState(false);
   const [calcFiltersError, setCalcFiltersError] = useState(null);
@@ -7314,6 +7316,17 @@ const SmartsheetPivotPage = () => {
             <li className="nav-item" role="presentation">
               <button
                 type="button"
+                className={`nav-link ${toolsTab === 'task-manager' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={toolsTab === 'task-manager'}
+                onClick={() => setToolsTab('task-manager')}
+              >
+                Task Manager
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
+                type="button"
                 className={`nav-link ${toolsTab === 'task-dependencies' ? 'active' : ''}`}
                 role="tab"
                 aria-selected={toolsTab === 'task-dependencies'}
@@ -7334,6 +7347,14 @@ const SmartsheetPivotPage = () => {
               </button>
             </li>
           </ul>
+
+          {toolsTab === 'task-manager' && (
+            <div className="card shadow-sm">
+              <div className="card-body">
+                <TaskManagerApp />
+              </div>
+            </div>
+          )}
 
           {toolsTab === 'task-dependencies' && (
             <div className="border rounded overflow-hidden" style={{ minHeight: '70vh' }}>

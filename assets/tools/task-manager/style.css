@@ -1,0 +1,11 @@
+.taskmgr { display: flex; flex-direction: column; gap: 0.75rem; }
+.taskmgr__toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
+.taskmgr__field { min-width: 220px; }
+.taskmgr__list { border: 1px solid #e2e2e2; border-radius: 6px; padding: 8px; background: #fff; }
+.taskmgr__row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 4px; border-bottom: 1px dashed #eee; border-radius: 4px; }
+.taskmgr__row:last-child { border-bottom: none; }
+.taskmgr__row.is-drag-over { background: #f2f8ff; }
+.taskmgr__list.is-drag-over { background: #f7fbff; }
+.taskmgr__title { flex: 1; min-width: 180px; }
+.taskmgr__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.taskmgr__actions .btn { white-space: nowrap; }
