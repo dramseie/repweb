@@ -4503,10 +4503,10 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, ganttSelectorTab, historyDetailsRequested, fetchHistoryDetails]);
 
   useEffect(() => {
-    if (activeTab === 'gantt' && ganttSelectorTab === 'duration' && durationRequested) {
+    if (activeTab === 'reports' && reportSelectorTab === 'duration' && durationRequested) {
       fetchDurationAnalysis();
     }
-  }, [activeTab, ganttSelectorTab, durationRequested, fetchDurationAnalysis]);
+  }, [activeTab, reportSelectorTab, durationRequested, fetchDurationAnalysis]);
 
   return (
     <div className="smartsheet-pivot">
@@ -5988,17 +5988,6 @@ const SmartsheetPivotPage = () => {
                     History Details
                   </button>
                 </li>
-                <li className="nav-item" role="presentation">
-                  <button
-                    type="button"
-                    className={`nav-link ${ganttSelectorTab === 'duration' ? 'active' : ''}`}
-                    role="tab"
-                    aria-selected={ganttSelectorTab === 'duration'}
-                    onClick={() => setGanttSelectorTab('duration')}
-                  >
-                    Duration Analysis
-                  </button>
-                </li>
               </ul>
 
               {ganttSelectorTab === 'country' && (
@@ -6560,91 +6549,6 @@ const SmartsheetPivotPage = () => {
                 </div>
               )}
 
-              {ganttSelectorTab === 'duration' && (
-                <div className="d-flex flex-column gap-3">
-                  <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
-                    <div>
-                      <h2 className="h6 mb-0">Duration Analysis</h2>
-                      <div className="text-muted small">Source: sp_smartsheet_site_task_duration_pivot</div>
-                    </div>
-                    <div className="d-flex align-items-center gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => {
-                          setDurationRequested(true);
-                          fetchDurationAnalysis();
-                        }}
-                        disabled={durationLoading}
-                      >
-                        Show
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => {
-                          setDurationRequested(true);
-                          fetchDurationAnalysis();
-                        }}
-                        disabled={durationLoading}
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => {
-                          setDurationRequested(false);
-                          setDurationRows([]);
-                          setDurationColumns([]);
-                        }}
-                        disabled={durationLoading}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-
-                  {durationError && (
-                    <div className="alert alert-warning" role="alert">
-                      {durationError}
-                    </div>
-                  )}
-
-                  {durationLoading && (
-                    <div className="text-muted">Loading duration analysis…</div>
-                  )}
-
-                  {!durationLoading && durationRows.length === 0 && durationRequested && !durationError && (
-                    <div className="text-muted">No duration analysis rows available.</div>
-                  )}
-
-                  {!durationLoading && durationRows.length > 0 && durationColumns.length > 0 && (
-                    <div className="table-responsive">
-                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                        <thead className="table-light">
-                          <tr>
-                            {durationColumns.map((column) => (
-                              <th key={column} className="rotate-header">
-                                <span>{column}</span>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {durationRows.map((row, index) => (
-                            <tr key={`duration-${index}`}>
-                              {durationColumns.map((column) => (
-                                <td key={`${column}-${index}`}>{formatDisplayValue(row[column])}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -6771,6 +6675,17 @@ const SmartsheetPivotPage = () => {
                 Reports
               </button>
             </li>
+            <li className="nav-item" role="presentation">
+              <button
+                type="button"
+                className={`nav-link ${reportSelectorTab === 'duration' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={reportSelectorTab === 'duration'}
+                onClick={() => setReportSelectorTab('duration')}
+              >
+                Duration Analysis
+              </button>
+            </li>
           </ul>
 
           {reportSelectorTab === 'reports' && (
@@ -6852,6 +6767,92 @@ const SmartsheetPivotPage = () => {
                 <div className="text-muted">Select a report to view the table.</div>
               )}
             </>
+          )}
+
+          {reportSelectorTab === 'duration' && (
+            <div className="d-flex flex-column gap-3">
+              <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                <div>
+                  <h2 className="h5 mb-0">Duration Analysis</h2>
+                  <div className="text-muted small">Source: sp_smartsheet_site_task_duration_pivot</div>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      setDurationRequested(true);
+                      fetchDurationAnalysis();
+                    }}
+                    disabled={durationLoading}
+                  >
+                    Show
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      setDurationRequested(true);
+                      fetchDurationAnalysis();
+                    }}
+                    disabled={durationLoading}
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      setDurationRequested(false);
+                      setDurationRows([]);
+                      setDurationColumns([]);
+                    }}
+                    disabled={durationLoading}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {durationError && (
+                <div className="alert alert-warning" role="alert">
+                  {durationError}
+                </div>
+              )}
+
+              {durationLoading && (
+                <div className="text-muted">Loading duration analysis…</div>
+              )}
+
+              {!durationLoading && durationRows.length === 0 && durationRequested && !durationError && (
+                <div className="text-muted">No duration analysis rows available.</div>
+              )}
+
+              {!durationLoading && durationRows.length > 0 && durationColumns.length > 0 && (
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                    <thead className="table-light">
+                      <tr>
+                        {durationColumns.map((column) => (
+                          <th key={column} className="rotate-header">
+                            <span>{column}</span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {durationRows.map((row, index) => (
+                        <tr key={`duration-${index}`}>
+                          {durationColumns.map((column) => (
+                            <td key={`${column}-${index}`}>{formatDisplayValue(row[column])}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
