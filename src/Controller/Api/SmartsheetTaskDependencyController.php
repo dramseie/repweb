@@ -24,11 +24,17 @@ class SmartsheetTaskDependencyController extends AbstractController
     #[Route('/tasks', name: 'tasks', methods: ['GET'])]
     public function tasks(): JsonResponse
     {
-        $sql = sprintf(
-            "SELECT DISTINCT task_name FROM %s WHERE IFNULL(phase, '') NOT IN ('Store', 'Country') AND task_name IS NOT NULL AND task_name <> '' ORDER BY task_name",
-            self::TASK_SOURCE
-        );
-        $rows = $this->connection->fetchFirstColumn($sql);
+                $sql = sprintf(
+                        "SELECT task_name
+                        FROM %s
+                        WHERE IFNULL(phase, '') NOT IN ('Store', 'Country')
+                            AND task_name IS NOT NULL
+                            AND task_name <> ''
+                        GROUP BY task_name
+                        ORDER BY MIN(row_num), task_name",
+                        self::TASK_SOURCE
+                );
+                $rows = $this->connection->fetchFirstColumn($sql);
         return $this->json($rows);
     }
 

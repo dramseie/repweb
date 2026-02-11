@@ -16,4 +16,10 @@ class TaskDependenciesController extends AbstractController
     {
         return $this->render('tools/task_dependencies.html.twig');
     }
+
+    #[Route('/embed', name: 'tools_task_dependencies_embed', methods: ['GET'])]
+    public function embed(): Response
+    {
+        return $this->render('tools/task_dependencies_embed.html.twig');
+    }
 }

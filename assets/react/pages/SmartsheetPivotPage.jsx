@@ -6,10 +6,13 @@ import HighchartsXRange from 'highcharts/modules/xrange';
 import HighchartsGridAxis from 'highcharts/modules/grid-axis';
 import HighchartsGantt from 'highcharts/modules/gantt';
 import DataTablesReport from '../../components/DataTablesReport.jsx';
+import TaskDependenciesApp from '../../tools/task-dependencies/modeler/App.jsx';
 import TrumboField from '../components/common/TrumboField.jsx';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import Select from 'react-select';
+import 'reactflow/dist/style.css';
+import '../../tools/task-dependencies/style.css';
 
 if (typeof Highcharts === 'object') {
   const initXRange = HighchartsXRange?.default || HighchartsXRange;
@@ -7113,11 +7116,7 @@ const SmartsheetPivotPage = () => {
 
           {toolsTab === 'task-dependencies' && (
             <div className="border rounded overflow-hidden" style={{ minHeight: '70vh' }}>
-              <iframe
-                title="Task Dependencies"
-                src="/tools/task-dependencies"
-                style={{ width: '100%', height: '70vh', border: 0 }}
-              />
+              <TaskDependenciesApp />
             </div>
           )}
         </div>
