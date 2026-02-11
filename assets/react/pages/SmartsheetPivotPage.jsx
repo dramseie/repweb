@@ -491,6 +491,7 @@ const SmartsheetPivotPage = () => {
   const [taskTrackerFilesUploading, setTaskTrackerFilesUploading] = useState({});
   const [taskTrackerFilesError, setTaskTrackerFilesError] = useState({});
 
+  const [reportSelectorTab, setReportSelectorTab] = useState('reports');
   const [reportList, setReportList] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState(null);
@@ -4411,16 +4412,21 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, fetchStatus, statusLoaded, statusLoading]);
 
   useEffect(() => {
-    if (activeTab === 'reports' && !reportLoading && reportList.length === 0) {
+    if (
+      activeTab === 'reports'
+      && reportSelectorTab === 'reports'
+      && !reportLoading
+      && reportList.length === 0
+    ) {
       fetchReports();
     }
-  }, [activeTab, fetchReports, reportList.length, reportLoading]);
+  }, [activeTab, fetchReports, reportList.length, reportLoading, reportSelectorTab]);
 
   useEffect(() => {
-    if (activeTab === 'reports' && selectedReportId) {
+    if (activeTab === 'reports' && reportSelectorTab === 'reports' && selectedReportId) {
       fetchReportMeta(selectedReportId);
     }
-  }, [activeTab, selectedReportId, fetchReportMeta]);
+  }, [activeTab, selectedReportId, fetchReportMeta, reportSelectorTab]);
 
   useEffect(() => {
     if (activeTab === 'task-tracker' && !taskTrackerLoaded && !taskTrackerLoading) {
@@ -6753,81 +6759,99 @@ const SmartsheetPivotPage = () => {
 
       {activeTab === 'reports' && (
         <div className="d-flex flex-column gap-3">
-          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
-            <div>
-              <h2 className="h5 mb-0">Reports</h2>
-              <div className="text-muted small">Tenant: IKEA</div>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <select
-                className="form-select form-select-sm"
-                value={selectedReportId}
-                onChange={(event) => setSelectedReportId(event.target.value)}
-                disabled={reportLoading || reportList.length === 0}
-                style={{ minWidth: 260 }}
-              >
-                <option value="">Select a report…</option>
-                {reportList.map((report) => (
-                  <option key={report.repid} value={report.repid}>{report.reptitle || report.repshort || `Report ${report.repid}`}</option>
-                ))}
-              </select>
+          <ul className="nav nav-tabs mb-3" role="tablist">
+            <li className="nav-item" role="presentation">
               <button
                 type="button"
-                className="btn btn-outline-secondary btn-sm"
-                onClick={fetchReports}
-                disabled={reportLoading}
+                className={`nav-link ${reportSelectorTab === 'reports' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={reportSelectorTab === 'reports'}
+                onClick={() => setReportSelectorTab('reports')}
               >
-                Refresh
+                Reports
               </button>
-              {selectedReportId && (
-                <a className="btn btn-outline-primary btn-sm" href={`/report/${selectedReportId}`} target="_blank" rel="noreferrer">
-                  Open
-                </a>
+            </li>
+          </ul>
+
+          {reportSelectorTab === 'reports' && (
+            <>
+              <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                <div>
+                  <h2 className="h5 mb-0">Reports</h2>
+                  <div className="text-muted small">Tenant: IKEA</div>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <select
+                    className="form-select form-select-sm"
+                    value={selectedReportId}
+                    onChange={(event) => setSelectedReportId(event.target.value)}
+                    disabled={reportLoading || reportList.length === 0}
+                    style={{ minWidth: 260 }}
+                  >
+                    <option value="">Select a report…</option>
+                    {reportList.map((report) => (
+                      <option key={report.repid} value={report.repid}>{report.reptitle || report.repshort || `Report ${report.repid}`}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={fetchReports}
+                    disabled={reportLoading}
+                  >
+                    Refresh
+                  </button>
+                  {selectedReportId && (
+                    <a className="btn btn-outline-primary btn-sm" href={`/report/${selectedReportId}`} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {reportError && (
+                <div className="alert alert-danger" role="alert">
+                  {reportError}
+                </div>
               )}
-            </div>
-          </div>
 
-          {reportError && (
-            <div className="alert alert-danger" role="alert">
-              {reportError}
-            </div>
-          )}
-
-          {reportMetaError && (
-            <div className="alert alert-danger" role="alert">
-              {reportMetaError}
-            </div>
-          )}
-
-          {selectedReportId ? (
-            <div className="border rounded shadow-sm p-3">
-              {reportMetaLoading && <div className="text-muted">Loading report…</div>}
-              {!reportMetaLoading && reportMeta && (
-                <>
-                  <div
-                    id="react-datatables-report"
-                    data-auto-mount="false"
-                    data-repid={selectedReportId}
-                    data-reptitle={reportMeta.reptitle || ''}
-                    data-repdesc={reportMeta.repdesc || ''}
-                    data-repparam={
-                      typeof reportMeta.repparam === 'string'
-                        ? reportMeta.repparam
-                        : JSON.stringify(reportMeta.repparam || {})
-                    }
-                  />
-                  <DataTablesReport
-                    key={selectedReportId}
-                    repid={Number(selectedReportId)}
-                    reptitle={reportMeta.reptitle || ''}
-                    repdesc={reportMeta.repdesc || ''}
-                    repparam={reportMeta.repparam || {}}
-                  />
-                </>
+              {reportMetaError && (
+                <div className="alert alert-danger" role="alert">
+                  {reportMetaError}
+                </div>
               )}
-            </div>
-          ) : (
-            <div className="text-muted">Select a report to view the table.</div>
+
+              {selectedReportId ? (
+                <div className="border rounded shadow-sm p-3">
+                  {reportMetaLoading && <div className="text-muted">Loading report…</div>}
+                  {!reportMetaLoading && reportMeta && (
+                    <>
+                      <div
+                        id="react-datatables-report"
+                        data-auto-mount="false"
+                        data-repid={selectedReportId}
+                        data-reptitle={reportMeta.reptitle || ''}
+                        data-repdesc={reportMeta.repdesc || ''}
+                        data-repparam={
+                          typeof reportMeta.repparam === 'string'
+                            ? reportMeta.repparam
+                            : JSON.stringify(reportMeta.repparam || {})
+                        }
+                      />
+                      <DataTablesReport
+                        key={selectedReportId}
+                        repid={Number(selectedReportId)}
+                        reptitle={reportMeta.reptitle || ''}
+                        repdesc={reportMeta.repdesc || ''}
+                        repparam={reportMeta.repparam || {}}
+                      />
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="text-muted">Select a report to view the table.</div>
+              )}
+            </>
           )}
         </div>
       )}
