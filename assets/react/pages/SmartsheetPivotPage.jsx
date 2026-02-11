@@ -2462,12 +2462,19 @@ const SmartsheetPivotPage = () => {
   }, [ganttCountryTaskSelectOpen]);
 
   useEffect(() => {
-    if (ganttSelectorTab !== 'wonderful') return;
+    if (activeTab !== 'reports' || reportSelectorTab !== 'accomplishments') return;
     if (wonderfulStates.length === 0 && !wonderfulStatesLoading) {
       fetchWonderfulStates();
     }
     fetchWonderfulData();
-  }, [ganttSelectorTab, fetchWonderfulData, fetchWonderfulStates, wonderfulStates.length, wonderfulStatesLoading]);
+  }, [
+    activeTab,
+    reportSelectorTab,
+    fetchWonderfulData,
+    fetchWonderfulStates,
+    wonderfulStates.length,
+    wonderfulStatesLoading,
+  ]);
 
   useEffect(() => {
     const today = new Date();
@@ -6134,17 +6141,6 @@ const SmartsheetPivotPage = () => {
                 <li className="nav-item" role="presentation">
                   <button
                     type="button"
-                    className={`nav-link ${ganttSelectorTab === 'wonderful' ? 'active' : ''}`}
-                    role="tab"
-                    aria-selected={ganttSelectorTab === 'wonderful'}
-                    onClick={() => setGanttSelectorTab('wonderful')}
-                  >
-                    Accomplishments
-                  </button>
-                </li>
-                <li className="nav-item" role="presentation">
-                  <button
-                    type="button"
                     className={`nav-link ${ganttSelectorTab === 'trend' ? 'active' : ''}`}
                     role="tab"
                     aria-selected={ganttSelectorTab === 'trend'}
@@ -6346,117 +6342,6 @@ const SmartsheetPivotPage = () => {
                     </div>
                   )}
                 </>
-              )}
-
-              {ganttSelectorTab === 'wonderful' && (
-                <div className="d-flex flex-column gap-3">
-                  <div className="row g-3 align-items-end">
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">Timeframe</label>
-                      <select
-                        className="form-select"
-                        value={wonderfulTimeframe}
-                        onChange={(event) => setWonderfulTimeframe(event.target.value)}
-                      >
-                        <option value="this-week">This week</option>
-                        <option value="prev-week">Previous week</option>
-                        <option value="next-week">Next week</option>
-                        <option value="this-month">This month</option>
-                        <option value="prev-month">Previous month</option>
-                        <option value="next-month">Next month</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">From</label>
-                      <input
-                        type="date"
-                        className="form-control"
-                        value={wonderfulFrom}
-                        onChange={(event) => setWonderfulFrom(event.target.value)}
-                        disabled={wonderfulTimeframe !== 'custom'}
-                      />
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">To</label>
-                      <input
-                        type="date"
-                        className="form-control"
-                        value={wonderfulTo}
-                        onChange={(event) => setWonderfulTo(event.target.value)}
-                        disabled={wonderfulTimeframe !== 'custom'}
-                      />
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">Task name</label>
-                      <select
-                        className="form-select"
-                        value={wonderfulTask}
-                        onChange={(event) => setWonderfulTask(event.target.value)}
-                      >
-                        <option value="">All tasks</option>
-                        {ganttCountryTaskOptions.map((task) => (
-                          <option key={`wonderful-task-${task}`} value={task}>{task}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">State</label>
-                      <select
-                        className="form-select"
-                        value={wonderfulState}
-                        onChange={(event) => setWonderfulState(event.target.value)}
-                        disabled={wonderfulStatesLoading}
-                      >
-                        <option value="">All states</option>
-                        {wonderfulStates.map((state) => (
-                          <option key={`wonderful-state-${state}`} value={state}>{state}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {wonderfulError && (
-                    <div className="alert alert-warning" role="alert">
-                      {wonderfulError}
-                    </div>
-                  )}
-
-                  {wonderfulLoading && <div className="text-muted">Loading wonderful report…</div>}
-
-                  {!wonderfulLoading && wonderfulItems.length === 0 && (
-                    <div className="text-muted">No achievements found.</div>
-                  )}
-
-                  {!wonderfulLoading && wonderfulItems.length > 0 && (
-                    <div className="table-responsive">
-                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                        <thead className="table-light">
-                          <tr>
-                            <th>Country</th>
-                            <th>Site</th>
-                            <th>Task</th>
-                            <th>Start</th>
-                            <th>End</th>
-                            <th>State</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {wonderfulItems.map((row, index) => (
-                            <tr key={`${row.country ?? 'country'}-${row.siteId ?? row.siteName ?? 'site'}-${row.taskName ?? 'task'}-${index}`}>
-                              <td>{formatDisplayValue(row.country)}</td>
-                              <td>{formatSiteLabel({ siteName: row.siteName, siteId: row.siteId })}</td>
-                              <td>{formatDisplayValue(row.taskName)}</td>
-                              <td>{formatDateDisplay(row.startDate)}</td>
-                              <td>{formatDateDisplay(row.endDate)}</td>
-                              <td>{formatDisplayValue(row.status)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
               )}
 
               {ganttSelectorTab === 'trend' && (
@@ -6716,6 +6601,17 @@ const SmartsheetPivotPage = () => {
                 onClick={() => setReportSelectorTab('history-details')}
               >
                 History Details
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
+                type="button"
+                className={`nav-link ${reportSelectorTab === 'accomplishments' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={reportSelectorTab === 'accomplishments'}
+                onClick={() => setReportSelectorTab('accomplishments')}
+              >
+                Accomplishments
               </button>
             </li>
           </ul>
@@ -6984,6 +6880,117 @@ const SmartsheetPivotPage = () => {
                       </tr>
                     </thead>
                     <tbody />
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {reportSelectorTab === 'accomplishments' && (
+            <div className="d-flex flex-column gap-3">
+              <div className="row g-2 align-items-end">
+                <div className="col-12 col-lg-2">
+                  <label className="form-label fw-medium">Timeframe</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={wonderfulTimeframe}
+                    onChange={(event) => setWonderfulTimeframe(event.target.value)}
+                  >
+                    <option value="this-week">This week</option>
+                    <option value="prev-week">Previous week</option>
+                    <option value="next-week">Next week</option>
+                    <option value="this-month">This month</option>
+                    <option value="prev-month">Previous month</option>
+                    <option value="next-month">Next month</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div className="col-12 col-lg-2">
+                  <label className="form-label fw-medium">From</label>
+                  <input
+                    type="date"
+                    className="form-control form-control-sm"
+                    value={wonderfulFrom}
+                    onChange={(event) => setWonderfulFrom(event.target.value)}
+                    disabled={wonderfulTimeframe !== 'custom'}
+                  />
+                </div>
+                <div className="col-12 col-lg-2">
+                  <label className="form-label fw-medium">To</label>
+                  <input
+                    type="date"
+                    className="form-control form-control-sm"
+                    value={wonderfulTo}
+                    onChange={(event) => setWonderfulTo(event.target.value)}
+                    disabled={wonderfulTimeframe !== 'custom'}
+                  />
+                </div>
+                <div className="col-12 col-lg-4">
+                  <label className="form-label fw-medium">Task name</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={wonderfulTask}
+                    onChange={(event) => setWonderfulTask(event.target.value)}
+                  >
+                    <option value="">All tasks</option>
+                    {ganttCountryTaskOptions.map((task) => (
+                      <option key={`wonderful-task-${task}`} value={task}>{task}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12 col-lg-2">
+                  <label className="form-label fw-medium">State</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={wonderfulState}
+                    onChange={(event) => setWonderfulState(event.target.value)}
+                    disabled={wonderfulStatesLoading}
+                  >
+                    <option value="">All states</option>
+                    {wonderfulStates.map((state) => (
+                      <option key={`wonderful-state-${state}`} value={state}>{state}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {wonderfulError && (
+                <div className="alert alert-warning" role="alert">
+                  {wonderfulError}
+                </div>
+              )}
+
+              {wonderfulLoading && <div className="text-muted">Loading accomplishments…</div>}
+
+              {!wonderfulLoading && wonderfulItems.length === 0 && (
+                <div className="text-muted">No accomplishments found.</div>
+              )}
+
+              {!wonderfulLoading && wonderfulItems.length > 0 && (
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Country</th>
+                        <th>Site</th>
+                        <th>Task</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>State</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {wonderfulItems.map((row, index) => (
+                        <tr key={`${row.country ?? 'country'}-${row.siteId ?? row.siteName ?? 'site'}-${row.taskName ?? 'task'}-${index}`}>
+                          <td>{formatDisplayValue(row.country)}</td>
+                          <td>{formatSiteLabel({ siteName: row.siteName, siteId: row.siteId })}</td>
+                          <td>{formatDisplayValue(row.taskName)}</td>
+                          <td>{formatDateDisplay(row.startDate)}</td>
+                          <td>{formatDateDisplay(row.endDate)}</td>
+                          <td>{formatDisplayValue(row.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 </div>
               )}
