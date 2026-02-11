@@ -8,10 +8,14 @@ import NodeCard from './NodeCard.jsx';
 
 const nodeTypes = { taskCard: NodeCard };
 
-const toNode = (n) => ({
+const toNode = (n, onDurationChange) => ({
   id: String(n.id),
   type: 'taskCard',
-  data: { label: n.task_name },
+  data: {
+    label: n.task_name,
+    duration: n.duration ?? '',
+    onDurationChange,
+  },
   position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
 });
 
@@ -31,6 +35,19 @@ export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selection, setSelection] = useState({ nodes: [], edges: [] });
+
+  const updateNodeDuration = useCallback((id, value) => {
+    setNodes((prev) => prev.map((node) => (
+      node.id === id
+        ? { ...node, data: { ...node.data, duration: value } }
+        : node
+    )));
+  }, [setNodes]);
+
+  const buildNode = useCallback((row) => {
+    const id = String(row.id);
+    return toNode(row, (value) => updateNodeDuration(id, value));
+  }, [updateNodeDuration]);
 
   const filteredTasks = useMemo(() => {
     if (!taskFilter) return tasks;
@@ -58,9 +75,9 @@ export default function App() {
   const loadGraph = useCallback(async (id) => {
     if (!id) return;
     const graph = await api.getGraph(id);
-    setNodes((graph.nodes || []).map(toNode));
+    setNodes((graph.nodes || []).map(buildNode));
     setEdges((graph.edges || []).map(toEdge));
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, buildNode]);
 
   useEffect(() => {
     setLoading(true);
@@ -93,15 +110,19 @@ export default function App() {
     if (position) payload.position = position;
     const res = await api.createNode(payload);
     if (!res?.id) return;
-    const nextNode = toNode(res);
+    const nextNode = buildNode(res);
     setNodes((prev) => {
       const existing = prev.find((n) => n.id === nextNode.id);
       if (existing) {
-        return prev.map((n) => (n.id === nextNode.id ? { ...n, position: nextNode.position } : n));
+        return prev.map((n) => (
+          n.id === nextNode.id
+            ? { ...n, position: nextNode.position, data: { ...n.data, onDurationChange: nextNode.data.onDurationChange } }
+            : n
+        ));
       }
       return prev.concat(nextNode);
     });
-  }, [workspaceId, setNodes]);
+  }, [workspaceId, setNodes, buildNode]);
 
   const onConnect = useCallback(async ({ source, target }) => {
     if (!workspaceId || !source || !target) return;
