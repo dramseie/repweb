@@ -27,5 +27,8 @@ export const createEdge = (payload) =>
 export const deleteEdge = (id) =>
   axios.delete(`${API}/edge/${id}`).then((r) => r.data);
 
+export const updateEdge = (id, payload) =>
+  axios.patch(`${API}/edge/${id}`, payload).then((r) => r.data);
+
 export const saveLayout = (workspaceId, nodes) =>
   axios.post(`${API}/layout/save`, { workspaceId, nodes }).then((r) => r.data);

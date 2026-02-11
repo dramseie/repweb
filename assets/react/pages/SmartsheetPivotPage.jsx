@@ -358,6 +358,9 @@ const SmartsheetPivotPage = () => {
   const [issueSaving, setIssueSaving] = useState({});
   const [issueDeleting, setIssueDeleting] = useState({});
   const [issueEditTargets, setIssueEditTargets] = useState({});
+  const [qnaNotes, setQnaNotes] = useState([]);
+  const [qnaDrag, setQnaDrag] = useState(null);
+  const qnaBoardRef = useRef(null);
   const [slideshowOpen, setSlideshowOpen] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState(0);
   const [highlightsContent, setHighlightsContent] = useState('');
@@ -2546,6 +2549,28 @@ const SmartsheetPivotPage = () => {
   }, [taskTrackerSelectOpen]);
 
   useEffect(() => {
+    if (!qnaDrag) return undefined;
+    const noteWidth = 200;
+    const noteHeight = 140;
+    const handleMove = (event) => {
+      if (!qnaBoardRef.current) return;
+      const rect = qnaBoardRef.current.getBoundingClientRect();
+      let x = event.clientX - rect.left - qnaDrag.offsetX;
+      let y = event.clientY - rect.top - qnaDrag.offsetY;
+      x = Math.max(0, Math.min(x, rect.width - noteWidth));
+      y = Math.max(0, Math.min(y, rect.height - noteHeight));
+      updateQnaNote(qnaDrag.id, { x, y });
+    };
+    const handleUp = () => setQnaDrag(null);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [qnaDrag]);
+
+  useEffect(() => {
     if (!ganttCountryTaskSelectOpen) return;
     const handleClick = (event) => {
       if (!ganttCountryTaskSelectRef.current) return;
@@ -2825,6 +2850,38 @@ const SmartsheetPivotPage = () => {
       ...prev,
       [country]: { ...getIssueDraft(country), ...patch },
     }));
+  };
+
+  const addQnaNote = () => {
+    const nextId = Date.now();
+    const offset = qnaNotes.length * 18;
+    setQnaNotes((prev) => prev.concat({
+      id: nextId,
+      x: 16 + offset,
+      y: 16 + offset,
+      text: '',
+    }));
+  };
+
+  const updateQnaNote = (id, patch) => {
+    setQnaNotes((prev) => prev.map((note) => (
+      note.id === id ? { ...note, ...patch } : note
+    )));
+  };
+
+  const removeQnaNote = (id) => {
+    setQnaNotes((prev) => prev.filter((note) => note.id !== id));
+  };
+
+  const startQnaDrag = (event, note) => {
+    if (!qnaBoardRef.current) return;
+    const rect = qnaBoardRef.current.getBoundingClientRect();
+    setQnaDrag({
+      id: note.id,
+      offsetX: event.clientX - rect.left - note.x,
+      offsetY: event.clientY - rect.top - note.y,
+    });
+    event.preventDefault();
   };
 
   const submitIssue = async (country) => {
@@ -5521,6 +5578,72 @@ const SmartsheetPivotPage = () => {
               </div>
             </div>
           ))}
+
+          <div className="card shadow-sm">
+            <div className="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+              <strong>Questions &amp; Answers</strong>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary"
+                onClick={addQnaNote}
+              >
+                Add post-it
+              </button>
+            </div>
+            <div className="card-body">
+              <div
+                ref={qnaBoardRef}
+                className="border rounded position-relative"
+                style={{ minHeight: 320, background: '#fffdf5', overflow: 'hidden' }}
+              >
+                {qnaNotes.length === 0 && (
+                  <div className="text-muted small" style={{ padding: 12 }}>
+                    Add a post-it to start capturing questions and answers.
+                  </div>
+                )}
+                {qnaNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="position-absolute"
+                    style={{
+                      left: note.x,
+                      top: note.y,
+                      width: 200,
+                      minHeight: 140,
+                      background: '#fff2a8',
+                      border: '1px solid #e0d38c',
+                      borderRadius: 8,
+                      boxShadow: '0 4px 10px rgba(0,0,0,0.12)',
+                      padding: 8,
+                    }}
+                  >
+                    <div
+                      className="d-flex justify-content-between align-items-center mb-1"
+                      style={{ cursor: 'move' }}
+                      onMouseDown={(event) => startQnaDrag(event, note)}
+                    >
+                      <span className="small text-muted">Post-it</span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-link text-danger p-0"
+                        onClick={() => removeQnaNote(note.id)}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                    <textarea
+                      className="form-control form-control-sm"
+                      rows={4}
+                      placeholder="Type question/answer..."
+                      value={note.text}
+                      onChange={(event) => updateQnaNote(note.id, { text: event.target.value })}
+                      style={{ background: '#fff2a8', borderColor: '#e0d38c' }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

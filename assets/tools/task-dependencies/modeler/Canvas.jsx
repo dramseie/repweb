@@ -10,6 +10,7 @@ export default function Canvas({
   onConnect,
   onNodeClick,
   onNodeDragStop,
+  onEdgeClick,
   onSelectionChange,
   onDropCreate,
 }) {
@@ -42,6 +43,7 @@ export default function Canvas({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={(_, node) => onNodeClick(node)}
+        onEdgeClick={(_, edge) => onEdgeClick(edge)}
         onNodeDragStop={onNodeDragStop}
         onSelectionChange={onSelectionChange}
         fitView

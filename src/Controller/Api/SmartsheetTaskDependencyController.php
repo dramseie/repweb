@@ -92,7 +92,7 @@ class SmartsheetTaskDependencyController extends AbstractController
             [$workspaceId]
         );
         $edges = $this->connection->fetchAllAssociative(
-            sprintf('SELECT id, source_node_id, target_node_id FROM %s WHERE workspace_id = ? ORDER BY id', self::EDGE_TABLE),
+            sprintf('SELECT id, source_node_id, target_node_id, name, duration FROM %s WHERE workspace_id = ? ORDER BY id', self::EDGE_TABLE),
             [$workspaceId]
         );
 
@@ -112,6 +112,8 @@ class SmartsheetTaskDependencyController extends AbstractController
                 'id' => (int) $row['id'],
                 'source_node_id' => (int) $row['source_node_id'],
                 'target_node_id' => (int) $row['target_node_id'],
+                'name' => $row['name'] ?? null,
+                'duration' => $row['duration'] !== null ? (int) $row['duration'] : null,
             ];
         }, $edges);
 
@@ -206,6 +208,9 @@ class SmartsheetTaskDependencyController extends AbstractController
         $workspaceId = (int) ($payload['workspaceId'] ?? 0);
         $sourceId = (int) ($payload['sourceId'] ?? 0);
         $targetId = (int) ($payload['targetId'] ?? 0);
+        $name = isset($payload['name']) ? trim((string) $payload['name']) : null;
+        $durationRaw = $payload['duration'] ?? null;
+        $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
 
         if ($workspaceId <= 0 || $sourceId <= 0 || $targetId <= 0) {
             return $this->json(['error' => 'workspaceId, sourceId, and targetId are required.'], 400);
@@ -224,9 +229,38 @@ class SmartsheetTaskDependencyController extends AbstractController
             'workspace_id' => $workspaceId,
             'source_node_id' => $sourceId,
             'target_node_id' => $targetId,
+            'name' => $name !== '' ? $name : null,
+            'duration' => $duration,
         ]);
 
-        return $this->json(['id' => (int) $this->connection->lastInsertId()]);
+        return $this->json([
+            'id' => (int) $this->connection->lastInsertId(),
+            'name' => $name !== '' ? $name : null,
+            'duration' => $duration,
+        ]);
+    }
+
+    #[Route('/edge/{id}', name: 'edge_update', methods: ['PATCH'])]
+    public function updateEdge(int $id, Request $request): JsonResponse
+    {
+        $payload = json_decode($request->getContent(), true) ?? [];
+        $name = array_key_exists('name', $payload) ? trim((string) $payload['name']) : null;
+        $durationRaw = $payload['duration'] ?? null;
+        $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
+
+        $fields = [];
+        if (array_key_exists('name', $payload)) {
+            $fields['name'] = $name !== '' ? $name : null;
+        }
+        if (array_key_exists('duration', $payload)) {
+            $fields['duration'] = $duration;
+        }
+
+        if ($fields) {
+            $this->connection->update(self::EDGE_TABLE, $fields, ['id' => $id]);
+        }
+
+        return $this->json(['ok' => true]);
     }
 
     #[Route('/edge/{id}', name: 'edge_delete', methods: ['DELETE'])]

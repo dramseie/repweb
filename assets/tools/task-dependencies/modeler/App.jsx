@@ -19,10 +19,26 @@ const toNode = (n, onDurationChange) => ({
   position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
 });
 
+const formatEdgeLabel = (name, duration) => {
+  const cleanName = name ? String(name).trim() : '';
+  const durationValue = Number.isFinite(duration) ? duration : null;
+  if (cleanName && durationValue !== null) {
+    return `${cleanName} (${durationValue})`;
+  }
+  if (cleanName) return cleanName;
+  if (durationValue !== null) return String(durationValue);
+  return '';
+};
+
 const toEdge = (e) => ({
   id: String(e.id),
   source: String(e.source_node_id),
   target: String(e.target_node_id),
+  data: {
+    name: e.name ?? '',
+    duration: e.duration !== null && e.duration !== undefined ? Number(e.duration) : null,
+  },
+  label: formatEdgeLabel(e.name ?? '', e.duration !== null && e.duration !== undefined ? Number(e.duration) : null),
 });
 
 export default function App() {
@@ -128,8 +144,36 @@ export default function App() {
     if (!workspaceId || !source || !target) return;
     const res = await api.createEdge({ workspaceId, sourceId: source, targetId: target });
     if (!res?.id) return;
-    setEdges((prev) => prev.concat({ id: String(res.id), source, target }));
+    setEdges((prev) => prev.concat({
+      id: String(res.id),
+      source,
+      target,
+      data: { name: res.name ?? '', duration: res.duration ?? null },
+      label: formatEdgeLabel(res.name ?? '', res.duration ?? null),
+    }));
   }, [workspaceId, setEdges]);
+
+  const onEditEdge = useCallback(async (edge) => {
+    if (!edge) return;
+    const currentName = edge.data?.name ?? '';
+    const currentDuration = edge.data?.duration ?? '';
+    const name = window.prompt('Dependency name:', currentName);
+    if (name === null) return;
+    const durationInput = window.prompt('Duration (number):', currentDuration === null ? '' : String(currentDuration));
+    if (durationInput === null) return;
+    const duration = durationInput === '' ? null : Number(durationInput);
+    const nextDuration = Number.isFinite(duration) ? duration : null;
+    await api.updateEdge(edge.id, { name, duration: nextDuration });
+    setEdges((prev) => prev.map((item) => (
+      item.id === edge.id
+        ? {
+            ...item,
+            data: { name, duration: nextDuration },
+            label: formatEdgeLabel(name, nextDuration),
+          }
+        : item
+    )));
+  }, [setEdges]);
 
   const onNodeDragStop = useCallback(async (_event, node) => {
     if (!node?.id) return;
@@ -183,6 +227,7 @@ export default function App() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={() => {}}
+            onEdgeClick={onEditEdge}
             onNodeDragStop={onNodeDragStop}
             onSelectionChange={setSelection}
             onDropCreate={onCreateNode}
