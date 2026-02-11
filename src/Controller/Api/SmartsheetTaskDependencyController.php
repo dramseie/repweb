@@ -118,7 +118,7 @@ class SmartsheetTaskDependencyController extends AbstractController
         }
 
         $nodes = $this->connection->fetchAllAssociative(
-            sprintf('SELECT id, task_name, pos_x, pos_y FROM %s WHERE workspace_id = ? ORDER BY id', self::NODE_TABLE),
+            sprintf('SELECT id, task_name, pos_x, pos_y, duration FROM %s WHERE workspace_id = ? ORDER BY id', self::NODE_TABLE),
             [$workspaceId]
         );
         $edges = $this->connection->fetchAllAssociative(
@@ -130,6 +130,7 @@ class SmartsheetTaskDependencyController extends AbstractController
             return [
                 'id' => (int) $row['id'],
                 'task_name' => $row['task_name'],
+                'duration' => $row['duration'] !== null ? (int) $row['duration'] : null,
                 'position' => [
                     'x' => (float) $row['pos_x'],
                     'y' => (float) $row['pos_y'],
@@ -157,6 +158,8 @@ class SmartsheetTaskDependencyController extends AbstractController
         $workspaceId = (int) ($payload['workspaceId'] ?? 0);
         $taskName = trim((string) ($payload['taskName'] ?? ''));
         $position = $payload['position'] ?? null;
+        $durationRaw = $payload['duration'] ?? null;
+        $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
 
         if ($workspaceId <= 0 || $taskName === '') {
             return $this->json(['error' => 'workspaceId and taskName are required.'], 400);
@@ -174,7 +177,11 @@ class SmartsheetTaskDependencyController extends AbstractController
             $id = (int) $existing['id'];
             $this->connection->update(
                 self::NODE_TABLE,
-                ['pos_x' => $posX, 'pos_y' => $posY],
+                [
+                    'pos_x' => $posX,
+                    'pos_y' => $posY,
+                    'duration' => $duration,
+                ],
                 ['id' => $id]
             );
         } else {
@@ -183,6 +190,7 @@ class SmartsheetTaskDependencyController extends AbstractController
                 'task_name' => $taskName,
                 'pos_x' => $posX,
                 'pos_y' => $posY,
+                'duration' => $duration,
             ]);
             $id = (int) $this->connection->lastInsertId();
         }
@@ -190,6 +198,7 @@ class SmartsheetTaskDependencyController extends AbstractController
         return $this->json([
             'id' => $id,
             'task_name' => $taskName,
+            'duration' => $duration,
             'position' => ['x' => $posX, 'y' => $posY],
         ]);
     }
@@ -199,16 +208,20 @@ class SmartsheetTaskDependencyController extends AbstractController
     {
         $payload = json_decode($request->getContent(), true) ?? [];
         $position = $payload['position'] ?? null;
+        $durationRaw = $payload['duration'] ?? null;
+        $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
 
+        $fields = [];
         if (is_array($position)) {
-            $this->connection->update(
-                self::NODE_TABLE,
-                [
-                    'pos_x' => (float) ($position['x'] ?? 0),
-                    'pos_y' => (float) ($position['y'] ?? 0),
-                ],
-                ['id' => $id]
-            );
+            $fields['pos_x'] = (float) ($position['x'] ?? 0);
+            $fields['pos_y'] = (float) ($position['y'] ?? 0);
+        }
+        if (array_key_exists('duration', $payload)) {
+            $fields['duration'] = $duration;
+        }
+
+        if ($fields) {
+            $this->connection->update(self::NODE_TABLE, $fields, ['id' => $id]);
         }
 
         return $this->json(['ok' => true]);
@@ -319,6 +332,8 @@ class SmartsheetTaskDependencyController extends AbstractController
                 }
                 $id = (int) ($node['id'] ?? 0);
                 $pos = $node['position'] ?? null;
+                $durationRaw = $node['duration'] ?? null;
+                $duration = $durationRaw === null || $durationRaw === '' ? null : (int) $durationRaw;
                 if ($id <= 0 || !is_array($pos)) {
                     continue;
                 }
@@ -327,6 +342,7 @@ class SmartsheetTaskDependencyController extends AbstractController
                     [
                         'pos_x' => (float) ($pos['x'] ?? 0),
                         'pos_y' => (float) ($pos['y'] ?? 0),
+                        'duration' => $duration,
                     ],
                     [
                         'id' => $id,

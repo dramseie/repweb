@@ -55,12 +55,13 @@ export default function App() {
   const [selection, setSelection] = useState({ nodes: [], edges: [] });
   const [edgeDialog, setEdgeDialog] = useState(null);
 
-  const updateNodeDuration = useCallback((id, value) => {
+  const updateNodeDuration = useCallback(async (id, value) => {
     setNodes((prev) => prev.map((node) => (
       node.id === id
         ? { ...node, data: { ...node.data, duration: value } }
         : node
     )));
+    await api.updateNode(id, { duration: value });
   }, [setNodes]);
 
   const buildNode = useCallback((row) => {
@@ -228,6 +229,7 @@ export default function App() {
     const payload = nodes.map((node) => ({
       id: node.id,
       position: node.position,
+      duration: node.data?.duration ?? null,
     }));
     await api.saveLayout(workspaceId, payload);
   }, [workspaceId, nodes]);
