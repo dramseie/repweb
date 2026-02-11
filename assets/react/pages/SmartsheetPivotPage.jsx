@@ -680,6 +680,8 @@ const SmartsheetPivotPage = () => {
   const tableRef = useRef(null);
   const analyseDatatableRef = useRef(null);
   const analyseTableRef = useRef(null);
+  const durationDatatableRef = useRef(null);
+  const durationTableRef = useRef(null);
   const execOverviewRef = useRef(null);
 
   const scrollToPresentationCard = useCallback((key) => {
@@ -1360,6 +1362,19 @@ const SmartsheetPivotPage = () => {
     }
   }, []);
 
+  const destroyDurationTable = useCallback(() => {
+    if (durationDatatableRef.current) {
+      durationDatatableRef.current.destroy();
+      durationDatatableRef.current = null;
+    }
+    if (durationTableRef.current) {
+      const tbody = durationTableRef.current.querySelector('tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+      }
+    }
+  }, []);
+
   const hydrateTable = useCallback((cols, dataRows) => {
     if (!tableRef.current) {
       return;
@@ -1448,6 +1463,48 @@ const SmartsheetPivotPage = () => {
       order: [],
     });
   }, [destroyAnalyseTable]);
+
+  const hydrateDurationTable = useCallback((cols, dataRows) => {
+    if (!durationTableRef.current) {
+      return;
+    }
+
+    destroyDurationTable();
+
+    if (!cols.length) {
+      return;
+    }
+
+    const dataset = dataRows.map((row) => cols.map((col) => formatDisplayValue(row?.[col])));
+
+    durationDatatableRef.current = $(durationTableRef.current).DataTable({
+      dom:
+        "<'row g-2 align-items-center'<'col-md-7 dt-toolbar-left d-flex align-items-center'B><'col-md-5 dt-toolbar-right'f>>" +
+        "<'row'<'col-12'tr>>" +
+        "<'row'<'col-md-5'i><'col-md-7'p>>",
+      data: dataset,
+      buttons: [
+        { extend: 'colvis', text: '<i class="fas fa-columns me-1"></i> Columns', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'copyHtml5', text: '<i class="fas fa-copy me-1"></i> Copy', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'excelHtml5', text: '<i class="fas fa-file-excel me-1"></i> XLSX', className: 'btn btn-sm btn-success' },
+        { extend: 'csvHtml5', text: '<i class="fas fa-file-csv me-1"></i> CSV', className: 'btn btn-sm btn-outline-primary' },
+        { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf me-1"></i> PDF', className: 'btn btn-sm btn-outline-danger' },
+        { extend: 'print', text: '<i class="fas fa-print me-1"></i> Print', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      pageLength: 50,
+      lengthMenu: [25, 50, 100, 250],
+      fixedHeader: true,
+      colReorder: true,
+      responsive: false,
+      scrollY: '60vh',
+      scrollX: true,
+      scrollCollapse: true,
+      deferRender: true,
+      scroller: true,
+      stateSave: true,
+      order: [],
+    });
+  }, [destroyDurationTable]);
 
   const fetchWorkspaces = useCallback(async () => {
     workspacesAbortRef.current?.abort();
@@ -1588,8 +1645,9 @@ const SmartsheetPivotPage = () => {
       controller.abort();
       destroyTable();
       destroyAnalyseTable();
+      destroyDurationTable();
     };
-  }, [destroyAnalyseTable, destroyTable, fetchWorkspaces]);
+  }, [destroyAnalyseTable, destroyDurationTable, destroyTable, fetchWorkspaces]);
 
   useEffect(() => {
     fetchSheets(selectedWorkspace);
@@ -1616,6 +1674,26 @@ const SmartsheetPivotPage = () => {
 
     hydrateAnalyseTable(analyseColumns, analyseRows);
   }, [analyseColumns, analyseRows, destroyAnalyseTable, hydrateAnalyseTable]);
+
+  useEffect(() => {
+    if (activeTab !== 'reports' || reportSelectorTab !== 'duration') {
+      return;
+    }
+
+    if (!durationColumns.length) {
+      destroyDurationTable();
+      return;
+    }
+
+    hydrateDurationTable(durationColumns, durationRows);
+  }, [
+    activeTab,
+    reportSelectorTab,
+    durationColumns,
+    durationRows,
+    destroyDurationTable,
+    hydrateDurationTable,
+  ]);
 
   const onWorkspaceChange = (event) => {
     setSelectedWorkspace(event.target.value);
@@ -6830,7 +6908,10 @@ const SmartsheetPivotPage = () => {
 
               {!durationLoading && durationRows.length > 0 && durationColumns.length > 0 && (
                 <div className="table-responsive">
-                  <table className="table table-sm table-bordered table-striped align-middle mb-0">
+                  <table
+                    ref={durationTableRef}
+                    className="table table-sm table-bordered table-striped align-middle nowrap w-100"
+                  >
                     <thead className="table-light">
                       <tr>
                         {durationColumns.map((column) => (
@@ -6840,15 +6921,7 @@ const SmartsheetPivotPage = () => {
                         ))}
                       </tr>
                     </thead>
-                    <tbody>
-                      {durationRows.map((row, index) => (
-                        <tr key={`duration-${index}`}>
-                          {durationColumns.map((column) => (
-                            <td key={`${column}-${index}`}>{formatDisplayValue(row[column])}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
+                    <tbody />
                   </table>
                 </div>
               )}

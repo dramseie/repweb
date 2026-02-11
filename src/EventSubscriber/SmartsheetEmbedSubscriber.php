@@ -21,7 +21,7 @@ class SmartsheetEmbedSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            KernelEvents::REQUEST => ['onKernelRequest', 10],
+            KernelEvents::REQUEST => ['onKernelRequest', -10],
         ];
     }
 
