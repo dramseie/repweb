@@ -1677,7 +1677,9 @@ class SmartsheetPresentationController extends AbstractController
     #[Route('/duration-analysis', name: 'presentation_duration_analysis', methods: ['GET'])]
     public function durationAnalysis(): JsonResponse
     {
-        $stmt = $this->connection->executeQuery('CALL nifi.sp_smartsheet_site_task_duration_pivot()');
+        $stmt = $this->connection->executeQuery(
+            "CALL nifi.sp_smartsheet_site_task_duration_pivot('duration, start_date, end_date, pct_complete')"
+        );
         $rows = $stmt->fetchAllAssociative();
         $stmt->free();
 

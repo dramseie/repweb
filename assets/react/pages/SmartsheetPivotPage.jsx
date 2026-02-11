@@ -665,6 +665,15 @@ const SmartsheetPivotPage = () => {
     };
   };
 
+  const getHistoryDetailBadgeHtml = (value) => {
+    const badge = getHistoryDetailBadgeData(value);
+    const label = Number.isFinite(badge.count) ? badge.count : '—';
+    if (!badge.tooltip) {
+      return '<span class="text-muted">—</span>';
+    }
+    return `<span class="history-detail-badge" data-tooltip="${escapeHtml(badge.tooltip)}">${escapeHtml(label)}</span>`;
+  };
+
   const formatUploadSize = (value) => {
     const bytes = Number(value);
     if (!Number.isFinite(bytes)) return '—';
@@ -682,6 +691,8 @@ const SmartsheetPivotPage = () => {
   const analyseTableRef = useRef(null);
   const durationDatatableRef = useRef(null);
   const durationTableRef = useRef(null);
+  const historyDetailsDatatableRef = useRef(null);
+  const historyDetailsTableRef = useRef(null);
   const execOverviewRef = useRef(null);
 
   const scrollToPresentationCard = useCallback((key) => {
@@ -1375,6 +1386,19 @@ const SmartsheetPivotPage = () => {
     }
   }, []);
 
+  const destroyHistoryDetailsTable = useCallback(() => {
+    if (historyDetailsDatatableRef.current) {
+      historyDetailsDatatableRef.current.destroy();
+      historyDetailsDatatableRef.current = null;
+    }
+    if (historyDetailsTableRef.current) {
+      const tbody = historyDetailsTableRef.current.querySelector('tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+      }
+    }
+  }, []);
+
   const hydrateTable = useCallback((cols, dataRows) => {
     if (!tableRef.current) {
       return;
@@ -1505,6 +1529,59 @@ const SmartsheetPivotPage = () => {
       order: [],
     });
   }, [destroyDurationTable]);
+
+  const hydrateHistoryDetailsTable = useCallback((dataRows) => {
+    if (!historyDetailsTableRef.current) {
+      return;
+    }
+
+    destroyHistoryDetailsTable();
+
+    if (!dataRows.length) {
+      return;
+    }
+
+    const dataset = dataRows.map((row) => [
+      escapeHtml(formatDisplayValue(row?.country)),
+      escapeHtml(formatDisplayValue(row?.site_name)),
+      escapeHtml(formatDisplayValue(row?.site_id)),
+      escapeHtml(formatDisplayValue(row?.task_name)),
+      escapeHtml(formatDateDisplay(row?.start_date)),
+      getHistoryDetailBadgeHtml(row?.start_date_data),
+      escapeHtml(formatDateDisplay(row?.end_date)),
+      getHistoryDetailBadgeHtml(row?.end_date_data),
+      escapeHtml(formatDisplayValue(row?.['%_complete'])),
+      getHistoryDetailBadgeHtml(row?.percent_complete_data),
+    ]);
+
+    historyDetailsDatatableRef.current = $(historyDetailsTableRef.current).DataTable({
+      dom:
+        "<'row g-2 align-items-center'<'col-md-7 dt-toolbar-left d-flex align-items-center'B><'col-md-5 dt-toolbar-right'f>>" +
+        "<'row'<'col-12'tr>>" +
+        "<'row'<'col-md-5'i><'col-md-7'p>>",
+      data: dataset,
+      buttons: [
+        { extend: 'colvis', text: '<i class="fas fa-columns me-1"></i> Columns', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'copyHtml5', text: '<i class="fas fa-copy me-1"></i> Copy', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'excelHtml5', text: '<i class="fas fa-file-excel me-1"></i> XLSX', className: 'btn btn-sm btn-success' },
+        { extend: 'csvHtml5', text: '<i class="fas fa-file-csv me-1"></i> CSV', className: 'btn btn-sm btn-outline-primary' },
+        { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf me-1"></i> PDF', className: 'btn btn-sm btn-outline-danger' },
+        { extend: 'print', text: '<i class="fas fa-print me-1"></i> Print', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      pageLength: 50,
+      lengthMenu: [25, 50, 100, 250],
+      fixedHeader: true,
+      colReorder: true,
+      responsive: false,
+      scrollY: '60vh',
+      scrollX: true,
+      scrollCollapse: true,
+      deferRender: true,
+      scroller: true,
+      stateSave: true,
+      order: [],
+    });
+  }, [destroyHistoryDetailsTable]);
 
   const fetchWorkspaces = useCallback(async () => {
     workspacesAbortRef.current?.abort();
@@ -1646,8 +1723,9 @@ const SmartsheetPivotPage = () => {
       destroyTable();
       destroyAnalyseTable();
       destroyDurationTable();
+      destroyHistoryDetailsTable();
     };
-  }, [destroyAnalyseTable, destroyDurationTable, destroyTable, fetchWorkspaces]);
+  }, [destroyAnalyseTable, destroyDurationTable, destroyHistoryDetailsTable, destroyTable, fetchWorkspaces]);
 
   useEffect(() => {
     fetchSheets(selectedWorkspace);
@@ -1693,6 +1771,25 @@ const SmartsheetPivotPage = () => {
     durationRows,
     destroyDurationTable,
     hydrateDurationTable,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== 'reports' || reportSelectorTab !== 'history-details') {
+      return;
+    }
+
+    if (!historyDetailRows.length) {
+      destroyHistoryDetailsTable();
+      return;
+    }
+
+    hydrateHistoryDetailsTable(historyDetailRows);
+  }, [
+    activeTab,
+    reportSelectorTab,
+    historyDetailRows,
+    destroyHistoryDetailsTable,
+    hydrateHistoryDetailsTable,
   ]);
 
   const onWorkspaceChange = (event) => {
@@ -4554,19 +4651,19 @@ const SmartsheetPivotPage = () => {
 
   useEffect(() => {
     if (
-      activeTab === 'gantt'
-      && (ganttSelectorTab === 'trend' || ganttSelectorTab === 'history-details')
+      ((activeTab === 'gantt' && ganttSelectorTab === 'trend')
+        || (activeTab === 'reports' && reportSelectorTab === 'history-details'))
       && !trendFiltersLoaded
       && !trendFiltersLoading
     ) {
       fetchTrendFilters();
     }
-  }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendFiltersLoading, fetchTrendFilters]);
+  }, [activeTab, ganttSelectorTab, reportSelectorTab, trendFiltersLoaded, trendFiltersLoading, fetchTrendFilters]);
 
   useEffect(() => {
     if (
       activeTab === 'gantt'
-      && (ganttSelectorTab === 'trend' || ganttSelectorTab === 'history-details')
+      && ganttSelectorTab === 'trend'
       && trendFiltersLoaded
       && trendSeriesRequested
     ) {
@@ -4575,10 +4672,10 @@ const SmartsheetPivotPage = () => {
   }, [activeTab, ganttSelectorTab, trendFiltersLoaded, trendSeriesRequested, fetchTrendSeries]);
 
   useEffect(() => {
-    if (activeTab === 'gantt' && ganttSelectorTab === 'history-details' && historyDetailsRequested) {
+    if (activeTab === 'reports' && reportSelectorTab === 'history-details' && historyDetailsRequested) {
       fetchHistoryDetails();
     }
-  }, [activeTab, ganttSelectorTab, historyDetailsRequested, fetchHistoryDetails]);
+  }, [activeTab, reportSelectorTab, historyDetailsRequested, fetchHistoryDetails]);
 
   useEffect(() => {
     if (activeTab === 'reports' && reportSelectorTab === 'duration' && durationRequested) {
@@ -6055,17 +6152,6 @@ const SmartsheetPivotPage = () => {
                     History Tracking
                   </button>
                 </li>
-                <li className="nav-item" role="presentation">
-                  <button
-                    type="button"
-                    className={`nav-link ${ganttSelectorTab === 'history-details' ? 'active' : ''}`}
-                    role="tab"
-                    aria-selected={ganttSelectorTab === 'history-details'}
-                    onClick={() => setGanttSelectorTab('history-details')}
-                  >
-                    History Details
-                  </button>
-                </li>
               </ul>
 
               {ganttSelectorTab === 'country' && (
@@ -6483,150 +6569,6 @@ const SmartsheetPivotPage = () => {
                 </div>
               )}
 
-              {ganttSelectorTab === 'history-details' && (
-                <div className="d-flex flex-column gap-3">
-                  <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
-                    <div>
-                      <h2 className="h6 mb-0">History Details</h2>
-                      <div className="text-muted small">Source: nifi.smartsheet_master_data_history_detailview</div>
-                    </div>
-                    <div className="d-flex align-items-center gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => {
-                          setHistoryDetailsRequested(true);
-                          fetchHistoryDetails();
-                        }}
-                        disabled={historyDetailsLoading}
-                      >
-                        Show
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => {
-                          setHistoryDetailsRequested(true);
-                          fetchHistoryDetails();
-                        }}
-                        disabled={historyDetailsLoading}
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => {
-                          setTrendFilterCountry('');
-                          setHistoryDetailsRequested(false);
-                          setHistoryDetailsRows([]);
-                        }}
-                        disabled={historyDetailsLoading}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="row g-3 align-items-end">
-                    <div className="col-12 col-md-3">
-                      <label className="form-label fw-medium">Country</label>
-                      <Select
-                        classNamePrefix="react-select"
-                        isClearable
-                        isLoading={trendFiltersLoading}
-                        options={trendFilters.countries.map((country) => ({ value: country, label: country }))}
-                        value={trendFilterCountry
-                          ? { value: trendFilterCountry, label: trendFilterCountry }
-                          : null}
-                        onChange={(option) => setTrendFilterCountry(option?.value || '')}
-                      />
-                    </div>
-                  </div>
-
-                  {trendFiltersError && (
-                    <div className="alert alert-warning" role="alert">
-                      {trendFiltersError}
-                    </div>
-                  )}
-
-                  {historyDetailsError && (
-                    <div className="alert alert-warning" role="alert">
-                      {historyDetailsError}
-                    </div>
-                  )}
-
-                  {(trendFiltersLoading || historyDetailsLoading) && (
-                    <div className="text-muted">Loading history details…</div>
-                  )}
-
-                  {!historyDetailsLoading && historyDetailRows.length === 0 && !historyDetailsError && historyDetailsRequested && (
-                    <div className="text-muted">No history details available.</div>
-                  )}
-
-                  {!historyDetailsLoading && historyDetailRows.length > 0 && (
-                    <div className="table-responsive">
-                      <table className="table table-sm table-bordered table-striped align-middle mb-0">
-                        <thead className="table-light">
-                          <tr>
-                            <th>Country</th>
-                            <th>Site Name</th>
-                            <th>Site ID</th>
-                            <th>Task</th>
-                            <th>Start date</th>
-                            <th>Start date data</th>
-                            <th>End date</th>
-                            <th>End date data</th>
-                            <th>% Complete</th>
-                            <th>% Complete data</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {historyDetailRows.map((row, index) => (
-                            <tr key={`${row.site_id ?? row.site_name ?? 'site'}-${row.task_name ?? 'task'}-${index}`}>
-                              <td>{formatDisplayValue(row.country)}</td>
-                              <td>{formatDisplayValue(row.site_name)}</td>
-                              <td>{formatDisplayValue(row.site_id)}</td>
-                              <td>{formatDisplayValue(row.task_name)}</td>
-                              <td>{formatDateDisplay(row.start_date)}</td>
-                              <td>
-                                {(() => {
-                                  const badge = getHistoryDetailBadgeData(row.start_date_data);
-                                  const label = Number.isFinite(badge.count) ? badge.count : '—';
-                                  return badge.tooltip
-                                    ? <span className="history-detail-badge" data-tooltip={badge.tooltip}>{label}</span>
-                                    : <span className="text-muted">—</span>;
-                                })()}
-                              </td>
-                              <td>{formatDateDisplay(row.end_date)}</td>
-                              <td>
-                                {(() => {
-                                  const badge = getHistoryDetailBadgeData(row.end_date_data);
-                                  const label = Number.isFinite(badge.count) ? badge.count : '—';
-                                  return badge.tooltip
-                                    ? <span className="history-detail-badge" data-tooltip={badge.tooltip}>{label}</span>
-                                    : <span className="text-muted">—</span>;
-                                })()}
-                              </td>
-                              <td>{formatDisplayValue(row['%_complete'])}</td>
-                              <td>
-                                {(() => {
-                                  const badge = getHistoryDetailBadgeData(row.percent_complete_data);
-                                  const label = Number.isFinite(badge.count) ? badge.count : '—';
-                                  return badge.tooltip
-                                    ? <span className="history-detail-badge" data-tooltip={badge.tooltip}>{label}</span>
-                                    : <span className="text-muted">—</span>;
-                                })()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-
             </div>
           </div>
         </div>
@@ -6762,6 +6704,17 @@ const SmartsheetPivotPage = () => {
                 onClick={() => setReportSelectorTab('duration')}
               >
                 Duration Analysis
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
+                type="button"
+                className={`nav-link ${reportSelectorTab === 'history-details' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={reportSelectorTab === 'history-details'}
+                onClick={() => setReportSelectorTab('history-details')}
+              >
+                History Details
               </button>
             </li>
           </ul>
@@ -6919,6 +6872,114 @@ const SmartsheetPivotPage = () => {
                             <span>{column}</span>
                           </th>
                         ))}
+                      </tr>
+                    </thead>
+                    <tbody />
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {reportSelectorTab === 'history-details' && (
+            <div className="d-flex flex-column gap-3">
+              <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                <div>
+                  <h2 className="h5 mb-0">History Details</h2>
+                  <div className="text-muted small">Source: nifi.smartsheet_master_data_history_detailview</div>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      setHistoryDetailsRequested(true);
+                      fetchHistoryDetails();
+                    }}
+                    disabled={historyDetailsLoading}
+                  >
+                    Show
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      setHistoryDetailsRequested(true);
+                      fetchHistoryDetails();
+                    }}
+                    disabled={historyDetailsLoading}
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      setTrendFilterCountry('');
+                      setHistoryDetailsRequested(false);
+                      setHistoryDetailsRows([]);
+                    }}
+                    disabled={historyDetailsLoading}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="row g-3 align-items-end">
+                <div className="col-12 col-md-3">
+                  <label className="form-label fw-medium">Country</label>
+                  <Select
+                    classNamePrefix="react-select"
+                    isClearable
+                    isLoading={trendFiltersLoading}
+                    options={trendFilters.countries.map((country) => ({ value: country, label: country }))}
+                    value={trendFilterCountry
+                      ? { value: trendFilterCountry, label: trendFilterCountry }
+                      : null}
+                    onChange={(option) => setTrendFilterCountry(option?.value || '')}
+                  />
+                </div>
+              </div>
+
+              {trendFiltersError && (
+                <div className="alert alert-warning" role="alert">
+                  {trendFiltersError}
+                </div>
+              )}
+
+              {historyDetailsError && (
+                <div className="alert alert-warning" role="alert">
+                  {historyDetailsError}
+                </div>
+              )}
+
+              {(trendFiltersLoading || historyDetailsLoading) && (
+                <div className="text-muted">Loading history details…</div>
+              )}
+
+              {!historyDetailsLoading && historyDetailRows.length === 0 && !historyDetailsError && historyDetailsRequested && (
+                <div className="text-muted">No history details available.</div>
+              )}
+
+              {!historyDetailsLoading && historyDetailRows.length > 0 && (
+                <div className="table-responsive">
+                  <table
+                    ref={historyDetailsTableRef}
+                    className="table table-sm table-bordered table-striped align-middle nowrap w-100"
+                  >
+                    <thead className="table-light">
+                      <tr>
+                        <th>Country</th>
+                        <th>Site Name</th>
+                        <th>Site ID</th>
+                        <th>Task</th>
+                        <th>Start date</th>
+                        <th>Start date data</th>
+                        <th>End date</th>
+                        <th>End date data</th>
+                        <th>% Complete</th>
+                        <th>% Complete data</th>
                       </tr>
                     </thead>
                     <tbody />
