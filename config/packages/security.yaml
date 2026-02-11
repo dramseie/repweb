@@ -65,6 +65,9 @@ security:
     - { path: ^/api/galleries/share, roles: PUBLIC_ACCESS }
     - { path: ^/api/sql/preview$, roles: PUBLIC_ACCESS }
     - { path: ^/api/sqlc, roles: PUBLIC_ACCESS }
+    - { path: ^/api/embed/token$, roles: PUBLIC_ACCESS }
+    - { path: ^/api/smartsheet, roles: PUBLIC_ACCESS }
+    - { path: ^/smartsheet/embed$, roles: PUBLIC_ACCESS }
 
     # Admin area
     - { path: ^/admin, roles: ROLE_ADMIN }

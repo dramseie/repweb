@@ -42,3 +42,29 @@ npm run build
 - API returns fields: `id, label, url, icon, external, megaGroup, children[]`.
 - Role filtering & route resolution are handled server-side by `MenuBuilder`.
 # repweb
+
+## Smartsheet embed (server-to-server token)
+
+This project supports a menu-less Smartsheet embed route that is protected by a short-lived token.
+
+### 1) Mint a token (server-to-server)
+```bash
+curl -X POST "https://repweb.ramseier.com/api/embed/token" \
+  -H "X-Embed-Key: <EMBED_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"expiresIn": 600}'
+```
+
+### 2) Embed the iframe
+```html
+<iframe
+  src="https://repweb.ramseier.com/smartsheet/embed?token=YOUR_TOKEN"
+  referrerpolicy="no-referrer"
+  sandbox="allow-scripts allow-same-origin allow-forms"
+  style="width:100%;height:900px;border:0;"
+></iframe>
+```
+
+### Required env vars
+- `EMBED_TOKEN_SECRET`
+- `EMBED_API_KEY`
