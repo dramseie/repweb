@@ -159,9 +159,8 @@ class SmartsheetTaskManagerController extends AbstractController
         $this->connection->beginTransaction();
         try {
             $insertSql = sprintf(
-                "INSERT INTO %s (id, task_name, phase, parent_id, sort_order, created_at, updated_at)
+                "INSERT INTO %s (task_name, phase, parent_id, sort_order, created_at, updated_at)
                 SELECT
-                    task_id,
                     task_name,
                     MAX(phase) AS phase,
                     NULL AS parent_id,
@@ -171,43 +170,11 @@ class SmartsheetTaskManagerController extends AbstractController
                 FROM %s
                 WHERE task_name IS NOT NULL AND task_name <> ''
                   AND IFNULL(phase, '') NOT IN ('Store', 'Country')
-                GROUP BY task_id, task_name",
+                GROUP BY task_name",
                 self::TASK_TABLE,
                 self::MASTER_TABLE
             );
             $this->connection->executeStatement($insertSql);
-
-            $updateSql = sprintf(
-                "UPDATE %s t
-                JOIN (
-                    SELECT task_id, parent_id
-                    FROM %s
-                    WHERE parent_id IS NOT NULL
-                      AND IFNULL(phase, '') NOT IN ('Store', 'Country')
-                    GROUP BY task_id, parent_id
-                ) src ON src.task_id = t.id
-                SET t.parent_id = src.parent_id
-                WHERE src.parent_id IS NOT NULL
-                  AND EXISTS (SELECT 1 FROM %s p WHERE p.id = src.parent_id)",
-                self::TASK_TABLE,
-                self::MASTER_TABLE,
-                self::TASK_TABLE
-            );
-            $this->connection->executeStatement($updateSql);
-
-            $phaseSql = sprintf(
-                "UPDATE %s t
-                JOIN (
-                    SELECT task_id, MAX(phase) AS phase
-                    FROM %s
-                    WHERE task_name IS NOT NULL AND task_name <> ''
-                    GROUP BY task_id
-                ) src ON src.task_id = t.id
-                SET t.phase = src.phase",
-                self::TASK_TABLE,
-                self::MASTER_TABLE
-            );
-            $this->connection->executeStatement($phaseSql);
 
             $this->connection->commit();
         } catch (\Throwable $e) {
