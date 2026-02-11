@@ -499,6 +499,7 @@ const SmartsheetPivotPage = () => {
   const [reportMeta, setReportMeta] = useState(null);
   const [reportMetaLoading, setReportMetaLoading] = useState(false);
   const [reportMetaError, setReportMetaError] = useState(null);
+  const [toolsTab, setToolsTab] = useState('task-dependencies');
 
   const presentationDateLabel = formatLongDate(new Date());
 
@@ -4782,6 +4783,17 @@ const SmartsheetPivotPage = () => {
             Upload
           </button>
         </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === 'tools' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === 'tools'}
+            onClick={() => setActiveTab('tools')}
+          >
+            Tools
+          </button>
+        </li>
       </ul>
 
       {activeTab === 'explorer' && (
@@ -6995,6 +7007,28 @@ const SmartsheetPivotPage = () => {
                 </div>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'tools' && (
+        <div className="d-flex flex-column gap-3">
+          <ul className="nav nav-tabs mb-3" role="tablist">
+            <li className="nav-item" role="presentation">
+              <button
+                type="button"
+                className={`nav-link ${toolsTab === 'task-dependencies' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={toolsTab === 'task-dependencies'}
+                onClick={() => setToolsTab('task-dependencies')}
+              >
+                Task Dependencies
+              </button>
+            </li>
+          </ul>
+
+          {toolsTab === 'task-dependencies' && (
+            <div className="text-muted">Coming soon.</div>
           )}
         </div>
       )}
