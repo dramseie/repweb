@@ -20,6 +20,21 @@ class DynamicDtController extends AbstractController
         private RequestStack $requestStack
     ) {}
 
+    private function authorize(Request $req): ?JsonResponse
+    {
+        if ($this->isGranted('IS_AUTHENTICATED_REMEMBERED')) {
+            return null;
+        }
+
+        $provided = $req->query->get('api_key') ?: $req->headers->get('X-Api-Key');
+        $expected = $_ENV['REPORT_API_KEY'] ?? null;
+        if ($expected && hash_equals($expected, (string) $provided)) {
+            return null;
+        }
+
+        return new JsonResponse(['error' => 'Unauthorized'], 401);
+    }
+
 
 #[Route('/api/report/{repid}/repparam/columnDefs', name: 'report_repparam_columndefs', methods: ['POST'])]
 public function saveColumnDef(int $repid, Request $req): JsonResponse
@@ -176,8 +191,11 @@ public function saveColumnDef(int $repid, Request $req): JsonResponse
     }
 
     #[Route('/api/dt/{repid}/columns', name: 'dt_db_columns', methods: ['GET'])]
-    public function columns(int $repid): JsonResponse
+    public function columns(int $repid, Request $req): JsonResponse
     {
+        if ($resp = $this->authorize($req)) {
+            return $resp;
+        }
         $r = $this->fetchReport($repid);
         $cols = $this->deriveColumnsWithTypes($r['repsql'], $this->resolveParams($r['repparam']));
         return $this->json(['columns' => array_map(fn($c) => $c['name'], $cols)]);
@@ -186,6 +204,9 @@ public function saveColumnDef(int $repid, Request $req): JsonResponse
     #[Route('/api/dt/{repid}', name: 'dt_db_data', methods: ['GET'])]
     public function data(int $repid, Request $req): JsonResponse|Response
     {
+        if ($resp = $this->authorize($req)) {
+            return $resp;
+        }
         $r        = $this->fetchReport($repid);
         $baseSql  = $r['repsql'];
         $params   = $this->resolveParams($r['repparam']);
