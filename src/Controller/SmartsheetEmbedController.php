@@ -31,7 +31,7 @@ class SmartsheetEmbedController extends AbstractController
             $cookie = Cookie::create(EmbedTokenService::COOKIE_NAME)
                 ->withValue($queryToken)
                 ->withExpires((int) ($payload['exp'] ?? time()))
-                ->withPath('/smartsheet/embed')
+                ->withPath('/')
                 ->withSecure(true)
                 ->withHttpOnly(true)
                 ->withSameSite('none');

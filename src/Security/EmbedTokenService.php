@@ -13,14 +13,10 @@ class EmbedTokenService
     private string $secret;
 
     public function __construct(
-        #[Autowire('%env(EMBED_TOKEN_SECRET)%')]
-        string $secret
+        #[Autowire('%env(default::EMBED_TOKEN_SECRET)%')]
+        ?string $secret
     ) {
-        $secret = trim($secret);
-        if ($secret === '') {
-            throw new \RuntimeException('EMBED_TOKEN_SECRET is not configured.');
-        }
-        $this->secret = $secret;
+        $this->secret = trim((string) $secret);
     }
 
     /**
@@ -28,6 +24,9 @@ class EmbedTokenService
      */
     public function createToken(string $audience, string $scope, int $expiresInSeconds): array
     {
+        if ($this->secret === '') {
+            throw new \RuntimeException('EMBED_TOKEN_SECRET is not configured.');
+        }
         $expiresInSeconds = max(60, min($expiresInSeconds, 900));
         $exp = time() + $expiresInSeconds;
 
@@ -60,6 +59,9 @@ class EmbedTokenService
      */
     public function validateToken(string $token, string $audience, string $scope): ?array
     {
+        if ($this->secret === '') {
+            throw new \RuntimeException('EMBED_TOKEN_SECRET is not configured.');
+        }
         $parts = explode('.', $token, 2);
         if (count($parts) !== 2) {
             return null;
