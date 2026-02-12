@@ -7493,20 +7493,24 @@ const SmartsheetPivotPage = () => {
                           {calcResults.map((row, index) => (
                             <tr key={`${row.task_name}-${row.site_name}-${index}`}>
                               {(() => {
-                                const highlight = row.current_start !== row.proposed_start
-                                  && row.current_end !== row.proposed_end;
+                                const currentStart = formatYmd(row.current_start);
+                                const proposedStart = formatYmd(row.proposed_start);
+                                const currentEnd = formatYmd(row.current_end);
+                                const proposedEnd = formatYmd(row.proposed_end);
+                                const highlight = currentStart !== proposedStart
+                                  && currentEnd !== proposedEnd;
                                 return (
                                   <>
                               <td>{formatDisplayValue(row.country)}</td>
                               <td>{formatDisplayValue(row.site_name)}</td>
                               <td>{formatDisplayValue(row.task_name)}</td>
-                              <td>{formatDateDisplay(row.current_start)}</td>
-                              <td>{formatDateDisplay(row.current_end)}</td>
+                              <td>{currentStart}</td>
+                              <td>{currentEnd}</td>
                               <td style={highlight ? { background: '#e6f7e6' } : undefined}>
-                                {formatDateDisplay(row.proposed_start)}
+                                {proposedStart}
                               </td>
                               <td style={highlight ? { background: '#e6f7e6' } : undefined}>
-                                {formatDateDisplay(row.proposed_end)}
+                                {proposedEnd}
                               </td>
                                   </>
                                 );
