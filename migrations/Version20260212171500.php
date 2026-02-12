@@ -7,11 +7,11 @@ namespace DoctrineMigrations;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
 
-final class Version20260212163000 extends AbstractMigration
+final class Version20260212171500 extends AbstractMigration
 {
     public function getDescription(): string
     {
-        return 'Add analysis pivot stored procedure.';
+        return 'Fix analysis pivot procedure country ambiguity.';
     }
 
     public function up(Schema $schema): void
