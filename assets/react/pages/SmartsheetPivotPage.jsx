@@ -120,6 +120,28 @@ const formatDateDisplay = (value) => formatYmd(value);
 
 const formatDisplayValue = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
+const calculateWorkdayDuration = (startValue, endValue) => {
+  const startDate = parseDateValue(startValue);
+  const endDate = parseDateValue(endValue);
+  if (!startDate || !endDate) return null;
+
+  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  if (end < start) return 0;
+
+  let duration = 0;
+  const cursor = new Date(start);
+  while (cursor < end) {
+    cursor.setDate(cursor.getDate() + 1);
+    const weekday = cursor.getDay();
+    if (weekday === 0 || weekday === 6) {
+      continue;
+    }
+    duration++;
+  }
+  return duration;
+};
+
 const formatActionLines = (value) => {
   if (value === null || value === undefined || value === '') return ['—'];
   const text = String(value);
@@ -7485,8 +7507,10 @@ const SmartsheetPivotPage = () => {
                             <th>Task</th>
                             <th>Current start</th>
                             <th>Current end</th>
+                            <th>Current duration</th>
                             <th>Proposed start</th>
                             <th>Proposed end</th>
+                            <th>Proposed duration</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -7497,6 +7521,8 @@ const SmartsheetPivotPage = () => {
                                 const proposedStart = formatYmd(row.proposed_start);
                                 const currentEnd = formatYmd(row.current_end);
                                 const proposedEnd = formatYmd(row.proposed_end);
+                                const currentDuration = calculateWorkdayDuration(row.current_start, row.current_end);
+                                const proposedDuration = calculateWorkdayDuration(row.proposed_start, row.proposed_end);
                                 const highlight = currentStart !== proposedStart
                                   && currentEnd !== proposedEnd;
                                 return (
@@ -7506,12 +7532,14 @@ const SmartsheetPivotPage = () => {
                               <td>{formatDisplayValue(row.task_name)}</td>
                               <td>{currentStart}</td>
                               <td>{currentEnd}</td>
+                              <td>{formatDisplayValue(currentDuration)}</td>
                               <td style={highlight ? { background: '#e6f7e6' } : undefined}>
                                 {proposedStart}
                               </td>
                               <td style={highlight ? { background: '#e6f7e6' } : undefined}>
                                 {proposedEnd}
                               </td>
+                              <td>{formatDisplayValue(proposedDuration)}</td>
                                   </>
                                 );
                               })()}
