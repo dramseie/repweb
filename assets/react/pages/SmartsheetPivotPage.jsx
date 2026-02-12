@@ -3674,6 +3674,7 @@ const SmartsheetPivotPage = () => {
     { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
     { key: '__exec_status', title: 'Status of assessments and installations to start/finish CW', body: 'Snapshot of planned assessments and installations status.' },
     { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
+    { key: '__exec_qna', title: 'Questions & Answers', body: 'Open questions and discussion points.' },
     { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
     { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
     { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
@@ -3971,6 +3972,73 @@ const SmartsheetPivotPage = () => {
   };
 
   const clearTimelineDrilldown = () => setTimelineDrilldownCountry(null);
+
+  const renderQnaBoard = (showAddButton = false) => (
+    <div className="d-flex flex-column gap-2">
+      {showAddButton && (
+        <div className="d-flex justify-content-end">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary"
+            onClick={addQnaNote}
+          >
+            Add post-it
+          </button>
+        </div>
+      )}
+      <div
+        ref={qnaBoardRef}
+        className="border rounded position-relative"
+        style={{ minHeight: 320, background: '#fffdf5', overflow: 'hidden' }}
+      >
+        {qnaNotes.length === 0 && (
+          <div className="text-muted small" style={{ padding: 12 }}>
+            Add a post-it to start capturing questions and answers.
+          </div>
+        )}
+        {qnaNotes.map((note) => (
+          <div
+            key={note.id}
+            className="position-absolute"
+            style={{
+              left: note.x,
+              top: note.y,
+              width: 200,
+              minHeight: 140,
+              background: '#fff2a8',
+              border: '1px solid #e0d38c',
+              borderRadius: 8,
+              boxShadow: '0 4px 10px rgba(0,0,0,0.12)',
+              padding: 8,
+            }}
+          >
+            <div
+              className="d-flex justify-content-between align-items-center mb-1"
+              style={{ cursor: 'move' }}
+              onMouseDown={(event) => startQnaDrag(event, note)}
+            >
+              <span className="small text-muted">Post-it</span>
+              <button
+                type="button"
+                className="btn btn-sm btn-link text-danger p-0"
+                onClick={() => removeQnaNote(note.id)}
+              >
+                &times;
+              </button>
+            </div>
+            <textarea
+              className="form-control form-control-sm"
+              rows={4}
+              placeholder="Type question/answer..."
+              value={note.text}
+              onChange={(event) => updateQnaNote(note.id, { text: event.target.value })}
+              style={{ background: '#fff2a8', borderColor: '#e0d38c' }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   const renderExecCardBody = (meta) => {
     if (meta.key === '__exec_highlights') {
@@ -4523,6 +4591,10 @@ const SmartsheetPivotPage = () => {
           )}
         </div>
       );
+    }
+
+    if (meta.key === '__exec_qna') {
+      return renderQnaBoard(true);
     }
 
     if (meta.key === '__trend_green' || meta.key === '__trend_amber' || meta.key === '__trend_red') {
@@ -5310,6 +5382,7 @@ const SmartsheetPivotPage = () => {
                     {`Status of assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`}
                   </option>
                   <option value="__exec_timeline">Timeline</option>
+                  <option value="__exec_qna">Questions &amp; Answers</option>
                 </optgroup>
                 <optgroup label="Country Trend">
                   <option value="__trend_green">Green</option>
@@ -5668,7 +5741,7 @@ const SmartsheetPivotPage = () => {
             </div>
           ))}
 
-          <div className="card shadow-sm">
+          <div className="card shadow-sm" id="__exec_qna">
             <div className="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
               <strong>Questions &amp; Answers</strong>
               <button
@@ -5680,57 +5753,7 @@ const SmartsheetPivotPage = () => {
               </button>
             </div>
             <div className="card-body">
-              <div
-                ref={qnaBoardRef}
-                className="border rounded position-relative"
-                style={{ minHeight: 320, background: '#fffdf5', overflow: 'hidden' }}
-              >
-                {qnaNotes.length === 0 && (
-                  <div className="text-muted small" style={{ padding: 12 }}>
-                    Add a post-it to start capturing questions and answers.
-                  </div>
-                )}
-                {qnaNotes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="position-absolute"
-                    style={{
-                      left: note.x,
-                      top: note.y,
-                      width: 200,
-                      minHeight: 140,
-                      background: '#fff2a8',
-                      border: '1px solid #e0d38c',
-                      borderRadius: 8,
-                      boxShadow: '0 4px 10px rgba(0,0,0,0.12)',
-                      padding: 8,
-                    }}
-                  >
-                    <div
-                      className="d-flex justify-content-between align-items-center mb-1"
-                      style={{ cursor: 'move' }}
-                      onMouseDown={(event) => startQnaDrag(event, note)}
-                    >
-                      <span className="small text-muted">Post-it</span>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-link text-danger p-0"
-                        onClick={() => removeQnaNote(note.id)}
-                      >
-                        &times;
-                      </button>
-                    </div>
-                    <textarea
-                      className="form-control form-control-sm"
-                      rows={4}
-                      placeholder="Type question/answer..."
-                      value={note.text}
-                      onChange={(event) => updateQnaNote(note.id, { text: event.target.value })}
-                      style={{ background: '#fff2a8', borderColor: '#e0d38c' }}
-                    />
-                  </div>
-                ))}
-              </div>
+                {renderQnaBoard(false)}
             </div>
           </div>
         </div>
@@ -7469,17 +7492,25 @@ const SmartsheetPivotPage = () => {
                         <tbody>
                           {calcResults.map((row, index) => (
                             <tr key={`${row.task_name}-${row.site_name}-${index}`}>
+                              {(() => {
+                                const highlight = row.current_start !== row.proposed_start
+                                  && row.current_end !== row.proposed_end;
+                                return (
+                                  <>
                               <td>{formatDisplayValue(row.country)}</td>
                               <td>{formatDisplayValue(row.site_name)}</td>
                               <td>{formatDisplayValue(row.task_name)}</td>
                               <td>{formatDateDisplay(row.current_start)}</td>
                               <td>{formatDateDisplay(row.current_end)}</td>
-                              <td style={row.current_start !== row.proposed_start ? { background: '#e6f7e6' } : undefined}>
+                              <td style={highlight ? { background: '#e6f7e6' } : undefined}>
                                 {formatDateDisplay(row.proposed_start)}
                               </td>
-                              <td style={row.current_end !== row.proposed_end ? { background: '#e6f7e6' } : undefined}>
+                              <td style={highlight ? { background: '#e6f7e6' } : undefined}>
                                 {formatDateDisplay(row.proposed_end)}
                               </td>
+                                  </>
+                                );
+                              })()}
                             </tr>
                           ))}
                         </tbody>

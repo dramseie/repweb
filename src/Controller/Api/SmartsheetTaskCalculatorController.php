@@ -298,7 +298,7 @@ class SmartsheetTaskCalculatorController extends AbstractController
     private function resolveDuration(?int $duration, string $mode, int $currentDuration): int
     {
         return match ($mode) {
-            'ignore' => 0,
+            'ignore' => $currentDuration,
             'enforce' => $duration ?? $currentDuration,
             'min' => $duration === null ? $currentDuration : max($duration, $currentDuration),
             'max' => $duration === null ? $currentDuration : min($duration, $currentDuration),
