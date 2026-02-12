@@ -1694,6 +1694,39 @@ class SmartsheetPresentationController extends AbstractController
         ]);
     }
 
+    #[Route('/analysis-pivot', name: 'presentation_analysis_pivot', methods: ['POST'])]
+    public function analysisPivot(Request $request): JsonResponse
+    {
+        $payload = json_decode($request->getContent(), true) ?? [];
+        $tasks = array_values(array_filter(array_map('strval', $payload['tasks'] ?? [])));
+        $columns = array_values(array_filter(array_map('strval', $payload['columns'] ?? [])));
+
+        $allowedColumns = ['start_date', 'end_date', 'pct_complete', 'status'];
+        $columns = array_values(array_intersect($columns, $allowedColumns));
+
+        $taskList = implode(',', array_map(static function (string $task): string {
+            return str_replace(',', ' ', trim($task));
+        }, $tasks));
+        $columnList = implode(', ', $columns);
+
+        $stmt = $this->connection->executeQuery(
+            'CALL nifi.sp_smartsheet_site_task_analysis_pivot(?, ?)',
+            [$taskList, $columnList]
+        );
+        $rows = $stmt->fetchAllAssociative();
+        $stmt->free();
+
+        $resultColumns = [];
+        if ($rows !== []) {
+            $resultColumns = array_keys($rows[0]);
+        }
+
+        return $this->json([
+            'columns' => $resultColumns,
+            'items' => $rows,
+        ]);
+    }
+
     #[Route('/upload-files', name: 'presentation_upload_files_index', methods: ['GET'])]
     public function uploadFilesIndex(): JsonResponse
     {

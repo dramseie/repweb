@@ -477,6 +477,18 @@ const SmartsheetPivotPage = () => {
   const [durationLoading, setDurationLoading] = useState(false);
   const [durationError, setDurationError] = useState(null);
   const [durationRequested, setDurationRequested] = useState(false);
+  const [analysisPivotTasks, setAnalysisPivotTasks] = useState([]);
+  const [analysisPivotFields, setAnalysisPivotFields] = useState({
+    start_date: true,
+    end_date: true,
+    pct_complete: true,
+    status: true,
+  });
+  const [analysisPivotRows, setAnalysisPivotRows] = useState([]);
+  const [analysisPivotColumns, setAnalysisPivotColumns] = useState([]);
+  const [analysisPivotLoading, setAnalysisPivotLoading] = useState(false);
+  const [analysisPivotError, setAnalysisPivotError] = useState(null);
+  const [analysisPivotRequested, setAnalysisPivotRequested] = useState(false);
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -735,6 +747,8 @@ const SmartsheetPivotPage = () => {
   const durationTableRef = useRef(null);
   const historyDetailsDatatableRef = useRef(null);
   const historyDetailsTableRef = useRef(null);
+  const analysisPivotDatatableRef = useRef(null);
+  const analysisPivotTableRef = useRef(null);
   const wonderfulDatatableRef = useRef(null);
   const wonderfulTableRef = useRef(null);
   const execOverviewRef = useRef(null);
@@ -1252,6 +1266,47 @@ const SmartsheetPivotPage = () => {
     }
   }, []);
 
+  const fetchAnalysisPivot = useCallback(async () => {
+    if (!analysisPivotTasks.length) {
+      setAnalysisPivotError('Select at least one task.');
+      setAnalysisPivotRows([]);
+      setAnalysisPivotColumns([]);
+      setAnalysisPivotRequested(true);
+      return;
+    }
+
+    setAnalysisPivotLoading(true);
+    setAnalysisPivotError(null);
+    setAnalysisPivotRequested(true);
+    try {
+      const columns = Object.entries(analysisPivotFields)
+        .filter(([, value]) => value)
+        .map(([key]) => key);
+      const response = await fetch('/api/smartsheet/presentation/analysis-pivot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: analysisPivotTasks, columns }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || `Failed to load analysis pivot (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const cols = Array.isArray(payload?.columns) && payload.columns.length > 0
+        ? payload.columns
+        : (items[0] ? Object.keys(items[0]) : []);
+      setAnalysisPivotRows(items);
+      setAnalysisPivotColumns(cols);
+    } catch (error) {
+      setAnalysisPivotError(error.message || 'Unable to load analysis pivot.');
+      setAnalysisPivotRows([]);
+      setAnalysisPivotColumns([]);
+    } finally {
+      setAnalysisPivotLoading(false);
+    }
+  }, [analysisPivotFields, analysisPivotTasks]);
+
   const fetchUploadFiles = useCallback(async () => {
     setUploadLoading(true);
     setUploadError(null);
@@ -1437,6 +1492,19 @@ const SmartsheetPivotPage = () => {
     }
     if (historyDetailsTableRef.current) {
       const tbody = historyDetailsTableRef.current.querySelector('tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+      }
+    }
+  }, []);
+
+  const destroyAnalysisPivotTable = useCallback(() => {
+    if (analysisPivotDatatableRef.current) {
+      analysisPivotDatatableRef.current.destroy();
+      analysisPivotDatatableRef.current = null;
+    }
+    if (analysisPivotTableRef.current) {
+      const tbody = analysisPivotTableRef.current.querySelector('tbody');
       if (tbody) {
         tbody.innerHTML = '';
       }
@@ -1640,6 +1708,48 @@ const SmartsheetPivotPage = () => {
     });
   }, [destroyHistoryDetailsTable]);
 
+  const hydrateAnalysisPivotTable = useCallback((cols, dataRows) => {
+    if (!analysisPivotTableRef.current) {
+      return;
+    }
+
+    destroyAnalysisPivotTable();
+
+    if (!cols.length) {
+      return;
+    }
+
+    const dataset = dataRows.map((row) => cols.map((col) => formatDisplayValue(row?.[col])));
+
+    analysisPivotDatatableRef.current = $(analysisPivotTableRef.current).DataTable({
+      dom:
+        "<'row g-2 align-items-center'<'col-md-7 dt-toolbar-left d-flex align-items-center'B><'col-md-5 dt-toolbar-right'f>>" +
+        "<'row'<'col-12'tr>>" +
+        "<'row'<'col-md-5'i><'col-md-7'p>>",
+      data: dataset,
+      buttons: [
+        { extend: 'colvis', text: '<i class="fas fa-columns me-1"></i> Columns', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'copyHtml5', text: '<i class="fas fa-copy me-1"></i> Copy', className: 'btn btn-sm btn-outline-secondary' },
+        { extend: 'excelHtml5', text: '<i class="fas fa-file-excel me-1"></i> XLSX', className: 'btn btn-sm btn-success' },
+        { extend: 'csvHtml5', text: '<i class="fas fa-file-csv me-1"></i> CSV', className: 'btn btn-sm btn-outline-primary' },
+        { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf me-1"></i> PDF', className: 'btn btn-sm btn-outline-danger' },
+        { extend: 'print', text: '<i class="fas fa-print me-1"></i> Print', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      pageLength: 50,
+      lengthMenu: [25, 50, 100, 250],
+      fixedHeader: true,
+      colReorder: true,
+      responsive: false,
+      scrollY: '60vh',
+      scrollX: true,
+      scrollCollapse: true,
+      deferRender: true,
+      scroller: true,
+      stateSave: true,
+      order: [],
+    });
+  }, [destroyAnalysisPivotTable]);
+
   const hydrateWonderfulTable = useCallback((dataRows) => {
     if (!wonderfulTableRef.current) {
       return;
@@ -1830,10 +1940,12 @@ const SmartsheetPivotPage = () => {
       destroyAnalyseTable();
       destroyDurationTable();
       destroyHistoryDetailsTable();
+      destroyAnalysisPivotTable();
       destroyWonderfulTable();
     };
   }, [
     destroyAnalyseTable,
+    destroyAnalysisPivotTable,
     destroyDurationTable,
     destroyHistoryDetailsTable,
     destroyTable,
@@ -1905,6 +2017,27 @@ const SmartsheetPivotPage = () => {
     historyDetailRows,
     destroyHistoryDetailsTable,
     hydrateHistoryDetailsTable,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== 'reports' || reportSelectorTab !== 'analysis-pivot') {
+      destroyAnalysisPivotTable();
+      return;
+    }
+
+    if (!analysisPivotColumns.length) {
+      destroyAnalysisPivotTable();
+      return;
+    }
+
+    hydrateAnalysisPivotTable(analysisPivotColumns, analysisPivotRows);
+  }, [
+    activeTab,
+    reportSelectorTab,
+    analysisPivotColumns,
+    analysisPivotRows,
+    destroyAnalysisPivotTable,
+    hydrateAnalysisPivotTable,
   ]);
 
   useEffect(() => {
@@ -6959,6 +7092,17 @@ const SmartsheetPivotPage = () => {
             <li className="nav-item" role="presentation">
               <button
                 type="button"
+                className={`nav-link ${reportSelectorTab === 'analysis-pivot' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={reportSelectorTab === 'analysis-pivot'}
+                onClick={() => setReportSelectorTab('analysis-pivot')}
+              >
+                Analysis Pivot
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
+                type="button"
                 className={`nav-link ${reportSelectorTab === 'history-details' ? 'active' : ''}`}
                 role="tab"
                 aria-selected={reportSelectorTab === 'history-details'}
@@ -7129,6 +7273,148 @@ const SmartsheetPivotPage = () => {
                     <thead className="table-light">
                       <tr>
                         {durationColumns.map((column) => (
+                          <th key={column} className="rotate-header">
+                            <span>{column}</span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody />
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {reportSelectorTab === 'analysis-pivot' && (
+            <div className="d-flex flex-column gap-3">
+              <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                <div>
+                  <h2 className="h5 mb-0">Analysis Pivot</h2>
+                  <div className="text-muted small">Source: sp_smartsheet_site_task_analysis_pivot</div>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={fetchAnalysisPivot}
+                    disabled={analysisPivotLoading}
+                  >
+                    Show Pivot
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={fetchAnalysisPivot}
+                    disabled={analysisPivotLoading}
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      setAnalysisPivotRequested(false);
+                      setAnalysisPivotRows([]);
+                      setAnalysisPivotColumns([]);
+                      setAnalysisPivotError(null);
+                    }}
+                    disabled={analysisPivotLoading}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="row g-3 align-items-end">
+                <div className="col-12 col-lg-6">
+                  <label className="form-label fw-medium">Tasks</label>
+                  <Select
+                    classNamePrefix="react-select"
+                    isMulti
+                    isLoading={analyseTaskLoading}
+                    options={taskOptions}
+                    value={taskOptions.filter((option) => analysisPivotTasks.includes(option.value))}
+                    onChange={(options) => {
+                      const values = Array.isArray(options) ? options.map((option) => option.value) : [];
+                      setAnalysisPivotTasks(values);
+                    }}
+                  />
+                </div>
+                <div className="col-12 col-lg-6">
+                  <label className="form-label fw-medium">Fields</label>
+                  <div className="d-flex flex-wrap gap-3">
+                    <label className="form-check">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={analysisPivotFields.start_date}
+                        onChange={(event) =>
+                          setAnalysisPivotFields((prev) => ({ ...prev, start_date: event.target.checked }))
+                        }
+                      />
+                      <span className="form-check-label">Start date</span>
+                    </label>
+                    <label className="form-check">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={analysisPivotFields.end_date}
+                        onChange={(event) =>
+                          setAnalysisPivotFields((prev) => ({ ...prev, end_date: event.target.checked }))
+                        }
+                      />
+                      <span className="form-check-label">End date</span>
+                    </label>
+                    <label className="form-check">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={analysisPivotFields.pct_complete}
+                        onChange={(event) =>
+                          setAnalysisPivotFields((prev) => ({ ...prev, pct_complete: event.target.checked }))
+                        }
+                      />
+                      <span className="form-check-label">% Complete</span>
+                    </label>
+                    <label className="form-check">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={analysisPivotFields.status}
+                        onChange={(event) =>
+                          setAnalysisPivotFields((prev) => ({ ...prev, status: event.target.checked }))
+                        }
+                      />
+                      <span className="form-check-label">Status</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {analysisPivotError && (
+                <div className="alert alert-warning" role="alert">
+                  {analysisPivotError}
+                </div>
+              )}
+
+              {analysisPivotLoading && (
+                <div className="text-muted">Loading analysis pivot…</div>
+              )}
+
+              {!analysisPivotLoading && analysisPivotRows.length === 0 && analysisPivotRequested && !analysisPivotError && (
+                <div className="text-muted">No analysis pivot rows available.</div>
+              )}
+
+              {!analysisPivotLoading && analysisPivotRows.length > 0 && analysisPivotColumns.length > 0 && (
+                <div className="table-responsive">
+                  <table
+                    ref={analysisPivotTableRef}
+                    className="table table-sm table-bordered table-striped align-middle nowrap w-100"
+                  >
+                    <thead className="table-light">
+                      <tr>
+                        {analysisPivotColumns.map((column) => (
                           <th key={column} className="rotate-header">
                             <span>{column}</span>
                           </th>

@@ -1,22 +1,3 @@
-<?php
-
-declare(strict_types=1);
-
-namespace DoctrineMigrations;
-
-use Doctrine\DBAL\Schema\Schema;
-use Doctrine\Migrations\AbstractMigration;
-
-final class Version20260211185000 extends AbstractMigration
-{
-    public function getDescription(): string
-    {
-        return 'Recreate nifi.smartsheet_site_normalization with prefix/suffix parsing.';
-    }
-
-    public function up(Schema $schema): void
-    {
-        $sql = <<<'SQL'
 CREATE OR REPLACE VIEW nifi.smartsheet_site_normalization AS
 SELECT
   'wifi_master_plan' AS source_table,
@@ -43,7 +24,7 @@ FROM (
       WHEN base.clean_id REGEXP 'RET[A-Z]{2}[0-9]{3,}' THEN NULLIF(
         REGEXP_REPLACE(
           REGEXP_REPLACE(base.clean_id, '^.*RET[A-Z]{2}[0-9]{3,}', ''),
-          '^[+\-()]+',
+          '^[+()\-]+',
           ''
         ),
         ''
@@ -60,7 +41,23 @@ FROM (
       CAST(siteid AS CHAR(255)) AS raw_id,
       REGEXP_REPLACE(CAST(siteid AS CHAR(255)), '[[:space:]]+', '') AS clean_id,
       CAST(city AS CHAR(255)) AS original_site_name,
-      TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(city,''), 'IKEAStore',''), 'IKEA',''), 'Store',''), '  ',' '), '  ',' ')) AS site_label,
+      REGEXP_REPLACE(
+        TRIM(
+          REGEXP_REPLACE(
+            REGEXP_REPLACE(
+              REGEXP_REPLACE(
+                REGEXP_REPLACE(COALESCE(city,''), '[Ii][Kk][Ee][Aa][Ss][Tt][Oo][Rr][Ee]', ''),
+                '[Ii][Kk][Ee][Aa]', ''
+              ),
+              '[Ss][Tt][Oo][Rr][Ee]', ''
+            ),
+            '[[:space:]]+',
+            ' '
+          )
+        ),
+        '^[-[:space:]]+',
+        ''
+      ) AS site_label,
       CAST(country AS CHAR(255)) AS country
     FROM nifi.wifi_master_plan
     WHERE siteid IS NOT NULL AND siteid <> ''
@@ -94,7 +91,7 @@ FROM (
       WHEN base.clean_id REGEXP 'RET[A-Z]{2}[0-9]{3,}' THEN NULLIF(
         REGEXP_REPLACE(
           REGEXP_REPLACE(base.clean_id, '^.*RET[A-Z]{2}[0-9]{3,}', ''),
-          '^[+\-()]+',
+          '^[+()\-]+',
           ''
         ),
         ''
@@ -111,7 +108,23 @@ FROM (
       CAST(site_id AS CHAR(255)) AS raw_id,
       REGEXP_REPLACE(CAST(site_id AS CHAR(255)), '[[:space:]]+', '') AS clean_id,
       CAST(site_name AS CHAR(255)) AS original_site_name,
-      TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(site_name,''), 'IKEAStore',''), 'IKEA',''), 'Store',''), '  ',' '), '  ',' ')) AS site_label,
+      REGEXP_REPLACE(
+        TRIM(
+          REGEXP_REPLACE(
+            REGEXP_REPLACE(
+              REGEXP_REPLACE(
+                REGEXP_REPLACE(COALESCE(site_name,''), '[Ii][Kk][Ee][Aa][Ss][Tt][Oo][Rr][Ee]', ''),
+                '[Ii][Kk][Ee][Aa]', ''
+              ),
+              '[Ss][Tt][Oo][Rr][Ee]', ''
+            ),
+            '[[:space:]]+',
+            ' '
+          )
+        ),
+        '^[-[:space:]]+',
+        ''
+      ) AS site_label,
       CAST(country AS CHAR(255)) AS country
     FROM nifi.smartsheet_master_data
     WHERE site_id IS NOT NULL AND site_id <> ''
@@ -145,7 +158,7 @@ FROM (
       WHEN base.clean_id REGEXP 'RET[A-Z]{2}[0-9]{3,}' THEN NULLIF(
         REGEXP_REPLACE(
           REGEXP_REPLACE(base.clean_id, '^.*RET[A-Z]{2}[0-9]{3,}', ''),
-          '^[+\-()]+',
+          '^[+()\-]+',
           ''
         ),
         ''
@@ -166,7 +179,23 @@ FROM (
         ELSE CONCAT('RET', REGEXP_REPLACE(CAST(site_id AS CHAR(255)), '[[:space:]]+', ''))
       END AS clean_id,
       CAST(city AS CHAR(255)) AS original_site_name,
-      TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(city,''), 'IKEAStore',''), 'IKEA',''), 'Store',''), '  ',' '), '  ',' ')) AS site_label,
+      REGEXP_REPLACE(
+        TRIM(
+          REGEXP_REPLACE(
+            REGEXP_REPLACE(
+              REGEXP_REPLACE(
+                REGEXP_REPLACE(COALESCE(city,''), '[Ii][Kk][Ee][Aa][Ss][Tt][Oo][Rr][Ee]', ''),
+                '[Ii][Kk][Ee][Aa]', ''
+              ),
+              '[Ss][Tt][Oo][Rr][Ee]', ''
+            ),
+            '[[:space:]]+',
+            ' '
+          )
+        ),
+        '^[-[:space:]]+',
+        ''
+      ) AS site_label,
       CAST(country AS CHAR(255)) AS country
     FROM nifi.ikea_vendor_corrections
     WHERE site_id IS NOT NULL AND site_id <> ''
@@ -200,7 +229,7 @@ FROM (
       WHEN base.clean_id REGEXP 'RET[A-Z]{2}[0-9]{3,}' THEN NULLIF(
         REGEXP_REPLACE(
           REGEXP_REPLACE(base.clean_id, '^.*RET[A-Z]{2}[0-9]{3,}', ''),
-          '^[+\-()]+',
+          '^[+()\-]+',
           ''
         ),
         ''
@@ -217,19 +246,25 @@ FROM (
       CAST(store_id AS CHAR(255)) AS raw_id,
       REGEXP_REPLACE(CAST(store_id AS CHAR(255)), '[[:space:]]+', '') AS clean_id,
       CAST(store_name AS CHAR(255)) AS original_site_name,
-      TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(store_name,''), 'IKEAStore',''), 'IKEA',''), 'Store',''), '  ',' '), '  ',' ')) AS site_label,
+      REGEXP_REPLACE(
+        TRIM(
+          REGEXP_REPLACE(
+            REGEXP_REPLACE(
+              REGEXP_REPLACE(
+                REGEXP_REPLACE(COALESCE(store_name,''), '[Ii][Kk][Ee][Aa][Ss][Tt][Oo][Rr][Ee]', ''),
+                '[Ii][Kk][Ee][Aa]', ''
+              ),
+              '[Ss][Tt][Oo][Rr][Ee]', ''
+            ),
+            '[[:space:]]+',
+            ' '
+          )
+        ),
+        '^[-[:space:]]+',
+        ''
+      ) AS site_label,
       CAST(country AS CHAR(255)) AS country
     FROM nifi.ikea_issue_risk_log
     WHERE store_id IS NOT NULL AND store_id <> ''
   ) base
-) v
-SQL;
-
-        $this->addSql($sql);
-    }
-
-    public function down(Schema $schema): void
-    {
-        $this->addSql('DROP VIEW IF EXISTS nifi.smartsheet_site_normalization');
-    }
-}
+) v;
