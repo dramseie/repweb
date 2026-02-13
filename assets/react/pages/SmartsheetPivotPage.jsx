@@ -3570,7 +3570,9 @@ const SmartsheetPivotPage = () => {
         setPlannedWeekCommentDrafts({});
       }
 
-      setPresentationEditMode(false);
+      if (!presentationHyperEdit) {
+        setPresentationEditMode(false);
+      }
       if (edits.length > 0) {
         fetchPresentation();
       }
