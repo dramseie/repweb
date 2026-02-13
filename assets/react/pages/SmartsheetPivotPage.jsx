@@ -377,6 +377,7 @@ const SmartsheetPivotPage = () => {
   const [presentationSnapshotSaving, setPresentationSnapshotSaving] = useState(false);
   const [presentationSnapshotError, setPresentationSnapshotError] = useState(null);
   const [presentationEditMode, setPresentationEditMode] = useState(false);
+  const [presentationHyperEdit, setPresentationHyperEdit] = useState(false);
   const [presentationEdits, setPresentationEdits] = useState({});
   const [presentationSaving, setPresentationSaving] = useState(false);
   const [presentationSaveError, setPresentationSaveError] = useState(null);
@@ -754,6 +755,7 @@ const SmartsheetPivotPage = () => {
   const wonderfulDatatableRef = useRef(null);
   const wonderfulTableRef = useRef(null);
   const execOverviewRef = useRef(null);
+  const presentationEditActive = presentationEditMode || presentationHyperEdit;
 
   const scrollToPresentationCard = useCallback((key) => {
     if (!key) return;
@@ -770,6 +772,16 @@ const SmartsheetPivotPage = () => {
     }
     scrollToPresentationCard('__exec_overview');
   }, [scrollToPresentationCard]);
+
+  const toggleHyperEdit = () => {
+    setPresentationHyperEdit((prev) => {
+      const next = !prev;
+      if (next && !presentationEditMode) {
+        setPresentationEditMode(true);
+      }
+      return next;
+    });
+  };
 
   const destroyTable = useCallback(() => {
     if (datatableRef.current) {
@@ -3653,7 +3665,7 @@ const SmartsheetPivotPage = () => {
                 <td>{formatDateDisplay(entry.startDate)}</td>
                 <td>{formatDateDisplay(entry.endDate)}</td>
                 <td className="text-center">
-                  {presentationEditMode ? (
+                  {presentationEditActive ? (
                     <select
                       className="form-select form-select-sm"
                       value={getPresentationDraft(entry, scope, country).confidence}
@@ -3678,7 +3690,7 @@ const SmartsheetPivotPage = () => {
                   )}
                 </td>
                 <td>
-                  {presentationEditMode ? (
+                  {presentationEditActive ? (
                     <textarea
                       className="form-control form-control-sm"
                       rows={2}
@@ -3717,7 +3729,7 @@ const SmartsheetPivotPage = () => {
               <th>Responsible Party</th>
               <th>Action to be taken (DD.MM.YY - NS)</th>
               <th>Date to be resolved (DD.MM.YY)</th>
-              {presentationEditMode && <th />}
+              {presentationEditActive && <th />}
             </tr>
           </thead>
           <tbody>
@@ -3730,7 +3742,7 @@ const SmartsheetPivotPage = () => {
                 <td>{formatDisplayValue(entry.responsibleParty)}</td>
                 <td>{formatDisplayValue(entry.actionRequired)}</td>
                 <td>{formatDateDisplay(entry.resolveDate)}</td>
-                {presentationEditMode && (
+                {presentationEditActive && (
                   <td className="text-nowrap">
                     {entry.id ? (
                       <>
@@ -3764,7 +3776,7 @@ const SmartsheetPivotPage = () => {
   };
 
   const renderGeneralIssuesTable = (entries, title) => {
-    const visibleEntries = presentationEditMode
+    const visibleEntries = presentationEditActive
       ? entries
       : entries.filter((entry) => getGeneralIssueShow(entry));
 
@@ -3794,7 +3806,7 @@ const SmartsheetPivotPage = () => {
                 <th>Country</th>
                 <th>Owner</th>
                 <th>Priority (CHML)</th>
-                {presentationEditMode && <th>Show</th>}
+                {presentationEditActive && <th>Show</th>}
               </tr>
             </thead>
             <tbody>
@@ -3807,7 +3819,7 @@ const SmartsheetPivotPage = () => {
                   </td>
                   <td>{formatDisplayValue(entry.owner)}</td>
                   <td>{formatDisplayValue(entry.priority)}</td>
-                  {presentationEditMode && (
+                  {presentationEditActive && (
                     <td className="text-center">
                       <input
                         type="checkbox"
@@ -4209,7 +4221,7 @@ const SmartsheetPivotPage = () => {
             </div>
           )}
           {!highlightsLoading && !highlightsError && (
-            <div style={{ display: presentationEditMode ? 'block' : 'none' }}>
+            <div style={{ display: presentationEditActive ? 'block' : 'none' }}>
               <TrumboField
                 value={highlightsContent}
                 onChange={(value) => setHighlightsContent(value || '')}
@@ -4227,7 +4239,7 @@ const SmartsheetPivotPage = () => {
               </div>
             </div>
           )}
-          {!highlightsLoading && !highlightsError && !presentationEditMode && (
+          {!highlightsLoading && !highlightsError && !presentationEditActive && (
             highlightsContent ? (
               <div
                 className="presentation-highlight-content"
@@ -4332,7 +4344,7 @@ const SmartsheetPivotPage = () => {
                         <td className="text-end">{formatDisplayValue(row.storesInstalled)}</td>
                         <td className="text-end">{formatDisplayValue(row.storeSignoff)}</td>
                         <td className="text-center">
-                          {presentationEditMode ? (
+                          {presentationEditActive ? (
                             <select
                               className="form-select form-select-sm"
                               value={ragValue || ''}
@@ -4348,7 +4360,7 @@ const SmartsheetPivotPage = () => {
                           )}
                         </td>
                         <td className="text-muted small">
-                          {presentationEditMode ? (
+                          {presentationEditActive ? (
                             <input
                               type="text"
                               className="form-control form-control-sm"
@@ -4447,7 +4459,7 @@ const SmartsheetPivotPage = () => {
               <td>{formatDateDisplay(endDate)}</td>
               <td>{formatDisplayValue(status)}</td>
               <td className="text-muted small">
-                {presentationEditMode ? (
+                {presentationEditActive ? (
                   <textarea
                     className="form-control form-control-sm"
                     value={commentValue ?? ''}
@@ -4764,7 +4776,7 @@ const SmartsheetPivotPage = () => {
               {trendError}
             </div>
           )}
-          {!trendLoading && !trendError && presentationEditMode && meta.key === '__trend_green' && (
+          {!trendLoading && !trendError && presentationEditActive && (presentationHyperEdit || meta.key === '__trend_green') && (
             <div className="table-responsive">
               <table className="table table-sm table-bordered table-striped align-middle mb-0">
                 <colgroup>
@@ -4816,10 +4828,10 @@ const SmartsheetPivotPage = () => {
               </table>
             </div>
           )}
-          {!trendLoading && !trendError && presentationEditMode && meta.key !== '__trend_green' && (
+          {!trendLoading && !trendError && presentationEditActive && !presentationHyperEdit && meta.key !== '__trend_green' && (
             <div className="text-muted small">Edit RAG & comments in Country Trend: Green.</div>
           )}
-          {!trendLoading && !trendError && !presentationEditMode && (
+          {!trendLoading && !trendError && !presentationEditActive && (
             (() => {
               const group = meta.key === '__trend_green'
                 ? trendGroups.green
@@ -5620,9 +5632,17 @@ const SmartsheetPivotPage = () => {
                 type="button"
                 className="btn btn-outline-primary btn-sm"
                 onClick={() => setPresentationEditMode((prev) => !prev)}
-                disabled={presentationLoading}
+                disabled={presentationLoading || presentationHyperEdit}
               >
                 {presentationEditMode ? 'Done' : 'Edit'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-danger btn-sm"
+                onClick={toggleHyperEdit}
+                disabled={presentationLoading}
+              >
+                {presentationHyperEdit ? 'Exit Hyper Edit' : 'Hyper Edit'}
               </button>
               <button
                 type="button"
@@ -5632,7 +5652,7 @@ const SmartsheetPivotPage = () => {
               >
                 Slideshow
               </button>
-              {presentationEditMode && (
+              {presentationEditActive && (
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
@@ -5841,7 +5861,7 @@ const SmartsheetPivotPage = () => {
 
                   <div>
                     <div className="fw-semibold mb-2">Issue Log</div>
-                    {presentationEditMode && (
+                    {presentationEditActive && (
                       <div className="border rounded p-2 mb-3">
                         <div className="row g-2 align-items-end">
                           <div className="col-12 col-lg-3">
