@@ -2430,6 +2430,51 @@ class SmartsheetPresentationController extends AbstractController
         ]);
     }
 
+    #[Route('/snapshots', name: 'presentation_snapshots', methods: ['GET'])]
+    public function listSnapshots(): JsonResponse
+    {
+        $rows = $this->connection->fetchAllAssociative(
+            sprintf('SELECT id, created_at FROM %s ORDER BY created_at DESC LIMIT 200', self::SNAPSHOT_TABLE)
+        );
+
+        $items = array_map(static function (array $row): array {
+            return [
+                'id' => (int) ($row['id'] ?? 0),
+                'createdAt' => $row['created_at'] ?? null,
+            ];
+        }, $rows);
+
+        return $this->json(['items' => $items]);
+    }
+
+    #[Route('/snapshot/{id}', name: 'presentation_snapshot_show', methods: ['GET'])]
+    public function getSnapshot(int $id): JsonResponse
+    {
+        if ($id <= 0) {
+            return $this->json(['message' => 'Invalid snapshot id.'], 400);
+        }
+
+        $row = $this->connection->fetchAssociative(
+            sprintf('SELECT id, created_at, snapshot_json FROM %s WHERE id = :id', self::SNAPSHOT_TABLE),
+            ['id' => $id]
+        );
+
+        if (!$row) {
+            return $this->json(['message' => 'Snapshot not found.'], 404);
+        }
+
+        $snapshot = json_decode((string) ($row['snapshot_json'] ?? ''), true);
+        if (!is_array($snapshot)) {
+            $snapshot = [];
+        }
+
+        return $this->json([
+            'id' => (int) ($row['id'] ?? 0),
+            'createdAt' => $row['created_at'] ?? null,
+            'snapshot' => $snapshot,
+        ]);
+    }
+
     #[Route('/progress', name: 'presentation_progress', methods: ['GET'])]
     public function progress(\Symfony\Component\HttpFoundation\Request $request): JsonResponse
     {

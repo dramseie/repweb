@@ -376,6 +376,11 @@ const SmartsheetPivotPage = () => {
   const [presentationXlsxExporting, setPresentationXlsxExporting] = useState(false);
   const [presentationSnapshotSaving, setPresentationSnapshotSaving] = useState(false);
   const [presentationSnapshotError, setPresentationSnapshotError] = useState(null);
+  const [presentationSnapshots, setPresentationSnapshots] = useState([]);
+  const [presentationSnapshotsLoading, setPresentationSnapshotsLoading] = useState(false);
+  const [presentationSnapshotsLoaded, setPresentationSnapshotsLoaded] = useState(false);
+  const [presentationSnapshotsError, setPresentationSnapshotsError] = useState(null);
+  const [presentationSnapshotId, setPresentationSnapshotId] = useState('');
   const [presentationEditMode, setPresentationEditMode] = useState(false);
   const [presentationHyperEdit, setPresentationHyperEdit] = useState(false);
   const [presentationEdits, setPresentationEdits] = useState({});
@@ -757,6 +762,69 @@ const SmartsheetPivotPage = () => {
   const execOverviewRef = useRef(null);
   const presentationEditActive = presentationEditMode || presentationHyperEdit;
 
+  const plannedScopeConfig = {
+    'assessments-current': { setter: setPresentationAssessments, key: 'current' },
+    'assessments-next': { setter: setPresentationAssessments, key: 'next' },
+    'installations-current': { setter: setPresentationInstallations, key: 'current' },
+    'installations-next': { setter: setPresentationInstallations, key: 'next' },
+    'postdeployment-current': { setter: setPresentationPostDeployment, key: 'current' },
+    'postdeployment-next': { setter: setPresentationPostDeployment, key: 'next' },
+  };
+
+  const updatePlannedEntry = (scope, country, index, patch) => {
+    const config = plannedScopeConfig[scope];
+    if (!config) return;
+    config.setter((prev) => {
+      const items = Array.isArray(prev.items) ? prev.items : [];
+      const nextItems = items.map((block) => {
+        if (block.country !== country) return block;
+        const list = Array.isArray(block[config.key]) ? block[config.key] : [];
+        const nextList = list.map((entry, idx) => (idx === index ? { ...entry, ...patch } : entry));
+        return { ...block, [config.key]: nextList };
+      });
+      return { ...prev, items: nextItems };
+    });
+  };
+
+  const updateOverviewEntry = (country, patch) => {
+    setPresentationOverview((prev) => {
+      const items = Array.isArray(prev.items) ? prev.items : [];
+      const nextItems = items.map((row) => (row.country === country ? { ...row, ...patch } : row));
+      return { ...prev, items: nextItems };
+    });
+  };
+
+  const updateIssueEntry = (country, index, patch) => {
+    setPresentationIssues((prev) => {
+      const items = Array.isArray(prev.items) ? prev.items : [];
+      const nextItems = items.map((block) => {
+        if (block.country !== country) return block;
+        const issues = Array.isArray(block.issues) ? block.issues : [];
+        const nextIssues = issues.map((entry, idx) => (idx === index ? { ...entry, ...patch } : entry));
+        return { ...block, issues: nextIssues };
+      });
+      return { ...prev, items: nextItems };
+    });
+  };
+
+  const updateGeneralIssueEntry = (group, index, patch) => {
+    setPresentationIssues((prev) => {
+      const general = prev.generalIssues || { ikea: [], hpe: [] };
+      const list = Array.isArray(general[group]) ? general[group] : [];
+      const nextList = list.map((entry, idx) => (idx === index ? { ...entry, ...patch } : entry));
+      return { ...prev, generalIssues: { ...general, [group]: nextList } };
+    });
+  };
+
+  const updatePlannedWeekRow = (rowIndex, patch) => {
+    setPlannedWeekRows((prev) => {
+      const nextRows = Array.isArray(prev) ? [...prev] : [];
+      if (rowIndex < 0 || rowIndex >= nextRows.length) return prev;
+      nextRows[rowIndex] = { ...nextRows[rowIndex], ...patch };
+      return nextRows;
+    });
+  };
+
   const scrollToPresentationCard = useCallback((key) => {
     if (!key) return;
     const target = document.getElementById(key);
@@ -882,6 +950,99 @@ const SmartsheetPivotPage = () => {
       setOverviewLoading(false);
     }
   }, [presentationLoaded, presentationLoading]);
+
+  const applySnapshotData = (payload) => {
+    setPresentationAssessments(payload?.assessments ?? { meta: null, items: [] });
+    setPresentationInstallations(payload?.installations ?? { meta: null, items: [] });
+    setPresentationPostDeployment(payload?.postDeployment ?? { meta: null, items: [] });
+    setPresentationIssues(payload?.issues ?? { items: [], generalIssues: { ikea: [], hpe: [] } });
+    setPresentationProgress(payload?.progress ?? { items: [] });
+    setPresentationOverview(payload?.overview ?? { items: [] });
+    setPresentationTimeline(payload?.timeline ?? { items: [] });
+    setHighlightsContent(payload?.highlights ?? '');
+    setQnaNotes(Array.isArray(payload?.qnaNotes) ? payload.qnaNotes : []);
+    setTrendOverrides(payload?.trendOverrides ?? {});
+    setPlannedWeekRows(Array.isArray(payload?.plannedWeekRows) ? payload.plannedWeekRows : []);
+    setPlannedWeekCommentOverrides(payload?.plannedWeekCommentOverrides ?? {});
+    setGeneralIssuesOverrides(payload?.generalIssuesOverrides ?? {});
+    setOverviewOverrides(payload?.overviewOverrides ?? {});
+    setStatusData(payload?.status ?? { categories: [], items: [] });
+    setTrendFilters(payload?.trendFilters ?? { countries: [], sites: [], tasks: [] });
+    setTrendSeriesRows(Array.isArray(payload?.trendSeries?.items) ? payload.trendSeries.items : []);
+    if (payload?.trendSeries?.baselineDate) {
+      setTrendBaselineDate(new Date(payload.trendSeries.baselineDate));
+    }
+    setTrendFilterCountry(payload?.trendSeries?.filterCountry || '');
+    setTrendFilterTask(payload?.trendSeries?.filterTask || '');
+
+    setPresentationLoaded(true);
+    setPresentationLoading(false);
+    setOverviewLoading(false);
+    setHighlightsLoaded(true);
+    setTrendLoaded(true);
+    setOverviewOverridesLoaded(true);
+    setGeneralIssuesOverridesLoaded(true);
+    setPlannedWeekLoaded(true);
+    setPlannedWeekCommentOverridesLoaded(true);
+    setStatusLoaded(true);
+  };
+
+  const fetchPresentationSnapshots = useCallback(async () => {
+    if (presentationSnapshotsLoaded || presentationSnapshotsLoading) return;
+    setPresentationSnapshotsLoading(true);
+    setPresentationSnapshotsError(null);
+    try {
+      const response = await fetch('/api/smartsheet/presentation/snapshots');
+      if (!response.ok) {
+        throw new Error(`Failed to load snapshots (HTTP ${response.status}).`);
+      }
+      const payload = await response.json();
+      setPresentationSnapshots(Array.isArray(payload?.items) ? payload.items : []);
+      setPresentationSnapshotsLoaded(true);
+    } catch (error) {
+      setPresentationSnapshotsError(error.message || 'Unable to load snapshots.');
+      setPresentationSnapshotsLoaded(true);
+    } finally {
+      setPresentationSnapshotsLoading(false);
+    }
+  }, [presentationSnapshotsLoaded, presentationSnapshotsLoading]);
+
+  const loadPresentationSnapshot = async (snapshotId) => {
+    if (!snapshotId) return;
+    setPresentationLoading(true);
+    setPresentationError(null);
+    try {
+      const response = await fetch(`/api/smartsheet/presentation/snapshot/${snapshotId}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      const payload = await response.json();
+      applySnapshotData(payload?.snapshot ?? {});
+    } catch (error) {
+      setPresentationError(error.message || 'Unable to load snapshot.');
+    } finally {
+      setPresentationLoading(false);
+    }
+  };
+
+  const setPresentationLive = () => {
+    setPresentationLoaded(false);
+    setHighlightsLoaded(false);
+    setTrendLoaded(false);
+    setOverviewOverridesLoaded(false);
+    setGeneralIssuesOverridesLoaded(false);
+    setPlannedWeekLoaded(false);
+    setPlannedWeekCommentOverridesLoaded(false);
+    setStatusLoaded(false);
+    fetchPresentation();
+    fetchHighlights();
+    fetchTrendOverrides();
+    fetchOverviewOverrides();
+    fetchGeneralIssuesOverrides();
+    fetchPlannedWeekCommentOverrides();
+    fetchPlannedWeek();
+  };
 
   const fetchHighlights = useCallback(async () => {
     if (highlightsLoaded || highlightsLoading) return;
@@ -3432,7 +3593,7 @@ const SmartsheetPivotPage = () => {
     const overviewDraftEntries = Object.entries(overviewDrafts);
     const generalIssueDraftEntries = Object.entries(generalIssuesDrafts);
     const plannedWeekDraftEntries = Object.entries(plannedWeekCommentDrafts);
-    if (edits.length === 0 && trendDraftEntries.length === 0 && overviewDraftEntries.length === 0 && generalIssueDraftEntries.length === 0 && plannedWeekDraftEntries.length === 0) {
+    if (!presentationHyperEdit && edits.length === 0 && trendDraftEntries.length === 0 && overviewDraftEntries.length === 0 && generalIssueDraftEntries.length === 0 && plannedWeekDraftEntries.length === 0) {
       setPresentationSaveError('No changes to save.');
       return;
     }
@@ -3576,6 +3737,10 @@ const SmartsheetPivotPage = () => {
       if (edits.length > 0) {
         fetchPresentation();
       }
+      if (presentationHyperEdit) {
+        await snapshotPresentation();
+        fetchPresentationSnapshots();
+      }
     } catch (error) {
       setPresentationSaveError(error.message || 'Failed to save presentation edits.');
     } finally {
@@ -3661,19 +3826,68 @@ const SmartsheetPivotPage = () => {
             {entries.map((entry, index) => (
               <tr key={`${entry.siteId ?? 'site'}-${index}`}>
                 <td>
-                  {formatDisplayValue(entry.siteName)}
-                  {entry.siteId ? ` (${entry.siteId})` : ''}
+                  {presentationHyperEdit ? (
+                    <div className="d-flex flex-column gap-1">
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        value={entry.siteName || ''}
+                        onChange={(event) => updatePlannedEntry(scope, country, index, { siteName: event.target.value })}
+                        placeholder="Site Name"
+                      />
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        value={entry.siteId || ''}
+                        onChange={(event) => updatePlannedEntry(scope, country, index, { siteId: event.target.value })}
+                        placeholder="Site ID"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      {formatDisplayValue(entry.siteName)}
+                      {entry.siteId ? ` (${entry.siteId})` : ''}
+                    </>
+                  )}
                 </td>
-                <td>{formatDateDisplay(entry.startDate)}</td>
-                <td>{formatDateDisplay(entry.endDate)}</td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={entry.startDate || ''}
+                      onChange={(event) => updatePlannedEntry(scope, country, index, { startDate: event.target.value })}
+                      placeholder="Start"
+                    />
+                  ) : (
+                    formatDateDisplay(entry.startDate)
+                  )}
+                </td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={entry.endDate || ''}
+                      onChange={(event) => updatePlannedEntry(scope, country, index, { endDate: event.target.value })}
+                      placeholder="End"
+                    />
+                  ) : (
+                    formatDateDisplay(entry.endDate)
+                  )}
+                </td>
                 <td className="text-center">
                   {presentationEditActive ? (
                     <select
                       className="form-select form-select-sm"
                       value={getPresentationDraft(entry, scope, country).confidence}
-                      onChange={(event) =>
-                        updatePresentationDraft(entry, scope, country, { confidence: event.target.value })
-                      }
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        updatePresentationDraft(entry, scope, country, { confidence: nextValue });
+                        if (presentationHyperEdit) {
+                          updatePlannedEntry(scope, country, index, { confidence: nextValue });
+                        }
+                      }}
                       style={{
                         backgroundColor: confidenceColor(getPresentationDraft(entry, scope, country).confidence),
                         color: getPresentationDraft(entry, scope, country).confidence ? '#fff' : undefined,
@@ -3697,9 +3911,13 @@ const SmartsheetPivotPage = () => {
                       className="form-control form-control-sm"
                       rows={2}
                       value={getPresentationDraft(entry, scope, country).status}
-                      onChange={(event) =>
-                        updatePresentationDraft(entry, scope, country, { status: event.target.value })
-                      }
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        updatePresentationDraft(entry, scope, country, { status: nextValue });
+                        if (presentationHyperEdit) {
+                          updatePlannedEntry(scope, country, index, { status: nextValue });
+                        }
+                      }}
                       placeholder="Status"
                     />
                   ) : (
@@ -3737,13 +3955,90 @@ const SmartsheetPivotPage = () => {
           <tbody>
             {entries.map((entry, index) => (
               <tr key={`${entry.storeId ?? 'store'}-${index}`}>
-                <td>{formatDisplayValue(entry.storeName)}</td>
-                <td>{formatDisplayValue(entry.storeId)}</td>
-                <td>{formatDisplayValue(entry.description)}</td>
-                <td>{formatDisplayValue(entry.priority)}</td>
-                <td>{formatDisplayValue(entry.responsibleParty)}</td>
-                <td>{formatDisplayValue(entry.actionRequired)}</td>
-                <td>{formatDateDisplay(entry.resolveDate)}</td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={entry.storeName || ''}
+                      onChange={(event) => updateIssueEntry(country, index, { storeName: event.target.value })}
+                    />
+                  ) : (
+                    formatDisplayValue(entry.storeName)
+                  )}
+                </td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={entry.storeId || ''}
+                      onChange={(event) => updateIssueEntry(country, index, { storeId: event.target.value })}
+                    />
+                  ) : (
+                    formatDisplayValue(entry.storeId)
+                  )}
+                </td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <textarea
+                      className="form-control form-control-sm"
+                      rows={2}
+                      value={entry.description || ''}
+                      onChange={(event) => updateIssueEntry(country, index, { description: event.target.value })}
+                    />
+                  ) : (
+                    formatDisplayValue(entry.description)
+                  )}
+                </td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={entry.priority || ''}
+                      onChange={(event) => updateIssueEntry(country, index, { priority: event.target.value })}
+                    />
+                  ) : (
+                    formatDisplayValue(entry.priority)
+                  )}
+                </td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={entry.responsibleParty || ''}
+                      onChange={(event) => updateIssueEntry(country, index, { responsibleParty: event.target.value })}
+                    />
+                  ) : (
+                    formatDisplayValue(entry.responsibleParty)
+                  )}
+                </td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <textarea
+                      className="form-control form-control-sm"
+                      rows={2}
+                      value={entry.actionRequired || ''}
+                      onChange={(event) => updateIssueEntry(country, index, { actionRequired: event.target.value })}
+                    />
+                  ) : (
+                    formatDisplayValue(entry.actionRequired)
+                  )}
+                </td>
+                <td>
+                  {presentationHyperEdit ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={entry.resolveDate || ''}
+                      onChange={(event) => updateIssueEntry(country, index, { resolveDate: event.target.value })}
+                    />
+                  ) : (
+                    formatDateDisplay(entry.resolveDate)
+                  )}
+                </td>
                 {presentationEditActive && (
                   <td className="text-nowrap">
                     {entry.id ? (
@@ -3777,7 +4072,7 @@ const SmartsheetPivotPage = () => {
     );
   };
 
-  const renderGeneralIssuesTable = (entries, title) => {
+  const renderGeneralIssuesTable = (entries, title, group) => {
     const visibleEntries = presentationEditActive
       ? entries
       : entries.filter((entry) => getGeneralIssueShow(entry));
@@ -3814,13 +4109,57 @@ const SmartsheetPivotPage = () => {
             <tbody>
               {visibleEntries.map((entry, index) => (
                 <tr key={`${entry.country ?? 'country'}-${index}`}>
-                  <td>{formatDisplayValue(entry.description)}</td>
-                  <td className="fw-semibold">
-                    {entry.country ? <CountryFlag country={entry.country} /> : null}
-                    {formatDisplayValue(entry.country)}
+                  <td>
+                    {presentationHyperEdit ? (
+                      <textarea
+                        className="form-control form-control-sm"
+                        rows={2}
+                        value={entry.description || ''}
+                        onChange={(event) => updateGeneralIssueEntry(group, index, { description: event.target.value })}
+                      />
+                    ) : (
+                      formatDisplayValue(entry.description)
+                    )}
                   </td>
-                  <td>{formatDisplayValue(entry.owner)}</td>
-                  <td>{formatDisplayValue(entry.priority)}</td>
+                  <td className="fw-semibold">
+                    {presentationHyperEdit ? (
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        value={entry.country || ''}
+                        onChange={(event) => updateGeneralIssueEntry(group, index, { country: event.target.value })}
+                      />
+                    ) : (
+                      <>
+                        {entry.country ? <CountryFlag country={entry.country} /> : null}
+                        {formatDisplayValue(entry.country)}
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    {presentationHyperEdit ? (
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        value={entry.owner || ''}
+                        onChange={(event) => updateGeneralIssueEntry(group, index, { owner: event.target.value })}
+                      />
+                    ) : (
+                      formatDisplayValue(entry.owner)
+                    )}
+                  </td>
+                  <td>
+                    {presentationHyperEdit ? (
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        value={entry.priority || ''}
+                        onChange={(event) => updateGeneralIssueEntry(group, index, { priority: event.target.value })}
+                      />
+                    ) : (
+                      formatDisplayValue(entry.priority)
+                    )}
+                  </td>
                   {presentationEditActive && (
                     <td className="text-center">
                       <input
@@ -4108,13 +4447,13 @@ const SmartsheetPivotPage = () => {
   
 
   useEffect(() => {
-    if (activeTab === 'presentation' && !presentationLoaded && !presentationLoading) {
+    if (activeTab === 'presentation' && !presentationSnapshotId && !presentationLoaded && !presentationLoading) {
       fetchPresentation();
     }
-  }, [activeTab, fetchPresentation, presentationLoaded, presentationLoading]);
+  }, [activeTab, presentationSnapshotId, fetchPresentation, presentationLoaded, presentationLoading]);
 
   useEffect(() => {
-    if (activeTab === 'presentation') {
+    if (activeTab === 'presentation' && !presentationSnapshotId) {
       fetchHighlights();
       fetchTrendOverrides();
       fetchOverviewOverrides();
@@ -4124,6 +4463,7 @@ const SmartsheetPivotPage = () => {
     }
   }, [
     activeTab,
+    presentationSnapshotId,
     fetchHighlights,
     fetchTrendOverrides,
     fetchOverviewOverrides,
@@ -4131,6 +4471,22 @@ const SmartsheetPivotPage = () => {
     fetchPlannedWeekCommentOverrides,
     fetchPlannedWeek,
   ]);
+
+  useEffect(() => {
+    if (activeTab === 'presentation') {
+      fetchPresentationSnapshots();
+    }
+  }, [activeTab, fetchPresentationSnapshots]);
+
+  const onSnapshotChange = async (event) => {
+    const value = event.target.value;
+    setPresentationSnapshotId(value);
+    if (!value) {
+      setPresentationLive();
+      return;
+    }
+    await loadPresentationSnapshot(value);
+  };
 
   const onPresentationCountryChange = (event) => {
     const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
@@ -4340,17 +4696,78 @@ const SmartsheetPivotPage = () => {
                         <td className="fw-semibold">
                           <CountryAnchor country={row.country} />
                         </td>
-                        <td className="text-end">{formatDisplayValue(row.stores)}</td>
-                        <td className="text-end">{formatDisplayValue(row.assessed)}</td>
-                        <td className="text-end">{formatDisplayValue(row.ongoingInstallations)}</td>
-                        <td className="text-end">{formatDisplayValue(row.storesInstalled)}</td>
-                        <td className="text-end">{formatDisplayValue(row.storeSignoff)}</td>
+                        <td className="text-end">
+                          {presentationHyperEdit ? (
+                            <input
+                              type="text"
+                              className="form-control form-control-sm text-end"
+                              value={row.stores ?? ''}
+                              onChange={(event) => updateOverviewEntry(row.country, { stores: event.target.value })}
+                            />
+                          ) : (
+                            formatDisplayValue(row.stores)
+                          )}
+                        </td>
+                        <td className="text-end">
+                          {presentationHyperEdit ? (
+                            <input
+                              type="text"
+                              className="form-control form-control-sm text-end"
+                              value={row.assessed ?? ''}
+                              onChange={(event) => updateOverviewEntry(row.country, { assessed: event.target.value })}
+                            />
+                          ) : (
+                            formatDisplayValue(row.assessed)
+                          )}
+                        </td>
+                        <td className="text-end">
+                          {presentationHyperEdit ? (
+                            <input
+                              type="text"
+                              className="form-control form-control-sm text-end"
+                              value={row.ongoingInstallations ?? ''}
+                              onChange={(event) => updateOverviewEntry(row.country, { ongoingInstallations: event.target.value })}
+                            />
+                          ) : (
+                            formatDisplayValue(row.ongoingInstallations)
+                          )}
+                        </td>
+                        <td className="text-end">
+                          {presentationHyperEdit ? (
+                            <input
+                              type="text"
+                              className="form-control form-control-sm text-end"
+                              value={row.storesInstalled ?? ''}
+                              onChange={(event) => updateOverviewEntry(row.country, { storesInstalled: event.target.value })}
+                            />
+                          ) : (
+                            formatDisplayValue(row.storesInstalled)
+                          )}
+                        </td>
+                        <td className="text-end">
+                          {presentationHyperEdit ? (
+                            <input
+                              type="text"
+                              className="form-control form-control-sm text-end"
+                              value={row.storeSignoff ?? ''}
+                              onChange={(event) => updateOverviewEntry(row.country, { storeSignoff: event.target.value })}
+                            />
+                          ) : (
+                            formatDisplayValue(row.storeSignoff)
+                          )}
+                        </td>
                         <td className="text-center">
                           {presentationEditActive ? (
                             <select
                               className="form-select form-select-sm"
                               value={ragValue || ''}
-                              onChange={(event) => updateOverviewDraft(row.country, { rag: event.target.value })}
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                updateOverviewDraft(row.country, { rag: nextValue });
+                                if (presentationHyperEdit) {
+                                  updateOverviewEntry(row.country, { rag: nextValue });
+                                }
+                              }}
                             >
                               <option value="">—</option>
                               <option value="Green">Green</option>
@@ -4367,7 +4784,13 @@ const SmartsheetPivotPage = () => {
                               type="text"
                               className="form-control form-control-sm"
                               value={commentValue ?? ''}
-                              onChange={(event) => updateOverviewDraft(row.country, { comment: event.target.value })}
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                updateOverviewDraft(row.country, { comment: nextValue });
+                                if (presentationHyperEdit) {
+                                  updateOverviewEntry(row.country, { comment: nextValue });
+                                }
+                              }}
                             />
                           ) : (
                             commentValue ? formatDisplayValue(commentValue) : ''
@@ -4404,12 +4827,13 @@ const SmartsheetPivotPage = () => {
       };
       const { start: lastWeekStart, end: lastWeekEnd, cw: lastWeekCW } = getLastWeekRange();
 
+      const plannedWeekRowsWithIndex = plannedWeekRows.map((row, index) => ({ ...row, __rowIndex: index }));
       const filteredPlannedWeekRows = selectedCountryValues.length
-        ? plannedWeekRows.filter((row) => {
+        ? plannedWeekRowsWithIndex.filter((row) => {
           const country = getRowField(row, ['country', 'Country']);
           return country && selectedCountryValues.includes(country);
         })
-        : plannedWeekRows;
+        : plannedWeekRowsWithIndex;
 
       const startedLastWeekRows = filteredPlannedWeekRows.filter((row) => {
         const startDate = toDate(getRowField(row, ['start_date', 'startDate', 'Start_Date', 'StartDate']));
@@ -4446,20 +4870,95 @@ const SmartsheetPivotPage = () => {
           const status = getRowField(row, ['status', 'Status']) || '';
           const commentKey = buildPlannedWeekCommentKey(country, siteId, siteName, taskName, startDate, endDate);
           const commentValue = getPlannedWeekCommentDraft(commentKey) || '';
+          const rowIndex = typeof row.__rowIndex === 'number' ? row.__rowIndex : -1;
 
           return (
             <tr key={`${prefix}-${country}-${siteId || siteName || 'row'}-${index}`}>
               <td className="fw-semibold">
-                <CountryAnchor country={country} />
+                {presentationHyperEdit ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={country || ''}
+                    onChange={(event) => updatePlannedWeekRow(rowIndex, { country: event.target.value })}
+                  />
+                ) : (
+                  <CountryAnchor country={country} />
+                )}
               </td>
               <td>
-                {siteName || '—'}
-                {siteId ? ` (${siteId})` : ''}
+                {presentationHyperEdit ? (
+                  <div className="d-flex flex-column gap-1">
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={siteName || ''}
+                      onChange={(event) => updatePlannedWeekRow(rowIndex, { site_name: event.target.value })}
+                      placeholder="Site Name"
+                    />
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={siteId || ''}
+                      onChange={(event) => updatePlannedWeekRow(rowIndex, { site_id: event.target.value })}
+                      placeholder="Site ID"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {siteName || '—'}
+                    {siteId ? ` (${siteId})` : ''}
+                  </>
+                )}
               </td>
-              <td>{formatDisplayValue(taskName)}</td>
-              <td>{formatDateDisplay(startDate)}</td>
-              <td>{formatDateDisplay(endDate)}</td>
-              <td>{formatDisplayValue(status)}</td>
+              <td>
+                {presentationHyperEdit ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={taskName || ''}
+                    onChange={(event) => updatePlannedWeekRow(rowIndex, { task_name: event.target.value })}
+                  />
+                ) : (
+                  formatDisplayValue(taskName)
+                )}
+              </td>
+              <td>
+                {presentationHyperEdit ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={startDate || ''}
+                    onChange={(event) => updatePlannedWeekRow(rowIndex, { start_date: event.target.value })}
+                  />
+                ) : (
+                  formatDateDisplay(startDate)
+                )}
+              </td>
+              <td>
+                {presentationHyperEdit ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={endDate || ''}
+                    onChange={(event) => updatePlannedWeekRow(rowIndex, { end_date: event.target.value })}
+                  />
+                ) : (
+                  formatDateDisplay(endDate)
+                )}
+              </td>
+              <td>
+                {presentationHyperEdit ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={status || ''}
+                    onChange={(event) => updatePlannedWeekRow(rowIndex, { status: event.target.value })}
+                  />
+                ) : (
+                  formatDisplayValue(status)
+                )}
+              </td>
               <td className="text-muted small">
                 {presentationEditActive ? (
                   <textarea
@@ -4947,8 +5446,8 @@ const SmartsheetPivotPage = () => {
       const hpeIssues = filterGeneralIssues(Array.isArray(generalIssues.hpe) ? generalIssues.hpe : []);
       return (
         <div className="d-flex flex-column gap-4">
-          {renderGeneralIssuesTable(ikeaIssues, 'Issues - IKEA')}
-          {renderGeneralIssuesTable(hpeIssues, 'Issues - HPE')}
+          {renderGeneralIssuesTable(ikeaIssues, 'Issues - IKEA', 'ikea')}
+          {renderGeneralIssuesTable(hpeIssues, 'Issues - HPE', 'hpe')}
         </div>
       );
     }
@@ -5111,6 +5610,10 @@ const SmartsheetPivotPage = () => {
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body?.message || `HTTP ${response.status}`);
+      }
+      const body = await response.json().catch(() => ({}));
+      if (body?.id) {
+        setPresentationSnapshotId(String(body.id));
       }
     } catch (error) {
       setPresentationSnapshotError(error.message || 'Failed to save snapshot.');
@@ -5613,6 +6116,20 @@ const SmartsheetPivotPage = () => {
                     <option key={country} value={country}>{country}</option>
                   ))}
                 </optgroup>
+              </select>
+              <select
+                className="form-select form-select-sm"
+                value={presentationSnapshotId}
+                onChange={onSnapshotChange}
+                disabled={presentationSnapshotsLoading}
+                style={{ minWidth: 220 }}
+              >
+                <option value="">Live data</option>
+                {presentationSnapshots.map((snapshot) => (
+                  <option key={snapshot.id} value={String(snapshot.id)}>
+                    {snapshot.createdAt || `Snapshot ${snapshot.id}`}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"
