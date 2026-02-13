@@ -3829,7 +3829,6 @@ const SmartsheetPivotPage = () => {
     { key: '__exec_overview', title: 'Programme Overview Per Country', body: 'Summary of progress and key highlights per country.' },
     { key: '__exec_status', title: 'Status of assessments and installations to start/finish CW', body: 'Snapshot of planned assessments and installations status.' },
     { key: '__exec_timeline', title: 'Timeline', body: 'High-level milestones and upcoming dates.' },
-    { key: '__exec_qna', title: 'Questions & Answers', body: 'Open questions and discussion points.' },
     { key: '__trend_green', title: 'Country Trend: Green', body: 'Countries currently on track.' },
     { key: '__trend_amber', title: 'Country Trend: Amber', body: 'Countries with risks or minor delays.' },
     { key: '__trend_red', title: 'Country Trend: Red', body: 'Countries with critical issues or delays.' },
@@ -5537,7 +5536,6 @@ const SmartsheetPivotPage = () => {
                     {`Status of assessments and installations to start/finish CW${String(getLastWeekRange().cw).padStart(2, '0')}`}
                   </option>
                   <option value="__exec_timeline">Timeline</option>
-                  <option value="__exec_qna">Questions &amp; Answers</option>
                 </optgroup>
                 <optgroup label="Country Trend">
                   <option value="__trend_green">Green</option>
