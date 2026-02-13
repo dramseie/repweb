@@ -59,8 +59,8 @@ class SmartsheetAnalyseController extends AbstractController
         }
 
         $sql = sprintf(
-            'SELECT a.`sheet_name`, a.`Site_ID`, a.`Site_Name`, a.`Task_Name` AS task_a, DATE(a.`%1$s`) AS date_a, a.`%_complete` AS percent_complete_a, a.`Predecessors` AS predecessors_a, '
-            . 'b.`Task_Name` AS task_b, DATE(b.`%2$s`) AS date_b, b.`%_complete` AS percent_complete_b, b.`Predecessors` AS predecessors_b, '
+            'SELECT a.`sheet_name`, a.`Site_ID`, a.`Site_Name`, a.`Task_Name` AS task_a, DATE(a.`%1$s`) AS date_a, a.`%%_complete` AS percent_complete_a, a.`Predecessors` AS predecessors_a, '
+            . 'b.`Task_Name` AS task_b, DATE(b.`%2$s`) AS date_b, b.`%%_complete` AS percent_complete_b, b.`Predecessors` AS predecessors_b, '
             . 'DATEDIFF(b.`%2$s`, a.`%1$s`) AS days_difference '
             . 'FROM %3$s a '
             . 'INNER JOIN %3$s b ON a.`sheet_name` = b.`sheet_name` AND a.`Site_ID` = b.`Site_ID` '

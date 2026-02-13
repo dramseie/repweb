@@ -374,6 +374,8 @@ const SmartsheetPivotPage = () => {
   const [presentationHtmlExporting, setPresentationHtmlExporting] = useState(false);
   const [presentationPdfExporting, setPresentationPdfExporting] = useState(false);
   const [presentationXlsxExporting, setPresentationXlsxExporting] = useState(false);
+  const [presentationSnapshotSaving, setPresentationSnapshotSaving] = useState(false);
+  const [presentationSnapshotError, setPresentationSnapshotError] = useState(null);
   const [presentationEditMode, setPresentationEditMode] = useState(false);
   const [presentationEdits, setPresentationEdits] = useState({});
   const [presentationSaving, setPresentationSaving] = useState(false);
@@ -5056,6 +5058,53 @@ const SmartsheetPivotPage = () => {
     }
   };
 
+  const snapshotPresentation = async () => {
+    if (presentationSnapshotSaving) return;
+    setPresentationSnapshotSaving(true);
+    setPresentationSnapshotError(null);
+    try {
+      const payload = {
+        assessments: presentationAssessments,
+        installations: presentationInstallations,
+        postDeployment: presentationPostDeployment,
+        issues: presentationIssues,
+        progress: presentationProgress,
+        overview: presentationOverview,
+        timeline: presentationTimeline,
+        highlights: highlightsContent,
+        qnaNotes,
+        trendOverrides,
+        plannedWeekRows,
+        plannedWeekCommentOverrides,
+        generalIssuesOverrides,
+        overviewOverrides,
+        status: statusData,
+        trendFilters,
+        trendSeries: {
+          baselineDate: trendBaselineDate ? formatYmd(trendBaselineDate) : null,
+          filterCountry: trendFilterCountry || null,
+          filterTask: trendFilterTask || null,
+          items: trendSeriesRows,
+        },
+      };
+
+      const response = await fetch('/api/smartsheet/presentation/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.message || `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      setPresentationSnapshotError(error.message || 'Failed to save snapshot.');
+    } finally {
+      setPresentationSnapshotSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'status' && !statusLoaded && !statusLoading) {
       fetchStatus();
@@ -5625,6 +5674,14 @@ const SmartsheetPivotPage = () => {
               >
                 {presentationHtmlExporting ? 'Exporting…' : 'Export Offline HTML'}
               </button>
+              <button
+                type="button"
+                className="btn btn-outline-success btn-sm"
+                onClick={snapshotPresentation}
+                disabled={presentationSnapshotSaving || presentationLoading}
+              >
+                {presentationSnapshotSaving ? 'Saving…' : 'Snapshot'}
+              </button>
             </div>
           </div>
 
@@ -5637,6 +5694,12 @@ const SmartsheetPivotPage = () => {
           {presentationSaveError && (
             <div className="alert alert-warning" role="alert">
               {presentationSaveError}
+            </div>
+          )}
+
+          {presentationSnapshotError && (
+            <div className="alert alert-warning" role="alert">
+              {presentationSnapshotError}
             </div>
           )}
 

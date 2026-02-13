@@ -42,6 +42,7 @@ class SmartsheetPresentationController extends AbstractController
     private const SIGN_OFF_TASK = 'Store Sign off Completed';
     private const STATUS_TABLE = 'smartsheet_status_log';
     private const CONTENT_TABLE = 'smartsheet_content';
+    private const SNAPSHOT_TABLE = 'nifi.smartsheet_presentation_snapshot';
     private const TASK_TRACKER_TABLE = 'smartsheet_task_tracker';
     private const TASK_TRACKER_FILES_TABLE = 'smartsheet_files.task_tracker_files';
     private const STATUS_CATEGORIES = [
@@ -2406,6 +2407,29 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json(['ok' => true, 'createdAt' => $createdAt]);
     }
 
+    #[Route('/snapshot', name: 'presentation_snapshot', methods: ['POST'])]
+    public function snapshotPresentation(\Symfony\Component\HttpFoundation\Request $request): JsonResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true);
+        if (!is_array($payload)) {
+            return $this->json(['message' => 'snapshot payload is required.'], 400);
+        }
+
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return $this->json(['message' => 'Unable to encode snapshot payload.'], 400);
+        }
+
+        $this->connection->insert(self::SNAPSHOT_TABLE, [
+            'snapshot_json' => $json,
+        ]);
+
+        return $this->json([
+            'ok' => true,
+            'id' => (int) $this->connection->lastInsertId(),
+        ]);
+    }
+
     #[Route('/progress', name: 'presentation_progress', methods: ['GET'])]
     public function progress(\Symfony\Component\HttpFoundation\Request $request): JsonResponse
     {
@@ -3591,9 +3615,6 @@ class SmartsheetPresentationController extends AbstractController
         return 'in_progress';
     }
 
-    /**
-        $sql = 'SELECT id, country, store_name, store_id, description, priority, responsible_party, action_required, resolve_date '
-             . 'FROM repweb.smartsheet_issue_log_view ORDER BY country, resolve_date, store_name';
     private function fetchStatusSites(): array
     {
         $taskNames = [
