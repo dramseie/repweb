@@ -5571,12 +5571,13 @@ const SmartsheetPivotPage = () => {
     }
   };
 
-  const snapshotPresentation = async () => {
+  const snapshotPresentation = async (name = null) => {
     if (presentationSnapshotSaving) return;
     setPresentationSnapshotSaving(true);
     setPresentationSnapshotError(null);
     try {
       const payload = {
+        name,
         assessments: presentationAssessments,
         installations: presentationInstallations,
         postDeployment: presentationPostDeployment,
@@ -5620,6 +5621,16 @@ const SmartsheetPivotPage = () => {
     } finally {
       setPresentationSnapshotSaving(false);
     }
+  };
+
+  const snapshotPresentationWithName = async () => {
+    const name = window.prompt('Save snapshot as:', '') || '';
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return;
+    }
+    await snapshotPresentation(trimmed);
+    fetchPresentationSnapshots();
   };
 
   useEffect(() => {
@@ -6127,7 +6138,7 @@ const SmartsheetPivotPage = () => {
                 <option value="">Live data</option>
                 {presentationSnapshots.map((snapshot) => (
                   <option key={snapshot.id} value={String(snapshot.id)}>
-                    {snapshot.createdAt || `Snapshot ${snapshot.id}`}
+                    {snapshot.name || snapshot.createdAt || `Snapshot ${snapshot.id}`}
                   </option>
                 ))}
               </select>
@@ -6220,6 +6231,14 @@ const SmartsheetPivotPage = () => {
                 disabled={presentationSnapshotSaving || presentationLoading}
               >
                 {presentationSnapshotSaving ? 'Saving…' : 'Snapshot'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-success btn-sm"
+                onClick={snapshotPresentationWithName}
+                disabled={presentationSnapshotSaving || presentationLoading}
+              >
+                Save as version
               </button>
             </div>
           </div>

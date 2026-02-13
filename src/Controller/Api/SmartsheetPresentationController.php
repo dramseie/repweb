@@ -2415,18 +2415,25 @@ class SmartsheetPresentationController extends AbstractController
             return $this->json(['message' => 'snapshot payload is required.'], 400);
         }
 
+        $name = trim((string) ($payload['name'] ?? '')) ?: null;
+        if (is_array($payload['name'] ?? null)) {
+            $name = null;
+        }
+
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
             return $this->json(['message' => 'Unable to encode snapshot payload.'], 400);
         }
 
         $this->connection->insert(self::SNAPSHOT_TABLE, [
+            'name_snapshot' => $name,
             'snapshot_json' => $json,
         ]);
 
         return $this->json([
             'ok' => true,
             'id' => (int) $this->connection->lastInsertId(),
+            'name' => $name,
         ]);
     }
 
@@ -2434,13 +2441,14 @@ class SmartsheetPresentationController extends AbstractController
     public function listSnapshots(): JsonResponse
     {
         $rows = $this->connection->fetchAllAssociative(
-            sprintf('SELECT id, created_at FROM %s ORDER BY created_at DESC LIMIT 200', self::SNAPSHOT_TABLE)
+            sprintf('SELECT id, created_at, name_snapshot FROM %s ORDER BY created_at DESC LIMIT 200', self::SNAPSHOT_TABLE)
         );
 
         $items = array_map(static function (array $row): array {
             return [
                 'id' => (int) ($row['id'] ?? 0),
                 'createdAt' => $row['created_at'] ?? null,
+                'name' => $row['name_snapshot'] ?? null,
             ];
         }, $rows);
 
@@ -2455,7 +2463,7 @@ class SmartsheetPresentationController extends AbstractController
         }
 
         $row = $this->connection->fetchAssociative(
-            sprintf('SELECT id, created_at, snapshot_json FROM %s WHERE id = :id', self::SNAPSHOT_TABLE),
+            sprintf('SELECT id, created_at, name_snapshot, snapshot_json FROM %s WHERE id = :id', self::SNAPSHOT_TABLE),
             ['id' => $id]
         );
 
@@ -2471,6 +2479,7 @@ class SmartsheetPresentationController extends AbstractController
         return $this->json([
             'id' => (int) ($row['id'] ?? 0),
             'createdAt' => $row['created_at'] ?? null,
+            'name' => $row['name_snapshot'] ?? null,
             'snapshot' => $snapshot,
         ]);
     }
